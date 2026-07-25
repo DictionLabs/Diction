@@ -18,6 +18,13 @@
 
 <p align="center">
   <a href="https://apps.apple.com/app/id6759807364"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" height="40"></a>
+  <a href="https://www.producthunt.com/products/diction?launch=diction">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204373&amp;theme=dark">
+      <source media="(prefers-color-scheme: light)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204373&amp;theme=light">
+      <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204373&amp;theme=neutral" alt="Diction on Product Hunt" height="40">
+    </picture>
+  </a>
 </p>
 
 <p align="center">
