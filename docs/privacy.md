@@ -41,7 +41,7 @@ When you use the hosted Diction One service:
 
 ### Diction One Infrastructure Logging
 
-The Diction One cloud infrastructure collects system performance logs for debugging and monitoring. These logs include request latency, character counts, error types, and server load metrics. **No client data is ever logged or stored.** Your audio, transcriptions, and any text context sent for AI Companion are never written to logs.
+The Diction One cloud infrastructure collects system performance logs for debugging and monitoring. These logs include request latency, character counts, error types, and server load metrics. **No client data is ever logged or stored.** Your audio, transcriptions, and any text context sent for Writing Tools are never written to logs.
 
 ## What the App Collects
 

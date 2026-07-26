@@ -1,6 +1,6 @@
 ---
 title: "Diction One: Cloud Transcription"
-description: Diction One cloud transcription. Fine-tuned speech model, high accuracy, zero setup. Audio processed and immediately discarded. AI Companion included.
+description: Diction One cloud transcription. Fine-tuned speech model, high accuracy, zero setup. Audio processed and immediately discarded. Writing Tools included.
 keywords: "diction one cloud, cloud transcription ios, ai voice keyboard iphone, best speech to text ios cloud, ai companion dictation, cloud dictation app iphone, voice to text cloud ios"
 ---
 
@@ -22,7 +22,7 @@ No server to run. No model to download. Open the app, subscribe, and start dicta
 ## What You Get
 
 - **Fine-tuned speech model**: custom-trained for accuracy beyond standard Whisper, with advanced audio filters applied before transcription. Hosted and maintained by us. We pick the best model for your language automatically.
-- **AI Companion**: optional post-processing that cleans up your transcription and understands voice commands. Removes filler words, fixes grammar, adds proper punctuation and capitalisation. Tell it to rewrite, translate, or edit and it follows your instructions. Tell it who you are with Profile, set a tone per app with Tone Presets, and add your own terms with My Words. Tuned to read like a person wrote it, not like a model wrote it for you.
+- **Writing Tools**: optional post-processing that cleans up your transcription and understands voice commands. Removes filler words, fixes grammar, adds proper punctuation and capitalisation. Tell it to rewrite, translate, or edit and it follows your instructions. Tell it what your work is about with Writing Style, set a tone per app with Tones, and add your own terms with My Words. Tuned to read like a person wrote it, not like a model wrote it for you.
 - **Long dictations**: long messages, long notes, full meetings come back complete. No truncation, no cutoff.
 - **Your words, uncensored**: profanity passes through as you said it. No automatic sanitising or replacement with asterisks.
 - **99 languages**: full multilingual support. Switch languages in settings.
@@ -30,11 +30,11 @@ No server to run. No model to download. Open the app, subscribe, and start dicta
 - **On-device fallback**: if the request fails for any reason, Diction automatically retries using a local model on your iPhone. Your dictation is never lost to a network issue.
 - **Audio immediately discarded**: we transcribe and it is gone. Nothing is recorded. Nothing is stored. Nothing is shared. Nothing is used to train models.
 
-## AI Companion
+## Writing Tools
 
 When you speak, you don't speak in perfect sentences. You say "um", pause mid-thought, skip punctuation, and occasionally trail off. That's normal.
 
-AI Companion takes the raw transcription and cleans it up before inserting the text. It removes filler words like "um" and "uh", adds punctuation and capitalisation, fixes grammar, and produces text that reads like you wrote it, not like you said it. And when you need more than cleanup, just tell it what to do -- say "translate to Spanish" or "make this more concise" and it follows your instructions.
+Writing Tools take the raw transcription and clean it up before inserting the text. It removes filler words like "um" and "uh", adds punctuation and capitalisation, fixes grammar, and produces text that reads like you wrote it, not like you said it. And when you need more than cleanup, just tell them what to do. Say "translate to Spanish" or "make this more concise" and they follow your instructions.
 
 The result: you dictate a quick thought and get a polished sentence. Dictate a paragraph and get something you'd be comfortable sending as an email.
 
@@ -44,7 +44,7 @@ The result: you dictate a quick thought and get a polished sentence. Dictate a p
 - Adds punctuation and capitalisation
 - Fixes grammar and sentence structure
 - Preserves your meaning and intent. It cleans up how you said it, not what you said.
-- Tone Presets: set Professional, Casual, Friendly, or a custom style per app. Diction remembers which tone to use where.
+- Tones: set Professional, Casual, Friendly, or a custom style per app. Diction remembers which tone to use where.
 - My Words: add names, jargon, and product terms so both transcription and cleanup get them right.
 
 ### What it does not do
@@ -56,9 +56,9 @@ The result: you dictate a quick thought and get a polished sentence. Dictate a p
 
 ### How to use it
 
-AI Companion is enabled by default for Diction One subscribers. You can turn it off any time in the Diction app settings if you prefer the raw transcription output.
+Writing Tools are on by default for Diction One subscribers. You can turn them off any time in the Diction app settings if you prefer the raw transcription output.
 
-When AI Companion is active, the transcription text (not the original audio) is processed by an AI model to produce the cleaned result. Audio is always discarded immediately after transcription, regardless of whether AI Companion is on or off.
+When Writing Tools are active, the transcription text (not the original audio) is processed to produce the cleaned result. Audio is always discarded immediately after transcription, whether they are on or off.
 
 ## Best For
 

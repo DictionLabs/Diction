@@ -25,7 +25,7 @@ The app and cloud service are provided "as is" without warranty. We may update, 
 
 Every new Diction install includes a **14-day free trial** of all Pro features. The trial starts automatically. No account, no sign-up, and no payment method required.
 
-During the trial you get full access to Diction One cloud transcription, AI Companion, and premium on-device models.
+During the trial you get full access to Diction One cloud transcription, Writing Tools, and premium on-device models.
 
 When the trial ends, Diction continues working on the Free tier: on-device transcription with basic models and self-hosted mode. Both are unlimited with no restrictions. If you want to keep using Pro features, you can subscribe to Diction One at any time.
 

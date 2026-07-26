@@ -1,6 +1,6 @@
 ---
 title: "Features"
-description: Everything Diction does. Context-aware voice editing, AI Companion that sounds human, Profile, on-device and self-hosted, long dictations, 99 languages.
+description: Everything Diction does. Context-aware voice editing, Writing Tools that sound human, Writing Style, on-device and self-hosted, long dictations, 99 languages.
 keywords: "voice keyboard features iphone, ios dictation features, speech to text features ios, context aware dictation, ai companion speech, voice editing iphone, dictate long messages, profile dictation, voice commands iphone keyboard"
 ---
 
@@ -16,21 +16,21 @@ Diction reads where your cursor is and figures out what you want without you swi
 
 [Read more](/features/context-aware)
 
-## <Icon name="bolt" /> [AI Companion](/features/ai-companion)
+## <Icon name="bolt" /> [Writing Tools](/features/writing-tools)
 
-Raw speech is messy. AI Companion removes filler words, fixes grammar, adds punctuation, and produces text that reads like you wrote it. Tuned to sound human rather than machine-cleaned. No em-dashes everywhere, no faintly corporate cadence.
+Raw speech is messy. Writing Tools remove filler words, fix grammar, add punctuation, and produce text that reads like you wrote it. Tuned to sound human rather than machine-cleaned. No em-dashes everywhere, no faintly corporate cadence.
 
-It also takes voice commands. Translate, summarise, rewrite as a list, make it more formal. Anything you can describe in a sentence.
+They also take voice commands. Translate, summarise, rewrite as a list, make it more formal. Anything you can describe in a sentence.
 
-[Read more](/features/ai-companion)
+[Read more](/features/writing-tools)
 
-## <Icon name="key" /> [Profile](/features/ai-companion#profile)
+## <Icon name="key" /> [Writing Style](/features/writing-tools#writing-style)
 
-Tell Diction who you are and how you write. Software engineer with British English. Sales lead who talks to enterprise customers. Doctor who dictates patient notes. A few sentences are plenty. AI Companion uses your Profile on every cleanup, alongside whatever Tone Preset you have set for the app you are in.
+Tell Diction what your work is about and how you write. Software engineer with British English. Sales lead who talks to enterprise customers. Doctor who dictates patient notes. A few sentences are plenty. Writing Tools read your Writing Style on every cleanup, alongside whatever tone you have set for the app you are in.
 
-[Read more](/features/ai-companion#profile)
+[Read more](/features/writing-tools#writing-style)
 
-## <Icon name="sparkles" /> [Tone Presets](/features/tone-presets)
+## <Icon name="sparkles" /> [Tones](/features/tone-presets)
 
 Set a writing style per app. Professional for email, Casual for messages, Friendly for social, or write a custom instruction in plain language. Diction remembers which tone goes with which app and applies it automatically. Same dictation, different output depending on where you are typing.
 
@@ -38,7 +38,7 @@ Set a writing style per app. Professional for email, Casual for messages, Friend
 
 ## <Icon name="book-open" /> [My Words](/features/my-words)
 
-Add names, jargon, product terms, and anything else that keeps coming through wrong. Diction uses your custom words to improve both raw transcription and AI Companion accuracy. Add them once in the app, they work everywhere.
+Add names, jargon, product terms, and anything else that keeps coming through wrong. Diction uses your custom words to improve both raw transcription and Writing Tools accuracy. Add them once in the app, they work everywhere.
 
 [Read more](/features/my-words)
 
@@ -50,7 +50,7 @@ Pick the backend that fits how you work. Switch any time in settings.
 
 <Icon name="server" /> **[Self-Hosted](/self-hosted)** . Run a Whisper server on your own hardware. One Docker Compose command. Free and unlimited.
 
-<Icon name="cloud" /> **[Diction One Cloud](/cloud)** . Frontier speech models, highest accuracy, zero setup. Includes AI Companion.
+<Icon name="cloud" /> **[Diction One Cloud](/cloud)** . Frontier speech models, highest accuracy, zero setup. Includes Writing Tools.
 
 ## <Icon name="document" /> Long Dictations
 
