@@ -296,8 +296,7 @@
 .VPFeatures .VPFeature .VPImage {
   width: 36px !important;
   height: 36px !important;
-  /* Tint black-fill icon SVGs to brand blue (#007AFF) */
-  filter: invert(29%) sepia(94%) saturate(2378%) hue-rotate(199deg) brightness(101%) contrast(101%);
+  filter: brightness(0) saturate(100%) invert(27%) sepia(97%) saturate(3000%) hue-rotate(211deg) brightness(118%) contrast(101%);
 }
 
 .VPFeatures .VPFeature .title {
@@ -331,8 +330,7 @@
 }
 
 .dark .VPFeatures .VPFeature .VPImage {
-  /* Tint to the lighter brand blue (#4DA3FF) used for dark-mode accents */
-  filter: invert(76%) sepia(44%) saturate(1836%) hue-rotate(180deg) brightness(103%) contrast(101%);
+  filter: brightness(0) saturate(100%) invert(63%) sepia(60%) saturate(1200%) hue-rotate(196deg) brightness(108%) contrast(101%);
 }
 
 /* -- Diction One feature card -- */
@@ -388,6 +386,22 @@
 
   .VPHero .main {
     max-width: 100%;
+    align-items: center !important;
+    text-align: center !important;
+  }
+
+  .VPHero .heading {
+    align-items: center !important;
+  }
+
+  .VPHero .actions {
+    justify-content: center !important;
+  }
+
+  .VPHero .tagline {
+    text-align: center;
+    margin-left: auto;
+    margin-right: auto;
   }
 
   .VPHero .name {

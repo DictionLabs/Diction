@@ -55,10 +55,12 @@ features:
 import VPButton from 'vitepress/dist/client/theme-default/components/VPButton.vue'
 import HowItWorks from './.vitepress/theme/HowItWorks.vue'
 import TestimonialsSection from './.vitepress/theme/TestimonialsSection.vue'
+import KeyboardThemes from './.vitepress/theme/KeyboardThemes.vue'
 </script>
 
 <HowItWorks />
 <TestimonialsSection />
+<KeyboardThemes />
 
 <div class="cta-bottom">
 <div class="VPHero"><div class="actions">
