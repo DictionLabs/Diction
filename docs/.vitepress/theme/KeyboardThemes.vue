@@ -3,24 +3,12 @@ import { useData } from 'vitepress'
 
 const { isDark } = useData()
 
-const lightImages = [
-  '/keyboard/light/IMG_4473.PNG',
-  '/keyboard/light/IMG_4475.PNG',
-  '/keyboard/light/IMG_4476.PNG',
-  '/keyboard/light/IMG_4477.PNG',
-  '/keyboard/light/IMG_4478.PNG',
-  '/keyboard/light/IMG_4482.PNG',
-]
+// Filenames match the theme ids the app ships, so a new theme screenshot
+// drops in under its own name. System first, the styled ones after.
+const lightThemes = ['System', 'Latte', 'Matcha', 'Cloud', 'Blossom', 'Typewriter']
+const darkThemes = ['System', 'Nord', 'Midnight', 'Carbon', 'Terminal', 'Velvet', 'Synthwave']
 
-const darkImages = [
-  '/keyboard/dark/IMG_4469.PNG',
-  '/keyboard/dark/IMG_4470.PNG',
-  '/keyboard/dark/IMG_4471.PNG',
-  '/keyboard/dark/IMG_4472.PNG',
-  '/keyboard/dark/IMG_4479.PNG',
-  '/keyboard/dark/IMG_4480.PNG',
-  '/keyboard/dark/IMG_4481.PNG',
-]
+const themeImage = (family, name) => `/keyboard/${family}/${name.toLowerCase()}.png`
 </script>
 
 <template>
@@ -29,26 +17,14 @@ const darkImages = [
       <h2 class="keyboard-themes-heading">Keyboard themes</h2>
       <p class="keyboard-themes-sub">Make it yours. Pick from built-in themes.</p>
       <div class="keyboard-themes-scroll">
-        <template v-if="!isDark">
-          <img
-            v-for="src in lightImages"
-            :key="src"
-            :src="src"
-            alt="Diction keyboard light theme"
-            class="keyboard-theme-img"
-            loading="lazy"
-          />
-        </template>
-        <template v-else>
-          <img
-            v-for="src in darkImages"
-            :key="src"
-            :src="src"
-            alt="Diction keyboard dark theme"
-            class="keyboard-theme-img"
-            loading="lazy"
-          />
-        </template>
+        <img
+          v-for="name in (isDark ? darkThemes : lightThemes)"
+          :key="name"
+          :src="themeImage(isDark ? 'dark' : 'light', name)"
+          :alt="`Diction keyboard ${name} theme`"
+          class="keyboard-theme-img"
+          loading="lazy"
+        />
       </div>
     </div>
   </section>
