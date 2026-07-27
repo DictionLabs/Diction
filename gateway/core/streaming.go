@@ -327,7 +327,9 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 		} else if stripUpstreamLanguage {
 			upstreamLanguage = ""
 		}
+		sttStart := time.Now()
 		text, err := g.proxyToBackend(ctx, target, pcmBuf.Bytes(), backend, upstreamLanguage)
+		sttMs := time.Since(sttStart).Milliseconds()
 		if err == nil && hasDegenerateRepetition(text) {
 			err = errSTTHallucination
 		}
@@ -355,9 +357,19 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 			return
 		}
 
+		// Report the successful transcription on the same hook the HTTP path uses,
+		// so this path gets stt_ms. Side effect: audio_duration_ms was 0 on every
+		// stream row until now, and output_chars was 0 on the non-enhance ones
+		// (the enhance closure below already set it on the rest).
+		enhanceEnabled := r.URL.Query().Get("enhance") == "true"
+		if g.OnTranscription != nil {
+			audioDurationMs := int64(pcmBuf.Len()) * 1000 / pcmBytesPerSecond
+			g.OnTranscription(ctx, backend.Name, sttMs, len(text), audioDurationMs, enhanceEnabled, false)
+		}
+
 		// Apply post-processing if provided (e.g. ?enhance=true)
 		var mode string
-		if postProcess != nil && r.URL.Query().Get("enhance") == "true" && text != "" {
+		if postProcess != nil && enhanceEnabled && text != "" {
 			intent := r.URL.Query().Get("intent")
 			if resultText, resultMode, err := postProcess(ctx, text, contextJSON, intent); err == nil {
 				text = resultText

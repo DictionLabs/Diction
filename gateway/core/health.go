@@ -42,19 +42,29 @@ func (g *Gateway) IsServiceHealthy(name string) bool {
 }
 
 func (g *Gateway) startHealthChecker() {
+	// Backends are polled concurrently, not serially — with N backends, a slow or
+	// unreachable host (dev/test environments without the real Docker network;
+	// see gateway/core/backends.go DefaultBackends) bounds check() to ~1 client
+	// timeout instead of N. Each backend still gets its own 5s timeout.
 	check := func() {
 		client := &http.Client{Timeout: 5 * time.Second}
+		var wg sync.WaitGroup
 		for _, b := range g.backends {
 			if b.Disabled {
 				continue // not deployed — don't waste a request on a dead host
 			}
-			resp, err := client.Get(b.URL + "/health")
-			ok := err == nil && resp != nil && resp.StatusCode == http.StatusOK
-			if resp != nil {
-				resp.Body.Close()
-			}
-			g.health.set(b.Name, ok)
+			wg.Add(1)
+			go func(b Backend) {
+				defer wg.Done()
+				resp, err := client.Get(b.URL + "/health")
+				ok := err == nil && resp != nil && resp.StatusCode == http.StatusOK
+				if resp != nil {
+					resp.Body.Close()
+				}
+				g.health.set(b.Name, ok)
+			}(b)
 		}
+		wg.Wait()
 	}
 	check()
 	go func() {

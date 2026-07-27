@@ -5,16 +5,23 @@ import (
 	"io"
 )
 
+// Wire format of the PCM the gateway accepts on the streaming paths: 16 kHz,
+// 16-bit, mono. Package-level so callers can convert a PCM byte count to a
+// duration without restating the numbers — see pcmBytesPerSecond.
+const (
+	sampleRate    = 16000
+	bitsPerSample = 16
+	numChannels   = 1
+	byteRate      = sampleRate * numChannels * bitsPerSample / 8
+	blockAlign    = numChannels * bitsPerSample / 8
+
+	// pcmBytesPerSecond converts an accumulated PCM buffer length to milliseconds:
+	// durationMs = bytes * 1000 / pcmBytesPerSecond.
+	pcmBytesPerSecond = byteRate
+)
+
 // WriteWAVHeader writes a 44-byte RIFF WAV header for 16kHz, 16-bit, mono PCM.
 func WriteWAVHeader(w io.Writer, dataSize int) error {
-	const (
-		sampleRate    = 16000
-		bitsPerSample = 16
-		numChannels   = 1
-		byteRate      = sampleRate * numChannels * bitsPerSample / 8
-		blockAlign    = numChannels * bitsPerSample / 8
-	)
-
 	fileSize := uint32(36 + dataSize)
 
 	var header [44]byte
