@@ -22,6 +22,13 @@ import (
 	"time"
 )
 
+// statusClientClosed mirrors nginx's 499 "Client Closed Request": the client
+// went away (disconnect or a fresh request superseding this one) before the
+// upstream STT backend responded. It is deliberately sub-500 so the retry path
+// treats it as a non-server-fault — no health demotion, no stt_backend_5xx, no
+// wasteful fallback GPU inference for a client that is already gone.
+const statusClientClosed = 499
+
 // sttBackendTransport is the shared HTTP transport used to forward STT
 // requests from the gateway to the backend (canary, whisper-large-turbo, …).
 //
@@ -540,11 +547,23 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 						g.OnTranscription(resp.Request.Context(), proxyBackend.Name, whisperMs, len(transcript), audioDurationMs, enhanceEnabled, e2eClientKey != "")
 					}
 
+					// Deterministic filler + repetition removal — the always-on "verbatim
+					// baseline" every tier gets (cloud, cloud-trial, self-hosted). Prefer the
+					// STT backend's actually-detected language over the nominal `language`
+					// field, which stays the literal "auto" forever under auto-detect and
+					// would otherwise silently disable filler removal for those requests.
+					effectiveLang := language
+					if detectActive && transcription.Language != "" {
+						effectiveLang = transcription.Language
+					}
+					cleaned, fillerChanged := CleanTranscript(transcript, effectiveLang, proxyBackend.Provider)
+					transcript = cleaned
+
 					// Backends with a custom TargetPath (e.g. Canary) may return extra fields
 					// (e.g. "timestamps":null) that aren't part of the gateway contract — always
 					// normalize their response body to {"text":"..."}.
 					needsNormalize := proxyBackend.TargetPath != ""
-					needsRewrite := (postProcess != nil && enhanceEnabled) || e2eClientKey != "" || needsNormalize || responseFormat != "json"
+					needsRewrite := (postProcess != nil && enhanceEnabled) || e2eClientKey != "" || needsNormalize || responseFormat != "json" || fillerChanged
 					if !needsRewrite {
 						resp.Body = io.NopCloser(bytes.NewReader(respBody))
 						return nil
@@ -585,9 +604,15 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 				ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {
 					kind := "stt_backend_error"
 					hint := "backend transport failed"
+					// Default to 502 so genuine backend faults enter the
+					// caller's demote-and-retry path. A pure client cancel is
+					// NOT a backend fault, so it writes a sub-500 status
+					// (see statusClientClosed) and short-circuits that path.
+					status := http.StatusBadGateway
 					if errors.Is(err, context.Canceled) {
 						kind = "stt_upstream_canceled"
 						hint = "upstream canceled (client disconnect or new request)"
+						status = statusClientClosed
 					} else if errors.Is(err, errSTTHallucination) {
 						kind = "stt_hallucination"
 						hint = "backend returned repeated-token hallucination"
@@ -599,14 +624,18 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 							Kind:       kind,
 							Endpoint:   "/v1/audio/transcriptions",
 							Provider:   proxyBackend.Name,
-							HTTPStatus: http.StatusBadGateway,
+							HTTPStatus: status,
 							Hint:       hint,
 						})
 					}
 					// Note: OnRequestFailed is NOT called here — the caller
 					// (ResponseRecorder retry path) now owns that decision so
-					// a successful retry doesn't inflate the failure count.
-					rw.WriteHeader(http.StatusBadGateway)
+					// a successful retry doesn't inflate the failure count. A
+					// client cancel writes statusClientClosed (sub-500), so the
+					// caller flushes and returns without demoting the backend,
+					// emitting stt_backend_5xx, calling OnRequestFailed, or
+					// firing a fallback retry.
+					rw.WriteHeader(status)
 				},
 			}
 		}

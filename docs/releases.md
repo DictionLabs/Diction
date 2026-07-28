@@ -7,6 +7,20 @@ description: What's new in each Diction release. Full changelog for every App St
 
 # Release Notes
 
+## Diction 11.0
+
+- Everything that cleans up and reshapes your words now lives in one place: Writing Tools. Turn each cleanup on or off individually, and choose whether it runs in the cloud or right on your iPhone.
+- Tones are back.
+- Started a recording by accident? You can now abandon it without losing the audio. It goes to History under "Not processed," where you can still turn it into text later. Kept for 7 days.
+- Cleaner transcripts everywhere. Filler words and accidental repetitions are stripped out before you ever see the text.
+- Numbers, dates, and times come out properly formatted when you dictate in English on your device.
+- My Words now works with on-device dictation too, so your names and jargon land right whether you're online or not.
+- Fixed a run of first-launch problems: a setup crash, a screen that could get stuck, and a frozen waveform on a fresh install.
+- Themed keyboards now behave correctly in apps that force light or dark mode, and edit mode no longer looks like it's recording.
+- Self-hosted servers fall back gracefully instead of hammering a dead connection, and a self-hosted hiccup no longer knocks out your cloud access.
+- The keyboard holds up better when you're switching between apps a lot, and you'll get a warning before a model download if your device is nearly full.
+- Various polish across the keyboard, settings, and History.
+
 ## Diction 10.1
 
 - Themes. Pick a color palette and make the keyboard yours. Six themes at launch, with a live preview as you browse.

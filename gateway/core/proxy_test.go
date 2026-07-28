@@ -1321,9 +1321,15 @@ func TestTranscriptionHandler_TargetPath(t *testing.T) {
 // --- Commit D: proxy-cancel errors point ---
 
 // TestTranscriptionHandler_UpstreamCanceled_EmitsError verifies the proxy
-// ErrorHandler fires an errors point with kind=stt_upstream_canceled and
-// calls OnRequestFailed when the client cancels mid-flight. Without this
-// hook these failures disappear from Influx (confirmed 30d sweep).
+// ErrorHandler fires an errors point with kind=stt_upstream_canceled when the
+// client cancels mid-flight (visibility hook from Commit D — without it these
+// failures disappear from Influx, confirmed 30d sweep) but that a pure client
+// cancel is NOT treated as a backend fault: the backend stays healthy, no
+// stt_backend_5xx is emitted, OnRequestFailed is not called, and no fallback
+// retry fires. A context.Canceled is client-initiated by definition (transport
+// timeouts surface as context.DeadlineExceeded), so it must never demote a
+// healthy backend or burn a wasteful fallback GPU inference for a client that
+// is already gone.
 // Not parallel-safe: mutates core.OnError / OnRequestFailed.
 func TestTranscriptionHandler_UpstreamCanceled_EmitsError(t *testing.T) {
 	events, restoreErr := withCapturedOnError(t)
@@ -1356,6 +1362,9 @@ func TestTranscriptionHandler_UpstreamCanceled_EmitsError(t *testing.T) {
 		defaultModel: "small",
 		maxBodySize:  10 * 1024 * 1024,
 	}
+	// Mark the backend explicitly healthy so a later demotion is detectable
+	// (health.get defaults to false for unset names).
+	g.health.set("small", true)
 
 	body, ct := buildMultipart(t, map[string]string{"model": "small"}, "audio.m4a", "fake-audio")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1384,11 +1393,26 @@ func TestTranscriptionHandler_UpstreamCanceled_EmitsError(t *testing.T) {
 	if got.Source != "stt" {
 		t.Errorf("source: want stt, got %q", got.Source)
 	}
-	if len(*failures) == 0 {
-		t.Fatal("OnRequestFailed not called on proxy cancel")
+
+	// Regression (error-stt-upstream-canceled): a client cancel must NOT be
+	// misrouted through the 5xx backend-failure path. Before the fix the
+	// ErrorHandler wrote 502, so the caller demoted the backend, emitted a
+	// stt_backend_5xx event, and (having no alternative) called
+	// OnRequestFailed(errTypeSTTError) — inflating the Din error-rate alerter
+	// on a benign double-tap. None of that may happen now.
+	for _, e := range *events {
+		if e.Kind == "stt_backend_5xx" {
+			t.Errorf("client cancel wrongly emitted stt_backend_5xx: %+v", e)
+		}
 	}
-	if (*failures)[0] != errTypeSTTError {
-		t.Errorf("errorType: want %q, got %q", errTypeSTTError, (*failures)[0])
+	if !g.health.get("small") {
+		t.Error("client cancel wrongly demoted the backend (health=false); a cancel is not a backend fault")
+	}
+	if len(*failures) != 0 {
+		t.Errorf("OnRequestFailed must NOT be called on a pure client cancel, got %d call(s): %v", len(*failures), *failures)
+	}
+	if rr.Code != statusClientClosed {
+		t.Errorf("status: want %d (client closed), got %d", statusClientClosed, rr.Code)
 	}
 }
 

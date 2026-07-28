@@ -312,6 +312,78 @@ func TestStreamingHandler_HappyPath(t *testing.T) {
 	}
 }
 
+// TestStreamingHandler_OnTranscriptionReportsSTTTime pins the hook this path
+// gained with the per-stage wait metrics. Before it, /v1/audio/stream never
+// called OnTranscription at all, so every `stream` row in Influx carried
+// output_chars=0 and audio_duration_ms=0 — and had nowhere to put stt_ms.
+func TestStreamingHandler_OnTranscriptionReportsSTTTime(t *testing.T) {
+	// The hook fires on the handler goroutine and is read on the test goroutine,
+	// so every captured value is atomic — including the model string.
+	var (
+		gotModel    atomic.Value
+		gotChars    atomic.Int64
+		gotDuration atomic.Int64
+		called      atomic.Bool
+	)
+
+	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"text":"hello there"}`)
+	}))
+	t.Cleanup(whisper.Close)
+
+	g := &Gateway{
+		backends:     []Backend{{Name: "small", URL: whisper.URL, Aliases: []string{"small"}}},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+		OnTranscription: func(_ context.Context, model string, _ int64, chars int, durationMs int64, _, _ bool) {
+			gotModel.Store(model)
+			gotChars.Store(int64(chars))
+			gotDuration.Store(durationMs)
+			called.Store(true)
+		},
+	}
+	g.health.set("small", true)
+
+	srv := httptest.NewServer(g.StreamingHandler())
+	t.Cleanup(srv.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small&language=en"), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	// 32000 bytes = exactly 1s at 16kHz / 16-bit / mono.
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 32000)); err != nil {
+		t.Fatalf("write audio: %v", err)
+	}
+	done, _ := json.Marshal(map[string]string{"action": "done"})
+	if err := conn.Write(ctx, websocket.MessageText, done); err != nil {
+		t.Fatalf("write done: %v", err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatalf("read result: %v", err)
+	}
+
+	if !called.Load() {
+		t.Fatal("OnTranscription was never called on the stream path")
+	}
+	if got, _ := gotModel.Load().(string); got != "small" {
+		t.Errorf("model: want small, got %q", got)
+	}
+	if gotChars.Load() != int64(len("hello there")) {
+		t.Errorf("chars: want %d, got %d", len("hello there"), gotChars.Load())
+	}
+	if gotDuration.Load() != 1000 {
+		t.Errorf("durationMs: want 1000 for 32000 bytes of 16kHz mono s16, got %d", gotDuration.Load())
+	}
+}
+
 func TestStreamingHandler_LanguageOverrideInDone(t *testing.T) {
 	srv, _ := startStreamingServer(t, "override", http.StatusOK)
 

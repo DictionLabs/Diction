@@ -1,0 +1,116 @@
+{
+  "filler_sets": {
+    "en": { "status": "verified", "fillers": ["um", "uh", "er", "ah", "mm", "hmm", "umm", "uhh"] },
+    "es": { "status": "seeded", "fillers": ["eh", "em"] },
+    "de": { "status": "seeded", "fillers": ["äh", "ähm", "ehm"] },
+    "nl": { "status": "seeded", "fillers": ["eh", "uh", "hè"] },
+    "fr": { "status": "seeded", "fillers": ["euh", "hein"] },
+    "pt": { "status": "seeded", "fillers": ["é", "hum", "ahn"] },
+    "it": { "status": "seeded", "fillers": ["eh", "ehm", "mah"] }
+  },
+  "repetition_exceptions": ["very", "no"],
+  "cases": [
+    { "id": "en-basic-filler", "language": "en", "input": "so um I think uh we should go", "expected_light": "so um I think uh we should go", "expected_full": "so I think we should go" },
+    { "id": "en-dedup-both-tiers", "language": "en", "input": "the the report is ready", "expected_light": "the report is ready", "expected_full": "the report is ready" },
+    { "id": "en-dedup-exception", "language": "en", "input": "no no I don't want that", "expected_light": "no no I don't want that", "expected_full": "no no I don't want that" },
+    { "id": "unlisted-language-dedup-only", "language": "xx", "input": "bonjour bonjour monde", "expected_light": "bonjour monde", "expected_full": "bonjour monde" },
+    { "id": "en-sentence-initial-filler-recap", "language": "en", "input": "Uh, so I went to the store", "expected_light": "Uh, so I went to the store", "expected_full": "So I went to the store" },
+    { "id": "en-whisper-dedup-of-filler-token", "language": "en", "input": "um um I think so", "expected_light": "um I think so", "expected_full": "I think so" }
+  ],
+  "itn_cases": {
+    "note": "ITN cases are tested by the Go suite (transcriptcleanup_test.go) once the cgo gateway path ships. The Swift path (ITNProcessor.swift) uses the prebuilt XCFramework and is tested via manual TestFlight. Always-on for engine=other, language=en; identity for engine=whisper or non-English.",
+    "covered": [
+      { "id": "itn-cardinal", "input": "I have twenty one apples", "expected": "I have 21 apples" },
+      { "id": "itn-money", "input": "it costs five dollars and fifty cents", "expected": "it costs $5.50" },
+      { "id": "itn-money-large", "input": "I need twelve hundred dollars", "expected": "I need $1200" },
+      { "id": "itn-percent", "input": "the rate is twenty five percent", "expected": "the rate is 25 %" },
+      { "id": "itn-ordinal-floor", "input": "it's on the twenty third floor", "expected": "it's on the 23rd floor" },
+      { "id": "itn-date", "input": "see you on march fifteenth", "expected": "see you on march 15" },
+      { "id": "itn-time-pm", "input": "the call is at three thirty PM", "expected": "the call is at 03:30 P.M." },
+      { "id": "itn-large-num", "input": "the population is eight billion people", "expected": "the population is 8 billion people" }
+    ],
+    "guarded_false_positives": [
+      {
+        "id": "itn-fraction-denominator",
+        "input": "use one third of a cup",
+        "expected": "use one third of a cup",
+        "note": "Library ordinal tagger fires on fraction denominators ('one third' → '4th of a cup'). Guarded by ITNProcessor.protectFractions(). Upstream issue #82."
+      }
+    ],
+    "deferred_categories": [
+      { "category": "email", "reason": "Email tagger eats preceding word ('email dom at ...' → 'emaildom@...'). Upstream to fix." },
+      { "category": "phone", "reason": "Phone parsing unreliable on naturally spoken numbers." },
+      { "category": "bare-second-default", "reason": "Library default converts 'give me a second' → 'give me a 2nd'. Always call with disableBareSecond: true." }
+    ]
+  },
+  "my_words_cases": {
+    "note": "My Words Levenshtein correction (MyWordsCorrector.swift) — on-device path only. Tested manually via TestFlight with Parakeet. Swift-only; no Go equivalent. Guards: scoreThreshold=0.30, ambiguityMargin=0.05, minTokenLength=3, commonWords filter.",
+    "covered": [
+      {
+        "id": "mw-basic-correction",
+        "words": ["Ondrej"],
+        "input": "hello ondrej how are you",
+        "expected": "hello Ondrej how are you",
+        "note": "Exact case-insensitive match (score=0.0) restores canonical casing."
+      },
+      {
+        "id": "mw-one-edit",
+        "words": ["Kristina"],
+        "input": "I called Kristna yesterday",
+        "expected": "I called Kristina yesterday",
+        "note": "One insertion (score ≈ 0.125) — clearly within threshold."
+      },
+      {
+        "id": "mw-trailing-comma",
+        "words": ["Ondrej"],
+        "input": "ondrej, can you help",
+        "expected": "Ondrej, can you help",
+        "note": "Leading/trailing punctuation stripped before comparison, restored after."
+      },
+      {
+        "id": "mw-multiple-words",
+        "words": ["Ondrej", "Kristina"],
+        "input": "ondrej and kristna are here",
+        "expected": "Ondrej and Kristina are here",
+        "note": "Two corrections in one pass."
+      }
+    ],
+    "guarded_false_positives": [
+      {
+        "id": "mw-common-word-guard",
+        "words": ["Ava"],
+        "input": "a nice day",
+        "expected": "a nice day",
+        "note": "'a' is in commonWords — never replaced. Without this guard 'a' → 'Ava' (score=0.67, rejected anyway, but guard fires first)."
+      },
+      {
+        "id": "mw-ambiguity-guard",
+        "words": ["Anna", "Anya"],
+        "input": "ask ana to come",
+        "expected": "ask ana to come",
+        "note": "'ana' scores 0.25 against both 'Anna' and 'Anya' — ambiguity margin < 0.05, no replacement."
+      },
+      {
+        "id": "mw-threshold-guard",
+        "words": ["Ondrej"],
+        "input": "the xkyzqw is done",
+        "expected": "the xkyzqw is done",
+        "note": "No token within 0.30 normalized distance of 'Ondrej'."
+      },
+      {
+        "id": "mw-short-token-guard",
+        "words": ["Ed"],
+        "input": "hi ed",
+        "expected": "hi ed",
+        "note": "'ed' is 2 chars — below minTokenLength=3, skipped."
+      },
+      {
+        "id": "mw-multiword-skipped",
+        "words": ["New York"],
+        "input": "I am in new york",
+        "expected": "I am in new york",
+        "note": "Multi-word My Words are skipped by the single-token pass."
+      }
+    ]
+  }
+}
