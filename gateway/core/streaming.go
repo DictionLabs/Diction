@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -194,6 +195,40 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 		var contextJSON string
 		maxPCM := g.maxBodySize
 		contextRead := false
+		var audioBytesReceived int64
+
+		codec := r.URL.Query().Get("codec")
+		isOpus := codec == "opus"
+
+		var ffmpegStdin io.WriteCloser
+		ffmpegDone := make(chan struct{})
+
+		if isOpus {
+			cmd := exec.CommandContext(ctx, "ffmpeg", "-i", "pipe:0", "-f", "s16le", "-ar", "16000", "-ac", "1", "pipe:1")
+			var err error
+			ffmpegStdin, err = cmd.StdinPipe()
+			if err == nil {
+				var stdout io.ReadCloser
+				stdout, err = cmd.StdoutPipe()
+				if err == nil {
+					err = cmd.Start()
+					if err == nil {
+						go func() {
+							io.Copy(&pcmBuf, stdout)
+							cmd.Wait()
+							close(ffmpegDone)
+						}()
+					}
+				}
+			}
+			if err != nil {
+				log.Printf("ws ffmpeg start: %v", err)
+				CloseWSWithTimeout(conn, websocket.StatusInternalError, "ffmpeg error", 2*time.Second)
+				return
+			}
+		} else {
+			close(ffmpegDone)
+		}
 
 		idleTimeout := g.streamIdleTimeout
 		if idleTimeout <= 0 {
@@ -267,14 +302,19 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 			}
 
 			if msgType == websocket.MessageBinary {
-				if int64(pcmBuf.Len())+int64(len(data)) > maxPCM {
+				audioBytesReceived += int64(len(data))
+				if audioBytesReceived > maxPCM {
 					if OnRequestFailed != nil {
 						OnRequestFailed(ctx, errTypeSTTError)
 					}
 					CloseWSWithTimeout(conn, wsCloseTooLarge, "audio too large", 2*time.Second)
 					return
 				}
-				pcmBuf.Write(data)
+				if isOpus {
+					ffmpegStdin.Write(data)
+				} else {
+					pcmBuf.Write(data)
+				}
 				contextRead = true // context frame must come before any audio
 				continue
 			}
@@ -307,6 +347,11 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 					continue
 				}
 			}
+		}
+
+		if ffmpegStdin != nil {
+			ffmpegStdin.Close()
+			<-ffmpegDone
 		}
 
 		if pcmBuf.Len() == 0 {
