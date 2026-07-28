@@ -199,11 +199,14 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 
 		codec := r.URL.Query().Get("codec")
 		isOpus := codec == "opus"
+		// If the backend doesn't strictly need WAV, we can safely passthrough the Ogg stream directly
+		usePassthrough := isOpus && !backend.NeedsWAV
 
 		var ffmpegStdin io.WriteCloser
 		ffmpegDone := make(chan struct{})
+		var opusBuf bytes.Buffer
 
-		if isOpus {
+		if isOpus && !usePassthrough {
 			cmd := exec.CommandContext(ctx, "ffmpeg", "-i", "pipe:0", "-f", "s16le", "-ar", "16000", "-ac", "1", "pipe:1")
 			var err error
 			ffmpegStdin, err = cmd.StdinPipe()
@@ -310,7 +313,9 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 					CloseWSWithTimeout(conn, wsCloseTooLarge, "audio too large", 2*time.Second)
 					return
 				}
-				if isOpus {
+				if usePassthrough {
+					opusBuf.Write(data)
+				} else if isOpus {
 					ffmpegStdin.Write(data)
 				} else {
 					pcmBuf.Write(data)
@@ -354,7 +359,7 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 			<-ffmpegDone
 		}
 
-		if pcmBuf.Len() == 0 {
+		if pcmBuf.Len() == 0 && opusBuf.Len() == 0 {
 			if OnRequestFailed != nil {
 				OnRequestFailed(ctx, errTypeSTTError)
 			}
@@ -372,8 +377,15 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 		} else if stripUpstreamLanguage {
 			upstreamLanguage = ""
 		}
+		var audioData []byte
+		if usePassthrough {
+			audioData = opusBuf.Bytes()
+		} else {
+			audioData = pcmBuf.Bytes()
+		}
+
 		sttStart := time.Now()
-		text, err := g.proxyToBackend(ctx, target, pcmBuf.Bytes(), backend, upstreamLanguage)
+		text, err := g.proxyToBackend(ctx, target, audioData, backend, upstreamLanguage)
 		sttMs := time.Since(sttStart).Milliseconds()
 		if err == nil && hasDegenerateRepetition(text) {
 			err = errSTTHallucination
@@ -447,25 +459,36 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 	}
 }
 
-// proxyToBackend wraps raw PCM in a WAV and POSTs multipart to the whisper backend.
-func (g *Gateway) proxyToBackend(ctx context.Context, target *url.URL, pcm []byte, backend *Backend, language string) (string, error) {
-	// Build WAV
-	var wav bytes.Buffer
-	if err := WriteWAVHeader(&wav, len(pcm)); err != nil {
-		return "", fmt.Errorf("write wav header: %w", err)
+// proxyToBackend wraps raw PCM in a WAV (or passes through Ogg) and POSTs multipart to the backend.
+func (g *Gateway) proxyToBackend(ctx context.Context, target *url.URL, audioData []byte, backend *Backend, language string) (string, error) {
+	var payload io.Reader
+	filename := "audio.wav"
+
+	if bytes.HasPrefix(audioData, []byte("OggS")) {
+		filename = "audio.ogg"
+		payload = bytes.NewReader(audioData)
+	} else if bytes.HasPrefix(audioData, []byte("\x1a\x45\xdf\xa3")) { // EBML magic bytes (WebM)
+		filename = "audio.webm"
+		payload = bytes.NewReader(audioData)
+	} else {
+		var wav bytes.Buffer
+		if err := WriteWAVHeader(&wav, len(audioData)); err != nil {
+			return "", fmt.Errorf("write wav header: %w", err)
+		}
+		wav.Write(audioData)
+		payload = &wav
 	}
-	wav.Write(pcm)
 
 	// Build multipart body
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
-	filePart, err := writer.CreateFormFile("file", "audio.wav")
+	filePart, err := writer.CreateFormFile("file", filename)
 	if err != nil {
 		return "", fmt.Errorf("create form file: %w", err)
 	}
-	if _, err := io.Copy(filePart, &wav); err != nil {
-		return "", fmt.Errorf("copy wav: %w", err)
+	if _, err := io.Copy(filePart, payload); err != nil {
+		return "", fmt.Errorf("copy audio: %w", err)
 	}
 
 	if backend.ForwardModel != "" {
