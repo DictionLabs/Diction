@@ -56,7 +56,7 @@ services:
       retries: 3
 
   whisper-small:
-    image: fedirz/faster-whisper-server:latest-cpu
+    image: dictionlabs/whisper-server:latest-cpu
     container_name: diction-whisper-small
     restart: unless-stopped
     profiles: ["small"]
@@ -73,7 +73,7 @@ services:
       start_period: 120s
 
   whisper-medium:
-    image: fedirz/faster-whisper-server:latest-cpu
+    image: dictionlabs/whisper-server:latest-cpu
     container_name: diction-whisper-medium
     restart: unless-stopped
     profiles: ["medium"]
@@ -90,7 +90,7 @@ services:
       start_period: 120s
 
   whisper-large-turbo:
-    image: fedirz/faster-whisper-server:latest-cpu
+    image: dictionlabs/whisper-server:latest-cpu
     container_name: diction-whisper-large-turbo
     restart: unless-stopped
     profiles: ["large"]
@@ -107,7 +107,7 @@ services:
       start_period: 120s
 
   parakeet:
-    image: ghcr.io/achetronic/parakeet:latest-int8
+    image: dictionlabs/parakeet:latest-int8
     container_name: diction-parakeet
     restart: unless-stopped
     profiles: ["parakeet"]

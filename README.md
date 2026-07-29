@@ -99,7 +99,7 @@ Create a folder for the stack and save this as `docker-compose.yml`:
 ```yaml
 services:
   whisper-small:
-    image: fedirz/faster-whisper-server:latest-cpu
+    image: dictionlabs/whisper-server:latest-cpu
     container_name: diction-whisper-small
     restart: unless-stopped
     volumes:
@@ -302,7 +302,7 @@ For languages outside this list, use Option B.
 ```yaml
 services:
   parakeet:
-    image: ghcr.io/achetronic/parakeet:latest-int8
+    image: dictionlabs/parakeet:latest-int8
     container_name: diction-parakeet
     restart: unless-stopped
     deploy:
@@ -337,7 +337,7 @@ docker compose --profile parakeet up -d
 ```yaml
 services:
   whisper-large-turbo:
-    image: fedirz/faster-whisper-server:latest-cuda
+    image: dictionlabs/whisper-server:latest-cuda
     container_name: diction-whisper-large-turbo
     restart: unless-stopped
     volumes:
