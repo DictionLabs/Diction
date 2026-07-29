@@ -30,6 +30,12 @@ const (
 	wsCloseFailed   = 4002
 	wsCloseTooLarge = 4003
 	wsCloseNoAudio  = 4004
+
+	// Per-message WebSocket read limit. coder/websocket defaults to 32 KiB,
+	// which is far below what a batching or whole-file client sends. 8 MiB is
+	// ~44 min of 24 kb/s Opus in a single frame; the session total is still
+	// bounded by maxBodySize and the decoded-size cap.
+	maxWSMessageBytes = 8 << 20
 )
 
 // errTypeSTTError mirrors ErrTypeSTTError in gateway/metrics.go. Kept as a
@@ -371,6 +377,15 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 			return
 		}
 		defer conn.CloseNow()
+
+		// coder/websocket defaults Read to 32 KiB per message. That default was
+		// never hit by our own client (PCM chunks are ~682 B every 20-30 ms), but
+		// it silently kills any client that batches — which is exactly what a
+		// compressed codec encourages on a bad network, and what a browser
+		// MediaRecorder or a whole-file uploader does by default. The total
+		// payload stays bounded by maxBodySize / the decoded-size cap below;
+		// this only bounds a single message's allocation.
+		conn.SetReadLimit(maxWSMessageBytes)
 
 		ctx, cancel := context.WithTimeout(r.Context(), streamTimeout)
 		defer cancel()

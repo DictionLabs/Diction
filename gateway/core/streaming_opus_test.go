@@ -258,6 +258,64 @@ func TestOpus_PassthroughByteIdentical(t *testing.T) {
 	}
 }
 
+// TestOpus_LargeSingleFrameAccepted is the regression test for the
+// coder/websocket 32 KiB default read limit. Our own client never hit it (PCM
+// chunks are ~682 B), but any batching or whole-file client did, and got closed
+// with 1009 "read limited at 32769 bytes" instead of a transcript. Compression
+// actively encourages larger, less frequent frames, so this must stay fixed.
+func TestOpus_LargeSingleFrameAccepted(t *testing.T) {
+	// Build a synthetic Ogg stream comfortably above the old 32 KiB default.
+	ogg := buildLargeOggOpus(64 << 10)
+	if len(ogg) <= 32<<10 {
+		t.Fatalf("fixture too small to exercise the limit: %d bytes", len(ogg))
+	}
+
+	cb := newCaptureBackend(t, "large-frame")
+	g := makeGateway(cb.srv.URL, false, 10<<20) // NeedsWAV=false → passthrough, no ffmpeg needed
+	srv := httptest.NewServer(g.StreamingHandler())
+	t.Cleanup(srv.Close)
+
+	text, err := streamOpusBinary(t, srv, ogg, true)
+	if err != nil {
+		t.Fatalf("large single frame rejected: %v", err)
+	}
+	if text != "large-frame" {
+		t.Errorf("text: want 'large-frame', got %q", text)
+	}
+
+	cb.mu.Lock()
+	bodyEq := bytes.Equal(cb.body, ogg)
+	bodyLen := len(cb.body)
+	cb.mu.Unlock()
+	if !bodyEq {
+		t.Errorf("body mismatch: sent %d bytes, backend received %d bytes", len(ogg), bodyLen)
+	}
+}
+
+// buildLargeOggOpus returns a syntactically valid Ogg/Opus stream of at least
+// minBytes, built from many small pages (writeOggPage carries one ≤255-byte
+// segment per page).
+func buildLargeOggOpus(minBytes int) []byte {
+	var buf bytes.Buffer
+
+	var head [19]byte
+	copy(head[:8], "OpusHead")
+	head[8] = 1 // version
+	head[9] = 1 // mono
+	binary.LittleEndian.PutUint32(head[12:], 48000)
+	writeOggPage(&buf, 0x02, 0, 0, 0, head[:])
+
+	payload := bytes.Repeat([]byte("x"), 200)
+	var seq uint32 = 1
+	var granule int64
+	for buf.Len() < minBytes {
+		granule += 960
+		writeOggPage(&buf, 0x00, granule, seq, 0, payload)
+		seq++
+	}
+	return buf.Bytes()
+}
+
 // --- ffmpeg decode path (NeedsWAV=true) ---
 
 func TestOpus_FFmpegDecodeProducesWAV(t *testing.T) {
