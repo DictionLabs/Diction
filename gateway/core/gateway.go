@@ -74,6 +74,12 @@ type Gateway struct {
 	// when the detected language arrives from verbose_json. Either tier or lang may be empty.
 	// Wired by the private gateway main() to write fields into the request log entry.
 	OnAutoDetect func(ctx context.Context, tier, lang string)
+
+	// OnStreamingCodec is called at the start of each /v1/audio/stream connection with
+	// the effective codec ("pcm" or "opus") and the subprotocol negotiation outcome
+	// ("accepted" | "offered" | "unavailable" | "").
+	// Wired by the private gateway main() to record codec adoption metrics.
+	OnStreamingCodec func(ctx context.Context, codec string, negotiation string)
 }
 
 // NewGateway creates a Gateway and starts the background health checker.

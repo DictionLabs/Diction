@@ -59,6 +59,12 @@
       <sub><b>ankitson</b></sub>
     </a>
   </td>
+  <td align="center">
+    <a href="https://github.com/DXCanas">
+      <img src="https://github.com/DXCanas.png?size=80" width="60" alt="DXCanas"><br>
+      <sub><b>DXCanas</b></sub>
+    </a>
+  </td>
 </tr></table>
 
 ---

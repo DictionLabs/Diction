@@ -35,7 +35,7 @@ func TestProxyToBackend_Success(t *testing.T) {
 	target, _ := url.Parse(backend.URL)
 	pcm := make([]byte, 3200) // 0.1s of silence at 16kHz 16-bit mono
 
-	text, err := g.proxyToBackend(context.Background(), target, pcm, &Backend{Name: "small"}, "en")
+	text, err := g.proxyToBackend(context.Background(), target, audioPayload{data: pcm, filename: "audio.wav"}, &Backend{Name: "small"}, "en")
 	if err != nil {
 		t.Fatalf("proxyToBackend: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestProxyToBackend_NoLanguage(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	text, err := g.proxyToBackend(context.Background(), target, make([]byte, 100), &Backend{Name: "small"}, "")
+	text, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "")
 	if err != nil {
 		t.Fatalf("proxyToBackend with empty language: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestProxyToBackend_BackendError(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, make([]byte, 100), &Backend{Name: "small"}, "")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "")
 	if err == nil {
 		t.Fatal("expected error for backend 500")
 	}
@@ -88,7 +88,7 @@ func TestProxyToBackend_InvalidJSON(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, make([]byte, 100), &Backend{Name: "small"}, "")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "")
 	if err == nil {
 		t.Fatal("expected error for invalid JSON response")
 	}
@@ -98,7 +98,7 @@ func TestProxyToBackend_UnreachableHost(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse("http://127.0.0.1:1") // nothing listening there
 
-	_, err := g.proxyToBackend(context.Background(), target, make([]byte, 100), &Backend{Name: "small"}, "")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "")
 	if err == nil {
 		t.Fatal("expected error for unreachable host")
 	}
@@ -122,7 +122,7 @@ func TestProxyToBackend_NoModelFieldWhenForwardModelEmpty(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, make([]byte, 3200), &Backend{Name: "large-v3-turbo", ForwardModel: ""}, "ko")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "large-v3-turbo", ForwardModel: ""}, "ko")
 	if err != nil {
 		t.Fatalf("proxyToBackend: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestProxyToBackend_InjectsForwardModelWhenSet(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, make([]byte, 3200), &Backend{Name: "large-v3-turbo", ForwardModel: "deepdml/faster-whisper-large-v3-turbo-ct2"}, "ko")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "large-v3-turbo", ForwardModel: "deepdml/faster-whisper-large-v3-turbo-ct2"}, "ko")
 	if err != nil {
 		t.Fatalf("proxyToBackend: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestProxyToBackend_UsesTargetPath(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, make([]byte, 3200), &Backend{Name: "canary", TargetPath: "/inference"}, "en")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "canary", TargetPath: "/inference"}, "en")
 	if err != nil {
 		t.Fatalf("proxyToBackend: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestProxyToBackend_SendsAuthHeader(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, make([]byte, 3200), &Backend{Name: "custom", AuthHeader: "Bearer secret-token"}, "en")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "custom", AuthHeader: "Bearer secret-token"}, "en")
 	if err != nil {
 		t.Fatalf("proxyToBackend: %v", err)
 	}
