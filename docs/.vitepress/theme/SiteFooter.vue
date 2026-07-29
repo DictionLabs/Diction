@@ -9,7 +9,7 @@
           </a>
           <p class="brand-tagline">Voice keyboard for iPhone.</p>
           <div class="social-icons">
-            <a href="https://github.com/omachala/diction" target="_blank" rel="noopener" aria-label="GitHub">
+            <a href="https://github.com/DictionLabs/Diction" target="_blank" rel="noopener" aria-label="GitHub">
               <img src="/icon-github.svg" alt="" width="20" height="20" class="social-icon" />
             </a>
             <a href="https://x.com/diction_one" target="_blank" rel="noopener" aria-label="X">
@@ -36,7 +36,7 @@
           <h4>Resources</h4>
           <ul>
             <li><a href="/support"><img src="/icon-lifebuoy.svg" alt="" class="link-icon" />Support</a></li>
-            <li><a href="https://github.com/omachala/diction" target="_blank" rel="noopener"><img src="/icon-github.svg" alt="" class="link-icon" />GitHub</a></li>
+            <li><a href="https://github.com/DictionLabs/Diction" target="_blank" rel="noopener"><img src="/icon-github.svg" alt="" class="link-icon" />GitHub</a></li>
             <li><a href="https://www.reddit.com/r/dictionapp" target="_blank" rel="noopener"><img src="/icon-reddit.svg" alt="" class="link-icon" />Reddit</a></li>
             <li><a href="https://x.com/diction_one" target="_blank" rel="noopener"><img src="/icon-x.svg" alt="" class="link-icon" />X / Twitter</a></li>
           </ul>
@@ -52,7 +52,7 @@
       </div>
 
       <div class="footer-bottom">
-        <span>&copy; {{ year }} DICTION</span>
+        <span>&copy; {{ year }} Diction Labs</span>
       </div>
     </div>
   </footer>

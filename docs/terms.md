@@ -73,6 +73,10 @@ We may update these terms. The revised version will be posted at this URL with a
 
 These terms are governed by the laws of England and Wales. Any disputes arising from these terms will be subject to the exclusive jurisdiction of the courts of England and Wales.
 
+## Provider
+
+Diction is provided by **Diction Labs**, a trading name of Ondrej Machala. Contact: [support@diction.one](mailto:support@diction.one).
+
 ## Contact
 
 Questions about these terms? Email [support@diction.one](mailto:support@diction.one).

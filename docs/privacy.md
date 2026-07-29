@@ -86,6 +86,10 @@ Diction does not knowingly collect data from anyone, including children under 13
 
 If we update this policy, the revised version will be posted here with an updated date. Since Diction collects no data, material changes are unlikely.
 
+## Provider
+
+Diction is provided by **Diction Labs**, a trading name of Ondrej Machala. Contact: [support@diction.one](mailto:support@diction.one).
+
 ## Contact
 
 Questions about privacy? Email [support@diction.one](mailto:support@diction.one) or open an issue on [GitHub](https://github.com/DictionLabs/Diction/issues).
