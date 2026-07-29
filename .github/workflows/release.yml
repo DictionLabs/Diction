@@ -63,6 +63,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: IMAGE_REF=ghcr.io/dictionlabs/gateway:${{ github.ref_name }}
 
   release:
     name: Create GitHub Release

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
@@ -9,6 +10,10 @@ import (
 	"strings"
 	"time"
 )
+
+// ImageRef is set at build time via -ldflags -X. It records the canonical image
+// reference (e.g. ghcr.io/dictionlabs/gateway:v1.2.3) so /health can expose it.
+var ImageRef = "unknown"
 
 func EnvFloatOrDefault(key string, fallback float64) float64 {
 	if v := os.Getenv(key); v != "" {
@@ -132,7 +137,7 @@ func (g *Gateway) resolveBackend(model string) (*url.URL, *Backend) {
 func (g *Gateway) HealthHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok"}`))
+		fmt.Fprintf(w, `{"status":"ok","image_ref":%q}`, ImageRef)
 	}
 }
 
