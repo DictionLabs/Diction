@@ -38,6 +38,8 @@
   <a href="https://codecov.io/gh/DictionLabs/Diction"><img src="https://img.shields.io/codecov/c/github/DictionLabs/Diction?style=for-the-badge&label=coverage" alt="Coverage"></a>
 </p>
 
+<p align="center"><sub>A <a href="https://github.com/DictionLabs">Diction Labs</a> project.</sub></p>
+
 <p align="center"><strong>Contributors</strong></p>
 
 <table align="center"><tr>
