@@ -55,47 +55,112 @@ services:
       timeout: 5s
       retries: 3
 
+  # The whisper server runs as uid 1000, but a volume left by the old root-based
+  # faster-whisper-server images is owned by root, so after an upgrade the server cannot
+  # write and every model download fails with EACCES. This one-shot service fixes ownership
+  # before the server starts. No-op on a fresh install and on every later run.
+  whisper-models-init:
+    image: dictionlabs/whisper-server:latest-cpu
+    container_name: diction-whisper-models-init
+    user: root
+    profiles: ["small", "medium", "large"]
+    volumes:
+      - whisper-models:/cache
+    entrypoint: ["sh", "-c", "chown -R 1000:1000 /cache"]
+    restart: "no"
+
   whisper-small:
     image: dictionlabs/whisper-server:latest-cpu
     container_name: diction-whisper-small
     restart: unless-stopped
     profiles: ["small"]
+    depends_on:
+      whisper-models-init:
+        condition: service_completed_successfully
     volumes:
       - whisper-models:/home/ubuntu/.cache/huggingface/hub
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 120s
+
+  # Speaches never downloads a model on demand: a request for one it does not have returns
+  # "not installed locally" rather than fetching it, and the gateway does not implement model
+  # download either. Without this a fresh stack starts clean then fails every transcription.
+  # One-shot and idempotent; exits as soon as the model is on disk.
+  whisper-small-pull:
+    image: dictionlabs/whisper-server:latest-cpu
+    container_name: diction-whisper-small-pull
+    profiles: ["small"]
+    depends_on:
+      whisper-small:
+        condition: service_healthy
+    entrypoint: ["curl", "-fsS", "-X", "POST", "http://whisper-small:8000/v1/models/DictionLabs/whisper-small-ct2"]
+    restart: "no"
 
   whisper-medium:
     image: dictionlabs/whisper-server:latest-cpu
     container_name: diction-whisper-medium
     restart: unless-stopped
     profiles: ["medium"]
+    depends_on:
+      whisper-models-init:
+        condition: service_completed_successfully
     volumes:
       - whisper-models:/home/ubuntu/.cache/huggingface/hub
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 120s
+
+  # Speaches never downloads a model on demand: a request for one it does not have returns
+  # "not installed locally" rather than fetching it, and the gateway does not implement model
+  # download either. Without this a fresh stack starts clean then fails every transcription.
+  # One-shot and idempotent; exits as soon as the model is on disk.
+  whisper-medium-pull:
+    image: dictionlabs/whisper-server:latest-cpu
+    container_name: diction-whisper-medium-pull
+    profiles: ["medium"]
+    depends_on:
+      whisper-medium:
+        condition: service_healthy
+    entrypoint: ["curl", "-fsS", "-X", "POST", "http://whisper-medium:8000/v1/models/DictionLabs/whisper-medium-ct2"]
+    restart: "no"
 
   whisper-large-turbo:
     image: dictionlabs/whisper-server:latest-cpu
     container_name: diction-whisper-large-turbo
     restart: unless-stopped
     profiles: ["large"]
+    depends_on:
+      whisper-models-init:
+        condition: service_completed_successfully
     volumes:
       - whisper-models:/home/ubuntu/.cache/huggingface/hub
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 120s
+
+  # Speaches never downloads a model on demand: a request for one it does not have returns
+  # "not installed locally" rather than fetching it, and the gateway does not implement model
+  # download either. Without this a fresh stack starts clean then fails every transcription.
+  # One-shot and idempotent; exits as soon as the model is on disk.
+  whisper-large-turbo-pull:
+    image: dictionlabs/whisper-server:latest-cpu
+    container_name: diction-whisper-large-turbo-pull
+    profiles: ["large"]
+    depends_on:
+      whisper-large-turbo:
+        condition: service_healthy
+    entrypoint: ["curl", "-fsS", "-X", "POST", "http://whisper-large-turbo:8000/v1/models/DictionLabs/whisper-large-v3-turbo-ct2"]
+    restart: "no"
 
   parakeet:
     image: dictionlabs/parakeet:latest-int8

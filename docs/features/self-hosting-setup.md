@@ -120,6 +120,12 @@ docker compose --profile parakeet up -d   # NVIDIA engine (European languages)
 
 Set `DEFAULT_MODEL` on the gateway to match your chosen profile.
 
+The three Whisper profiles download their model on first start, so the first `up` takes a few
+minutes longer while a few hundred megabytes (or 1.6 GB for large) arrives. The compose file
+handles this with a one-shot pull service per profile. The model lands in a named volume, so
+it survives restarts and later `up` commands skip straight past it. The Parakeet profile has
+nothing to download.
+
 ## Connecting the app
 
 1. Open the Diction app
