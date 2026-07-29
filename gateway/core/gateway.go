@@ -137,7 +137,11 @@ func (g *Gateway) resolveBackend(model string) (*url.URL, *Backend) {
 func (g *Gateway) HealthHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"ok","image_ref":%q}`, ImageRef)
+		if strings.Contains(ImageRef, "omachala") {
+			fmt.Fprintf(w, `{"status":"ok","image_ref":%q,"deprecated":"this image is hosted under omachala; please switch to ghcr.io/dictionlabs/gateway"}`, ImageRef)
+		} else {
+			fmt.Fprintf(w, `{"status":"ok","image_ref":%q}`, ImageRef)
+		}
 	}
 }
 
