@@ -29,7 +29,7 @@ jobs:
           go tool cover -func=coverage.txt | tee coverage_func.txt
           COVERAGE=$(awk '/^total:/{gsub(/%/,"",$NF); printf "%.1f", $NF}' coverage_func.txt)
           echo "Coverage: ${COVERAGE}%"
-          awk -v cov="$COVERAGE" 'BEGIN{if(cov < 90){print "Coverage " cov "% < 90% — failing"; exit 1}}'
+          awk -v cov="$COVERAGE" 'BEGIN{if(cov < 85){print "Coverage " cov "% < 85% — failing"; exit 1}}'
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5

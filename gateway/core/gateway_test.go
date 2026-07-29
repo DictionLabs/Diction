@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -173,8 +174,28 @@ func TestHealthHandler(t *testing.T) {
 	if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
 		t.Errorf("Content-Type: want application/json, got %s", ct)
 	}
-	if body := rr.Body.String(); body != `{"status":"ok"}` {
-		t.Errorf("body: want {\"status\":\"ok\"}, got %s", body)
+	body := rr.Body.String()
+	if !strings.HasPrefix(body, `{"status":"ok"`) {
+		t.Errorf("body: want prefix {\"status\":\"ok\", got %s", body)
+	}
+}
+
+func TestHealthHandler_DeprecatedImageRef(t *testing.T) {
+	orig := ImageRef
+	ImageRef = "ghcr.io/omachala/diction-gateway:v1.0"
+	defer func() { ImageRef = orig }()
+
+	g := testGateway()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rr := httptest.NewRecorder()
+	g.HealthHandler()(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status: want 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "deprecated") {
+		t.Errorf("expected deprecated field in response for omachala image, got: %s", body)
 	}
 }
 
