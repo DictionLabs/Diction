@@ -237,13 +237,33 @@ const year = new Date().getFullYear();
 }
 
 @media (max-width: 480px) {
-  .footer-columns {
-    grid-template-columns: 1fr;
-    gap: 28px;
+  .site-footer {
+    padding: 28px 20px 20px;
   }
 
-  .site-footer {
-    padding: 32px 20px 24px;
+  .footer-columns {
+    grid-template-columns: 1fr 1fr;
+    gap: 28px 20px;
+  }
+
+  /* Brand spans full width */
+  .footer-brand {
+    grid-column: 1 / -1;
+  }
+
+  /* Legal spans full width with links in a horizontal row */
+  .footer-col:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .footer-col:last-child ul {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .footer-col:last-child li {
+    margin: 0;
   }
 }
 </style>

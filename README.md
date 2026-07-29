@@ -5,13 +5,26 @@
     <img src="assets/logo-dark.png" alt="Diction" height="50">
   </picture>
   <br><br>
-  <strong>You talk. We type.</strong>
+  <strong>The iOS keyboard for voice and AI.</strong>
   <br><br>
-  Voice keyboard for iOS. Works in every app.<br>On-device, cloud, or self-hosted transcription. No limits.
+  Dictate, compose, and edit - by voice, in any app.<br>On-device, cloud, or self-hosted. Open-source gateway.
 </p>
+
+<table align="center"><tr>
+  <td><img src="assets/1.png" width="220"></td>
+  <td><img src="assets/2.png" width="220"></td>
+  <td><img src="assets/3.png" width="220"></td>
+</tr></table>
 
 <p align="center">
   <a href="https://apps.apple.com/app/id6759807364"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" height="40"></a>
+  <a href="https://www.producthunt.com/products/diction?launch=diction">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204373&amp;theme=dark">
+      <source media="(prefers-color-scheme: light)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204373&amp;theme=light">
+      <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204373&amp;theme=neutral" alt="Diction on Product Hunt" height="40">
+    </picture>
+  </a>
 </p>
 
 <p align="center">
@@ -21,170 +34,482 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/omachala/diction/blob/main/LICENSE"><img src="https://img.shields.io/github/license/omachala/diction?style=for-the-badge" alt="License"></a>
-  <a href="https://codecov.io/gh/omachala/diction"><img src="https://img.shields.io/codecov/c/github/omachala/diction?style=for-the-badge" alt="Coverage"></a>
+  <a href="https://github.com/omachala/diction/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
+  <a href="https://codecov.io/gh/omachala/diction"><img src="https://img.shields.io/codecov/c/github/omachala/diction?style=for-the-badge&label=coverage" alt="Coverage"></a>
 </p>
+
+<p align="center"><strong>Contributors</strong></p>
+
+<table align="center"><tr>
+  <td align="center">
+    <a href="https://github.com/omachala">
+      <img src="https://github.com/omachala.png?size=80" width="60" alt="omachala"><br>
+      <sub><b>omachala</b></sub>
+    </a>
+  </td>
+  <td align="center">
+    <a href="https://github.com/jeprecated">
+      <img src="https://github.com/jeprecated.png?size=80" width="60" alt="jeprecated"><br>
+      <sub><b>jeprecated</b></sub>
+    </a>
+  </td>
+  <td align="center">
+    <a href="https://github.com/ankitson">
+      <img src="https://github.com/ankitson.png?size=80" width="60" alt="ankitson"><br>
+      <sub><b>ankitson</b></sub>
+    </a>
+  </td>
+  <td align="center">
+    <a href="https://github.com/DXCanas">
+      <img src="https://github.com/DXCanas.png?size=80" width="60" alt="DXCanas"><br>
+      <sub><b>DXCanas</b></sub>
+    </a>
+  </td>
+</tr></table>
 
 ---
 
-<p align="center">
-  <img src="assets/slide-01.png" width="200" alt="You talk. We type.">&nbsp;
-  <img src="assets/slide-02.png" width="200" alt="No limits. No word caps. No catch.">&nbsp;
-  <img src="assets/slide-03.png" width="200" alt="What you say stays with you.">&nbsp;
-  <img src="assets/slide-04.png" width="200" alt="Self-host. Your server, your rules.">
-</p>
+## What is Diction?
 
-## Why Diction?
+**Diction** is an iOS keyboard that transcribes speech to text directly in any app. Tap the mic, speak, text lands in the field. No switching apps, no copy-paste.
 
-- **Deep audio engineering.** State-of-the-art audio filtering, a fine-tuned speech recognition model, and context-aware processing, built by a real engineer who goes deep on one problem.
-- **Self-hosted in one command.** `docker compose up` and paste the URL. Your server, your models, your data.
-- **Works with any Whisper server.** Diction speaks the OpenAI transcription API directly. Point it at any endpoint that implements it, with or without our gateway.
-- **Transcripts encrypted in transit.** AES-256-GCM with X25519 key exchange between the app and the gateway. Same primitives used by Signal and WireGuard.
-- **Zero tracking in the app.** No analytics, no telemetry, no data collection. Audit the source yourself.
-- **On-device.** Whisper runs locally on your iPhone. No network, no server, nothing leaves the device.
-- **Free and unlimited.** On-device and self-hosted have no caps, no restrictions, no expiry.
+**This repo is the open-source gateway**: a Go service that sits between the iOS keyboard and your speech-to-text backend. It handles the WebSocket streaming protocol, AES-256-GCM end-to-end encryption, and optional LLM cleanup. The iOS app is on the App Store; the gateway is what you self-host.
 
-## How It Works
+- **Self-hosted in one command.** `docker compose up` and paste the URL into the app. Your server, your models, your data.
+- **Model-agnostic.** The gateway speaks the OpenAI transcription API spec. Point it at any speech-to-text backend that implements it. Your model, your stack.
+- **On-device option.** On-device models run locally on the iPhone. No gateway needed for that mode.
+- **Encrypted in transit.** AES-256-GCM with X25519 key exchange. Same primitives used by Signal and WireGuard.
+- **Zero tracking.** No analytics, no telemetry, no data collection. Audit the source yourself.
+- **Free and unlimited.** Self-hosted and on-device modes have no caps, no rate limits, no expiry.
 
-### On-Device (Free, No Setup)
+## Self-Hosting
 
-Install the app, add the keyboard, and start dictating. On-device transcription works offline with no server required.
+Diction speaks the OpenAI transcription API (`POST /v1/audio/transcriptions`) directly, so any compatible Whisper server works without the gateway. The gateway adds a WebSocket layer for live streaming — audio is transcribed as you speak, so by the time you tap stop the result is already back. For longer dictations the difference is noticeable; for short phrases it barely matters. The gateway also handles end-to-end encryption and optional LLM cleanup.
 
-### Self-Hosted
+> **Full walkthrough with screenshots:** [How to Set Up Diction - the self-hosted speech-to-text alternative to Wispr Flow](https://dev.to/omachala/how-to-set-up-diction-the-self-hosted-speech-to-text-alternative-to-wispr-flow-20km)
 
-> **Step-by-step walkthrough:** [How to set up Diction — the self-hosted speech-to-text alternative to Wispr Flow](https://dev.to/omachala/how-to-set-up-diction-the-self-hosted-speech-to-text-alternative-to-wispr-flow-20km)
+**Requirements:**
+- Any machine that can run Docker: Mac, Linux box, NUC, home server, VPS. Apple Silicon works (via Rosetta).
+- iPhone running iOS 17.0 or later.
 
-Diction speaks the OpenAI transcription API (`POST /v1/audio/transcriptions`) directly. Any server that implements it works. There are three ways to set it up, depending on what you already have running and how much you care about latency.
+### Step 1 - Write the Compose File
 
-#### Path 1: Whisper only (simplest)
-
-One container, no gateway, no extra moving parts. Save this as `docker-compose.yml`:
+Create a folder for the stack and save this as `docker-compose.yml`:
 
 ```yaml
 services:
-  whisper:
+  whisper-small:
     image: fedirz/faster-whisper-server:latest-cpu
-    ports:
-      - "8000:8000"
+    container_name: diction-whisper-small
+    restart: unless-stopped
+    volumes:
+      - whisper-models:/root/.cache/huggingface
     environment:
       WHISPER__MODEL: Systran/faster-whisper-small
       WHISPER__INFERENCE_DEVICE: cpu
-```
 
-Run `docker compose up -d`, paste `http://your-server:8000` into the Diction app's **Self-Hosted** tab, done.
-
-The trade-off: no streaming. The app uploads your recording after you stop talking and waits for whisper to transcribe it. Short phrases feel fine. On longer dictations you'll see a visible pause between the moment you stop and the text appearing.
-
-#### Path 2: Whisper + the Diction gateway (recommended)
-
-Add our open-source gateway in front of whisper. It exposes a WebSocket endpoint that lets the app stream audio as you speak, so the transcript is mostly ready the moment you stop.
-
-```yaml
-services:
   gateway:
     image: ghcr.io/omachala/diction-gateway:latest
+    platform: linux/amd64
+    container_name: diction-gateway
+    restart: unless-stopped
     ports:
       - "8080:8080"
+    depends_on:
+      - whisper-small
     environment:
       DEFAULT_MODEL: small
 
-  whisper-small:
-    image: fedirz/faster-whisper-server:latest-cpu
-    environment:
-      WHISPER__MODEL: Systran/faster-whisper-small
-      WHISPER__INFERENCE_DEVICE: cpu
+volumes:
+  whisper-models:
 ```
 
-Run `docker compose up -d`, point the app at `http://your-server:8080`. Short phrases feel about the same as Path 1. Longer dictations are noticeably faster. The longer you talk, the bigger the gap.
+The `whisper-models` volume persists the model weights (~500 MB for `small`) so they survive container rebuilds. `DEFAULT_MODEL: small` maps to the service named `whisper-small` - see [Swap the Speech Model](#swap-the-speech-model) if you change the model.
 
-Your server needs to be reachable from your phone. See [No Public IP?](#no-public-ip) for Cloudflare Tunnel, Tailscale, and ngrok options.
+### Step 2 - Start the Stack
 
-#### Path 3: You already have a Whisper server
+```bash
+docker compose up -d
+```
 
-If you already run one (a fine-tuned model, bigger hardware, something domain-specific), you have the same two choices.
+First run pulls the images and downloads model weights - give it 2–3 minutes.
 
-**Point Diction straight at it.** Paste your existing server's URL into the app. If your server speaks `POST /v1/audio/transcriptions`, you're done. No extra containers.
+```bash
+docker compose logs -f          # watch progress
+docker compose ps               # check status
+```
 
-**Or wrap it with the gateway** to get streaming on top of your existing setup:
+Expected:
+
+```
+NAME                     STATUS
+diction-gateway          Up 30 seconds
+diction-whisper-small    Up 2 minutes (healthy)
+```
+
+| Error | Fix |
+|-------|-----|
+| `pull access denied` on gateway image | `docker logout ghcr.io` and retry |
+| `exec format error` on Apple Silicon | Enable Rosetta in Docker Desktop → Settings → General |
+| `health: starting` for > 3 minutes | Model still downloading - `docker compose logs -f whisper-small` |
+| Gateway exits immediately | Whisper container failed - check its logs |
+
+### Step 3 - Test the Server
+
+Generate a test audio file (macOS):
+
+```bash
+say -o test.aiff "Hello from my home server"
+```
+
+Or record a voice memo on your phone and AirDrop it over.
+
+```bash
+curl -X POST http://localhost:8080/v1/audio/transcriptions \
+  -F "file=@test.aiff" \
+  -F "model=small"
+```
+
+```json
+{"text":"Hello from my home server."}
+```
+
+```bash
+# Check timing headers
+curl -sS -D - -o /dev/null \
+  -X POST http://localhost:8080/v1/audio/transcriptions \
+  -F "file=@test.aiff" -F "model=small" | grep -i diction
+```
+
+`X-Diction-Whisper-Ms` shows the speech model's inference latency.
+
+| Response | Cause |
+|----------|-------|
+| Connection refused | Gateway not running - `docker compose ps` |
+| 504 Gateway Timeout | Whisper still loading - wait 60s |
+| 404 Not Found | URL typo - path must be exactly `/v1/audio/transcriptions` |
+| OOM / container crash | Model too large for available RAM |
+
+### Step 4 - Find Your Server's IP
+
+**macOS:**
+```bash
+ipconfig getifaddr en0
+# or
+ifconfig | grep 'inet ' | grep -v 127.0.0.1
+```
+
+**Linux:**
+```bash
+hostname -I | awk '{print $1}'
+```
+
+**Windows:**
+```powershell
+ipconfig | findstr IPv4
+```
+
+Pick the `192.168.x.x` or `10.x.x.x` address. Ignore anything starting with `100.` - that's Tailscale.
+
+Set a DHCP reservation in your router so the IP doesn't change on reboot. Or use [Tailscale](#reach-from-anywhere) for a stable address that follows the machine anywhere.
+
+### Step 5 - Connect the App
+
+Install [Diction](https://apps.apple.com/app/id6759807364) on your iPhone. On first launch:
+
+1. Settings → General → Keyboard → Keyboards → Add New Keyboard → **Diction**
+2. Tap Diction in the list → enable **Allow Full Access**
+3. Grant microphone access when prompted
+
+Point it at your server:
+
+1. Open Diction → **Preferences** → **Mode** → **Self-Hosted**
+2. Enter your endpoint: `http://192.168.1.42:8080` (your IP from Step 4)
+3. Tap **Test connection** - you should get a green check within a second
+
+To dictate: open any app, tap a text field, long-press the globe icon (bottom-left of the iOS keyboard), pick **Diction**, tap the mic, speak, release.
+
+### Reach From Anywhere
+
+**Tailscale (recommended)**
+
+[Tailscale](https://tailscale.com/) creates a private WireGuard mesh between your devices. Install it on the server and iPhone, sign in to the same account, and use the `100.x.x.x` Tailscale IP as your Diction endpoint. Works on cellular, café WiFi, anywhere. Free for personal use.
+
+**Cloudflare Tunnel (public URL, no port forwarding)**
+
+Add to your compose file:
 
 ```yaml
-services:
-  gateway:
-    image: ghcr.io/omachala/diction-gateway:latest
-    ports:
-      - "8080:8080"
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: diction-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
     environment:
-      CUSTOM_BACKEND_URL: http://your-existing-server:8000
-      CUSTOM_BACKEND_MODEL: your-model-name
+      TUNNEL_TOKEN: "${CLOUDFLARE_TUNNEL_TOKEN}"
 ```
 
-Behind an API key? Add `CUSTOM_BACKEND_AUTH: "Bearer sk-xxx"`. Server only accepts WAV? Add `CUSTOM_BACKEND_NEEDS_WAV: "true"` and the gateway converts with ffmpeg before forwarding. Full reference: [Use Your Own Model](https://diction.one/features/custom-model).
+Create a tunnel in the [Cloudflare Zero Trust dashboard](https://one.dash.cloudflare.com/), grab the token, add it to `.env`, route the public hostname to `http://gateway:8080`. Free tier. Note: transcripts pass through Cloudflare's network (HTTPS-encrypted, but a third party is in the path).
 
-#### Models
+**ngrok (quick testing)**
 
-Swap `WHISPER__MODEL` in your compose file:
+```bash
+ngrok http 8080
+```
 
-| Model ID | Params | RAM |
-|----------|--------|-----|
-| `Systran/faster-whisper-small` | 244M | ~850 MB |
-| `Systran/faster-whisper-medium` | 769M | ~2.1 GB |
-| `deepdml/faster-whisper-large-v3-turbo-ct2` | 809M | ~2.3 GB |
+Free tier URLs change on restart - good for a demo, not daily use.
 
-Larger models are more accurate but need more RAM. On a GPU, even the large turbo feels instant. On CPU, small is the sweet spot for everyday dictation.
+---
 
-> If you use Path 2 or 3 with a model other than `small`, set `DEFAULT_MODEL` on the gateway to match (`small`, `medium`, or `large-v3-turbo`) and use the service name the gateway expects: `whisper-small`, `whisper-medium`, or `whisper-large-turbo`.
+## Swap the Speech Model
 
-#### Parakeet (alternative to Whisper)
+Change two lines in your compose file:
 
-[Parakeet TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2) is NVIDIA's speech-to-text engine. More accurate and faster than Whisper for European languages, with lower RAM requirements. The trade-off: it supports 25 languages instead of Whisper's 99.
+| `DEFAULT_MODEL` | Service name | `WHISPER__MODEL` | RAM | Notes |
+|-----------------|--------------|------------------|-----|-------|
+| `small` | `whisper-small` | `Systran/faster-whisper-small` | ~850 MB | Best for CPU |
+| `medium` | `whisper-medium` | `Systran/faster-whisper-medium` | ~2.1 GB | More accurate, slower on CPU |
+| `large-v3-turbo` | `whisper-large-turbo` | `deepdml/faster-whisper-large-v3-turbo-ct2` | ~2.3 GB | Best with NVIDIA GPU |
+| `parakeet-v3` | `parakeet` | - (baked into image) | ~2 GB | NVIDIA GPU, 25 European languages |
+
+Both `DEFAULT_MODEL` and the service name must match the table - the gateway resolves backends by Docker hostname. A mismatch returns 404 on every request.
+
+```bash
+docker compose up -d   # recreates only the changed container
+```
+
+---
+
+## NVIDIA GPU
+
+Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) on the host first.
+
+### Option A - Parakeet TDT 0.6B v3 (fastest, 25 European languages)
+
+[Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) transcribes a 5-second clip in well under a second on a consumer GPU.
 
 | | Whisper Large-v3 | Parakeet TDT 0.6B v3 |
 |---|---|---|
-| WER (English) | 7.4% | 6.34% |
-| Speed | Baseline | ~10x faster |
-| RAM (INT8) | ~3-4 GB | ~2 GB |
+| WER (English) | 7.4% | ~6.3% |
+| Latency (GPU) | Under 2s | Sub-second |
+| VRAM (INT8) | ~2.3 GB | ~2 GB |
 | Languages | 99 | 25 European |
-
-If you mostly dictate in a European language, Parakeet is the better engine. Save this as `docker-compose.yml`:
-
-```yaml
-services:
-  gateway:
-    image: ghcr.io/omachala/diction-gateway:latest
-    ports:
-      - "8080:8080"
-    environment:
-      DEFAULT_MODEL: parakeet-v3
-
-  parakeet:
-    image: ghcr.io/achetronic/parakeet:latest-int8
-```
-
-Run `docker compose up -d`, point the app at `http://your-server:8080`.
-
-Models are baked into the image, so there's no download delay on first start.
 
 **Supported languages:** English, Bulgarian, Croatian, Czech, Danish, Dutch, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, Ukrainian.
 
-For non-European languages (Asian, Arabic, etc.) use Whisper instead.
+For languages outside this list, use Option B.
 
-The full compose file in this repo includes Parakeet as a profile:
+```yaml
+services:
+  parakeet:
+    image: ghcr.io/achetronic/parakeet:latest-int8
+    container_name: diction-parakeet
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  gateway:
+    image: ghcr.io/omachala/diction-gateway:latest
+    platform: linux/amd64
+    container_name: diction-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - parakeet
+    environment:
+      DEFAULT_MODEL: parakeet-v3
+```
+
+Model weights are baked into the image - no download on first start. Or use the profile from this repo:
 
 ```bash
 docker compose --profile parakeet up -d
 ```
 
-Set `DEFAULT_MODEL: parakeet-v3` on the gateway to match.
+### Option B - large-v3-turbo (multilingual, 99 languages)
 
-#### NixOS
+```yaml
+services:
+  whisper-large-turbo:
+    image: fedirz/faster-whisper-server:latest-cuda
+    container_name: diction-whisper-large-turbo
+    restart: unless-stopped
+    volumes:
+      - whisper-models:/root/.cache/huggingface
+    environment:
+      WHISPER__MODEL: deepdml/faster-whisper-large-v3-turbo-ct2
+      WHISPER__INFERENCE_DEVICE: cuda
+      WHISPER__COMPUTE_TYPE: float16
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
-If your server runs NixOS, the repo ships a flake with a hardened systemd module — no Docker needed. Try it first without committing to anything:
+  gateway:
+    image: ghcr.io/omachala/diction-gateway:latest
+    platform: linux/amd64
+    container_name: diction-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - whisper-large-turbo
+    environment:
+      DEFAULT_MODEL: large-v3-turbo
+
+volumes:
+  whisper-models:
+```
+
+First boot downloads ~1.6 GB of model weights into the volume. Subsequent starts are instant.
+
+---
+
+## Already Have a Voice Server?
+
+Keep it. Use `CUSTOM_BACKEND_URL` to put the Diction Gateway in front of your existing server for WebSocket streaming and end-to-end encryption:
+
+```yaml
+services:
+  gateway:
+    image: ghcr.io/omachala/diction-gateway:latest
+    platform: linux/amd64
+    container_name: diction-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      CUSTOM_BACKEND_URL: http://your-existing-server:8000
+      CUSTOM_BACKEND_MODEL: Systran/faster-whisper-small
+```
+
+| Variable | Description |
+|----------|-------------|
+| `CUSTOM_BACKEND_AUTH` | Authorization header forwarded to your backend, e.g. `Bearer sk-xxx` |
+| `CUSTOM_BACKEND_NEEDS_WAV` | Set to `"true"` if your backend only accepts WAV - the gateway converts with ffmpeg |
+| `CUSTOM_BACKEND_CANONICAL_ID` | HuggingFace-style ID advertised via `/v1/models` (default: `CUSTOM_BACKEND_MODEL`) |
+
+---
+
+## AI Cleanup (BYO LLM)
+
+The gateway passes transcripts through any OpenAI-compatible LLM before returning them. You say "so um basically the meeting went well and uh they agreed to the timeline." The LLM returns "The meeting went well. They agreed to the timeline."
+
+Enable the **AI Companion** toggle in the app. The gateway forwards the transcript to `{LLM_BASE_URL}/chat/completions` with your prompt, then returns the cleaned text. If the LLM fails, the raw transcript is returned - dictation never breaks.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `LLM_BASE_URL` | Yes | OpenAI-compatible endpoint, e.g. `https://api.openai.com/v1` |
+| `LLM_MODEL` | Yes | Model identifier, e.g. `gpt-4o-mini` |
+| `LLM_API_KEY` | No | Bearer token. Not needed for local Ollama. |
+| `LLM_PROMPT` | No | System prompt string, or a file path starting with `/` (mount via volume) |
+| `LLM_REASONING_EFFORT` | No | OpenAI-compatible reasoning effort such as `none`, `low`, `medium`, or `high`. Omitted by default. |
+
+Both `LLM_BASE_URL` and `LLM_MODEL` must be set or the feature stays off.
+
+### Option A - Cloud LLM (OpenAI, Groq, etc.)
+
+```bash
+echo "OPENAI_API_KEY=sk-your-key-here" > .env
+```
+
+```yaml
+  gateway:
+    environment:
+      DEFAULT_MODEL: small
+      LLM_BASE_URL: "https://api.openai.com/v1"
+      LLM_API_KEY: "${OPENAI_API_KEY}"
+      LLM_MODEL: "gpt-4o-mini"
+      LLM_PROMPT: "Clean up this voice transcription. Remove filler words (um, uh, like). Fix punctuation and capitalization. Return only the cleaned text, nothing else."
+```
+
+Docker Compose reads `${OPENAI_API_KEY}` from `.env` automatically. Works with any OpenAI-compatible provider - Groq, Together, Fireworks, Mistral, OpenRouter - swap `LLM_BASE_URL` and `LLM_MODEL`.
+
+### Option B - Local Ollama (zero cost, fully private)
+
+```yaml
+  ollama:
+    image: ollama/ollama:latest
+    container_name: diction-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+
+  gateway:
+    environment:
+      DEFAULT_MODEL: small
+      LLM_BASE_URL: "http://ollama:11434/v1"
+      LLM_MODEL: "gemma2:9b"
+      LLM_PROMPT: "Clean up this voice transcription. Remove filler words. Fix punctuation and capitalization. Return only the cleaned text, nothing else."
+
+volumes:
+  whisper-models:
+  ollama-models:
+```
+
+```bash
+docker compose up -d
+docker exec diction-ollama ollama pull gemma2:9b
+```
+
+| Model | Memory | Notes |
+|-------|--------|-------|
+| `gemma2:9b` | ~6 GB | Best cleanup quality at this size |
+| `qwen2.5:7b` | ~5 GB | Strong instruction following |
+| `llama3.1:8b` | ~5 GB | Most popular, well-tested |
+| `gemma3:4b` | ~3 GB | For tighter machines |
+
+Models under 7B tend to answer questions about the transcript instead of cleaning it up. 7B or larger recommended.
+
+### Testing cleanup
+
+```bash
+curl -X POST "http://localhost:8080/v1/audio/transcriptions?enhance=true" \
+  -F "file=@test.aiff" \
+  -F "model=small"
+```
+
+```bash
+# Confirm LLM fired - look for X-Diction-LLM-Ms in the output
+curl -sS -D - -o /dev/null \
+  -X POST "http://localhost:8080/v1/audio/transcriptions?enhance=true" \
+  -F "file=@test.aiff" -F "model=small" | grep -i diction
+```
+
+### Prompt file
+
+Mount a file and point `LLM_PROMPT` at the path:
+
+```yaml
+  gateway:
+    volumes:
+      - ./cleanup-prompt.txt:/config/prompt.txt:ro
+    environment:
+      LLM_PROMPT: "/config/prompt.txt"
+```
+
+If `LLM_PROMPT` starts with `/`, the gateway reads it as a file. Otherwise it uses the string directly.
+
+---
+
+## NixOS
+
+The repo ships a flake with a hardened systemd module - no Docker needed.
 
 ```bash
 nix run github:omachala/diction#diction-gateway
 ```
 
-To run it as a service, import the module and enable it:
+Enable as a service:
 
 ```nix
 {
@@ -210,158 +535,73 @@ To run it as a service, import the module and enable it:
 }
 ```
 
-The unit runs under `DynamicUser` with `ProtectSystem=strict`, `NoNewPrivileges`, and a narrow syscall filter. Use `environmentFile` for secrets like `CUSTOM_BACKEND_AUTH` and `LLM_API_KEY` so they don't end up in the world-readable Nix store. Full option list: [`nix/module.nix`](nix/module.nix).
+The unit runs under `DynamicUser` with `ProtectSystem=strict`, `NoNewPrivileges`, and a narrow syscall filter. Use `environmentFile` for secrets - they don't end up in the world-readable Nix store. Full option list: [`nix/module.nix`](nix/module.nix).
 
-### Compatible with OpenAI speech API clients
+---
 
-The gateway implements the OpenAI audio transcription API. Any client that works against `api.openai.com/v1/audio/transcriptions` works against a Diction gateway — the `openai` Python SDK, `openai` Node SDK, LangChain, and any other OpenAI-compatible library. This also makes Diction a drop-in STT replacement for [Speaches](https://github.com/speaches-ai/speaches).
+## OpenAI API Compatibility
 
-**Supported:**
-
-- `POST /v1/audio/transcriptions` — `file`, `model`, `language`, `prompt`, `response_format=json|text`
-- `GET /v1/models` — OpenAI list format with HuggingFace-style model IDs
-- HuggingFace model IDs: `Systran/faster-whisper-small`, `nvidia/parakeet-tdt-0.6b-v3`, `nvidia/canary-1b-v2`, etc.
-
-**Not supported:**
-
-- TTS (`/v1/audio/speech`)
-- `response_format=verbose_json|srt|vtt` (no word-level timestamps)
-- SSE streaming on REST (use Diction's WebSocket `/v1/audio/stream` instead)
-- Model download/delete (`POST`/`DELETE /v1/models/{id}`)
-- Realtime API (`/v1/realtime`)
-
-**Authentication is off by default** (`AUTH_ENABLED=false`). Self-hosted deployments accept requests without a token. Pass any non-empty string as the API key from the client — the gateway doesn't check it.
-
-**Known limitation:** error responses use Diction's `{"error":"<message>"}` shape, not OpenAI's nested `{"error":{"message":...,"type":...}}`. Most SDKs surface these as raw `HTTPError` rather than `APIError` — catch both.
-
-Quickstart with the Python SDK:
+The gateway implements the OpenAI audio transcription API - any client that works against `api.openai.com/v1/audio/transcriptions` works against a Diction gateway.
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://your-gateway:8080/v1",
+    base_url="http://your-server:8080/v1",
     api_key="anything",  # not checked when AUTH_ENABLED=false
 )
 
 with open("audio.wav", "rb") as f:
     result = client.audio.transcriptions.create(
         file=f,
-        model="Systran/faster-whisper-small",
+        model="small",            # or "Systran/faster-whisper-small"
         response_format="text",
     )
-print(result)  # plain string
+print(result)
 ```
 
-## AI Enhancement (BYO LLM)
+Works with the Node SDK, LangChain, Flowise, n8n, or any tool that expects OpenAI's speech API.
 
-You say "so um basically the meeting went well and uh they agreed to the timeline." Your server turns that into "The meeting went well. They agreed to the timeline."
+**Supported:**
 
-The gateway can pass transcripts through any LLM before returning them. OpenAI, Groq, Anthropic, Ollama on the same machine, or any provider that speaks the OpenAI chat completions format. You write the prompt. You pick the model.
+- `POST /v1/audio/transcriptions` - `file`, `model`, `language`, `prompt`, `response_format=json|text`
+- `GET /v1/models` - returns an OpenAI-compatible `data[]` array plus a `providers[]` grouping consumed by the iOS app. Both HuggingFace IDs (`Systran/faster-whisper-small`, `nvidia/parakeet-tdt-0.6b-v3`) and short aliases (`small`, `medium`, `large-v3-turbo`, `parakeet-v3`) are accepted.
+- WebSocket `/v1/audio/stream` - used by the Diction app for low-latency streaming
 
-If no LLM is configured, nothing changes. Transcripts come back raw, same as before.
+**Not supported:**
 
-### How it works
+- TTS (`/v1/audio/speech`)
+- `response_format=verbose_json|srt|vtt` (no word-level timestamps)
+- SSE streaming on REST (use WebSocket `/v1/audio/stream` instead)
+- Model download/delete (`POST`/`DELETE /v1/models/{id}`)
+- OpenAI Realtime API (`/v1/realtime`)
 
-```
-iPhone → gateway → Whisper → raw transcript
-  → your LLM (chat/completions)
-  → cleaned text back to the app
-```
+**Authentication** is off by default (`AUTH_ENABLED=false`). Pass any non-empty string as the API key from the client - the gateway doesn't check it. To lock down a public-facing deployment, set `AUTH_ENABLED=true` and configure tokens in the gateway env.
 
-The app sends `?enhance=true` on the request. The gateway sends your transcript to `{LLM_BASE_URL}/chat/completions` with your system prompt, and returns whatever the LLM sends back.
+**Error shape:** errors return `{"error":"<message>"}`, not OpenAI's nested `{"error":{"message":"...","type":"..."}}`. Most SDKs surface these as `HTTPError` rather than `APIError`.
 
-### Configuration
-
-Four environment variables on the gateway:
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `LLM_BASE_URL` | Yes | OpenAI-compatible endpoint (e.g. `https://api.openai.com/v1`) |
-| `LLM_MODEL` | Yes | Model identifier (e.g. `gpt-4o-mini`) |
-| `LLM_API_KEY` | No | Bearer token. Your OpenAI/Groq/etc. key, or any string for local Ollama |
-| `LLM_PROMPT` | No | System prompt. Supports file paths (e.g. `/config/prompt.txt` via volume mount) |
-
-Both `LLM_BASE_URL` and `LLM_MODEL` must be set. If either is missing, the feature is off.
-
-### Quickstart with OpenAI
-
-Set these on the gateway service in your `docker-compose.yml`:
-
-```yaml
-environment:
-  LLM_BASE_URL: https://api.openai.com/v1
-  LLM_API_KEY: sk-...
-  LLM_MODEL: gpt-4o-mini
-  LLM_PROMPT: "You are a transcript cleaner. Fix grammar, punctuation, and capitalization. Remove filler words. Correct speech-to-text errors. Return only the cleaned text."
-```
-
-Restart the gateway and you're done. Works with any OpenAI-compatible provider. Swap the base URL for Groq (`https://api.groq.com/openai/v1`), Together, Fireworks, or anything else that speaks the same format.
-
-### Local with Ollama
-
-If you'd rather keep everything on your network, the compose file includes an Ollama profile:
-
-```bash
-docker compose --profile ollama up -d
-docker exec diction-ollama ollama pull gemma2:9b
-```
-
-Uncomment the `LLM_*` variables in `docker-compose.yml`, restart the gateway, and transcripts run through your local model. No API key, no external calls.
-
-#### Model recommendations for local
-
-| Model | Size | RAM | Notes |
-|-------|------|-----|-------|
-| Gemma 2 9B | 9B | ~6 GB | Best editing quality at this size |
-| Qwen 2.5 7B | 7B | ~5 GB | Strong instruction following |
-| Llama 3.1 8B | 8B | ~5 GB | Most popular, well-tested |
-| Gemma 3 4B | 4B | ~3 GB | Limited hardware |
-
-Models under 7B tend to answer questions about the text instead of correcting it. 7B or larger works best.
-
-### Example prompt
-
-```
-You are a transcript cleaner. Fix grammar, punctuation, and capitalization.
-Remove filler words (um, uh, er, like, you know). Correct common
-speech-to-text errors. Return only the cleaned text, nothing else.
-```
-
-For longer prompts, use a file: set `LLM_PROMPT=/config/prompt.txt` and mount it into the container.
-
-## No Public IP?
-
-You don't need to open ports on your router:
-
-- **[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)** - free, outbound-only connection. No port forwarding needed.
-- **[Tailscale](https://tailscale.com/)** - free WireGuard mesh VPN. Install on server + phone, connect from anywhere.
-- **[ngrok](https://ngrok.com/)** - instant public URL, great for testing.
-
-See the [Self-Hosting Guide](https://diction.one/self-hosted) for detailed instructions.
+---
 
 ## Privacy
 
-Keyboards can read everything you type. Here's exactly what Diction does with your audio:
-
-- **On-device**: Everything stays on your phone. No network connection made.
-- **Self-hosted**: Audio goes to your server only. Nothing else sees it.
-- **Diction One**: Audio is transcribed and immediately discarded. Not stored, not used for training.
-- **Zero third-party SDKs.** No analytics, no tracking, no telemetry of any kind.
-- **Full Access** is required by iOS for any keyboard that makes network requests. Diction has no QWERTY input to log. It only uses the network to reach your transcription endpoint.
+- **On-device**: Everything stays on your phone. No network connection is made.
+- **Self-hosted**: Audio goes to your server only. Neither the gateway nor `faster-whisper-server` persists audio - it's transcribed and discarded.
+- **AI cleanup enabled**: The transcript (plain text, no audio) goes to your configured LLM. If you use Ollama locally, nothing leaves your machine.
+- **Diction One (cloud)**: Audio is transcribed and immediately discarded. Not stored, not used for training.
+- **Zero third-party SDKs** in the app. No analytics, no tracking, no telemetry.
+- **Full Access** is required by iOS for any keyboard that makes network requests. Diction has no QWERTY input - the only data that leaves the app is the audio recording, sent to the endpoint you configured.
 
 Read the full [Privacy Policy](https://diction.one/privacy).
+
+---
 
 ## Diction One
 
 On-device and self-hosted are completely free with no word limits.
 
-If you don't want to run a server, Diction One gives you a fine-tuned cloud model with advanced audio filters — without the setup. Audio is sent to the Diction endpoint, transcribed, and immediately discarded. Pricing and trial details are in the app.
+If you don't want to run a server, Diction One gives you a fine-tuned cloud model with advanced audio filtering - without the setup. Audio is sent to the Diction endpoint, transcribed, and immediately discarded. Pricing and trial details are in the app.
 
-## Requirements
-
-- **iOS 17.0+** (iPhone)
-- For self-hosting: any machine that can run Docker
+---
 
 ## Contributing
 
@@ -370,5 +610,3 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-The iOS app is distributed via the App Store. This repository contains the self-hosting infrastructure and documentation.

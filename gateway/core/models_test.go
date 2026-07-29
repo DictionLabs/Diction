@@ -139,6 +139,164 @@ func TestModelsHandler_AvailabilityReflectsHealth(t *testing.T) {
 	}
 }
 
+// --- OpenAI-compatible /v1/models shape ---
+
+func TestModelsHandler_OpenAIFormat(t *testing.T) {
+	// /v1/models must include the OpenAI list envelope (object="list", data[]) so
+	// the openai-python / openai-node / LangChain SDKs parse it.
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", Aliases: []string{"small"}, CanonicalID: "Systran/faster-whisper-small", Provider: "whisper"},
+			{Name: "parakeet-v3", Aliases: []string{"parakeet-v3"}, CanonicalID: "nvidia/parakeet-tdt-0.6b-v3", Provider: "parakeet"},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	rr := httptest.NewRecorder()
+	g.ModelsHandler()(rr, req)
+
+	var resp modelsResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if resp.Object != "list" {
+		t.Errorf("object: want list, got %q", resp.Object)
+	}
+	if len(resp.Data) == 0 {
+		t.Fatal("data[]: want entries, got 0")
+	}
+	for _, m := range resp.Data {
+		if m.ID == "" {
+			t.Error("data entry has empty id")
+		}
+		if m.Object != "model" {
+			t.Errorf("data entry object: want model, got %q", m.Object)
+		}
+		if m.OwnedBy == "" {
+			t.Error("data entry has empty owned_by")
+		}
+	}
+}
+
+func TestModelsHandler_OneDataEntryPerBackend(t *testing.T) {
+	// Clients see one model entry per configured backend — not one per alias.
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", Aliases: []string{"small", "Systran/faster-whisper-small"}, CanonicalID: "Systran/faster-whisper-small"},
+			{Name: "parakeet-v3", Aliases: []string{"parakeet-v3", "parakeet", "nvidia/parakeet-tdt-0.6b-v3"}, CanonicalID: "nvidia/parakeet-tdt-0.6b-v3"},
+			{Name: "canary-v2", Aliases: []string{"canary-v2", "canary", "nvidia/canary-1b-v2"}, CanonicalID: "nvidia/canary-1b-v2"},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	rr := httptest.NewRecorder()
+	g.ModelsHandler()(rr, req)
+
+	var resp modelsResponse
+	json.NewDecoder(rr.Body).Decode(&resp)
+
+	if len(resp.Data) != len(g.backends) {
+		t.Fatalf("data entries: want %d (one per backend), got %d", len(g.backends), len(resp.Data))
+	}
+	wantIDs := map[string]bool{
+		"Systran/faster-whisper-small": false,
+		"nvidia/parakeet-tdt-0.6b-v3":  false,
+		"nvidia/canary-1b-v2":          false,
+	}
+	for _, m := range resp.Data {
+		if _, ok := wantIDs[m.ID]; !ok {
+			t.Errorf("unexpected id: %q", m.ID)
+			continue
+		}
+		wantIDs[m.ID] = true
+	}
+	for id, seen := range wantIDs {
+		if !seen {
+			t.Errorf("missing canonical id: %q", id)
+		}
+	}
+}
+
+func TestModelsHandler_OwnedByFromHFPrefix(t *testing.T) {
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", Aliases: []string{"small"}, CanonicalID: "Systran/faster-whisper-small"},
+			{Name: "parakeet-v3", Aliases: []string{"parakeet-v3"}, CanonicalID: "nvidia/parakeet-tdt-0.6b-v3"},
+			{Name: "custom", Aliases: []string{"custom"}, CanonicalID: ""},           // no canonical, no slash
+			{Name: "house-model", Aliases: []string{"house-model"}, CanonicalID: ""}, // fallback to Name
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	rr := httptest.NewRecorder()
+	g.ModelsHandler()(rr, req)
+
+	var resp modelsResponse
+	json.NewDecoder(rr.Body).Decode(&resp)
+
+	byID := map[string]openaiModel{}
+	for _, m := range resp.Data {
+		byID[m.ID] = m
+	}
+
+	if got := byID["Systran/faster-whisper-small"].OwnedBy; got != "Systran" {
+		t.Errorf("Systran prefix → owned_by: want Systran, got %q", got)
+	}
+	if got := byID["nvidia/parakeet-tdt-0.6b-v3"].OwnedBy; got != "nvidia" {
+		t.Errorf("nvidia prefix → owned_by: want nvidia, got %q", got)
+	}
+	// CanonicalID="" → falls back to backend.Name; no slash → owned_by="custom"
+	if got := byID["custom"].OwnedBy; got != "custom" {
+		t.Errorf("no-slash id → owned_by: want custom, got %q", got)
+	}
+	if got := byID["house-model"].OwnedBy; got != "custom" {
+		t.Errorf("no-slash id fallback → owned_by: want custom, got %q", got)
+	}
+}
+
+func TestModelsHandler_LegacyProvidersPreserved(t *testing.T) {
+	// Adding OpenAI fields must not break the legacy providers[] shape the iOS app parses.
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", Aliases: []string{"small"}, CanonicalID: "Systran/faster-whisper-small", Provider: "whisper", DisplayName: "Small", Description: "fast"},
+			{Name: "parakeet-v3", Aliases: []string{"parakeet-v3"}, CanonicalID: "nvidia/parakeet-tdt-0.6b-v3", Provider: "parakeet", DisplayName: "Parakeet", Description: "eu"},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+	}
+	g.health.set("small", true)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	rr := httptest.NewRecorder()
+	g.ModelsHandler()(rr, req)
+
+	var resp modelsResponse
+	json.NewDecoder(rr.Body).Decode(&resp)
+
+	if len(resp.Providers) != 2 {
+		t.Fatalf("providers: want 2, got %d", len(resp.Providers))
+	}
+	if resp.Providers[0].ID != "whisper" || resp.Providers[0].Name != "Faster Whisper" {
+		t.Errorf("provider[0]: want whisper/Faster Whisper, got %s/%s", resp.Providers[0].ID, resp.Providers[0].Name)
+	}
+	if len(resp.Providers[0].Models) != 1 || resp.Providers[0].Models[0].ID != "small" {
+		t.Errorf("provider[0] model: want small, got %+v", resp.Providers[0].Models)
+	}
+	if !resp.Providers[0].Models[0].Available {
+		t.Error("provider[0] model: want Available=true (small is marked healthy)")
+	}
+	if resp.Providers[1].ID != "parakeet" {
+		t.Errorf("provider[1] id: want parakeet, got %s", resp.Providers[1].ID)
+	}
+}
+
 func TestModelsHandler_EmptyProvider_DefaultsToWhisper(t *testing.T) {
 	g := &Gateway{
 		backends: []Backend{

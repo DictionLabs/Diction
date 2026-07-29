@@ -16,7 +16,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // buildMultipart builds a multipart/form-data body with the given fields and an
@@ -71,7 +73,7 @@ func TestRewriteMultipart_StripsModelField(t *testing.T) {
 	body, ct := buildMultipart(t, map[string]string{"model": "medium", "language": "en"}, "audio.m4a", "fake-audio-data")
 	boundary := parseBoundary(ct)
 
-	rewritten, newCT, err := rewriteMultipart(body, boundary, false, "", "")
+	rewritten, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{})
 	if err != nil {
 		t.Fatalf("rewriteMultipart error: %v", err)
 	}
@@ -118,7 +120,7 @@ func TestRewriteMultipart_PreservesFileContent(t *testing.T) {
 	body, ct := buildMultipart(t, map[string]string{"model": "small"}, "audio.m4a", audioContent)
 	boundary := parseBoundary(ct)
 
-	rewritten, newCT, err := rewriteMultipart(body, boundary, false, "", "")
+	rewritten, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{})
 	if err != nil {
 		t.Fatalf("rewriteMultipart error: %v", err)
 	}
@@ -148,9 +150,64 @@ func TestRewriteMultipart_NoModelField(t *testing.T) {
 	body, ct := buildMultipart(t, map[string]string{}, "audio.m4a", "audio")
 	boundary := parseBoundary(ct)
 
-	_, _, err := rewriteMultipart(body, boundary, false, "", "")
+	_, _, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// Helper to enumerate which form-field names survived a rewrite.
+func presentFields(t *testing.T, body []byte, ct string) map[string]bool {
+	t.Helper()
+	_, params, _ := parseMediaType(ct)
+	reader := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+	found := map[string]bool{}
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("read part: %v", err)
+		}
+		found[part.FormName()] = true
+		part.Close()
+	}
+	return found
+}
+
+func TestRewriteMultipart_StripLanguageWhenAutoDetect(t *testing.T) {
+	// When StripLanguage is set (auto-detect routing), `language` is dropped so the
+	// upstream model runs native LID instead of being locked to the client's value.
+	body, ct := buildMultipart(t, map[string]string{"language": "auto"}, "audio.m4a", "audio")
+	boundary := parseBoundary(ct)
+
+	rewritten, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{
+		StripLanguage: true,
+	})
+	if err != nil {
+		t.Fatalf("rewriteMultipart error: %v", err)
+	}
+
+	found := presentFields(t, rewritten, newCT)
+	if found["language"] {
+		t.Error("language must be stripped when StripLanguage=true")
+	}
+}
+
+func TestRewriteMultipart_KeepsLanguageWhenSingleLang(t *testing.T) {
+	// Default (StripLanguage=false): preserve the language field as-is.
+	body, ct := buildMultipart(t, map[string]string{"language": "fr"}, "audio.m4a", "audio")
+	boundary := parseBoundary(ct)
+
+	rewritten, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{})
+	if err != nil {
+		t.Fatalf("rewriteMultipart error: %v", err)
+	}
+
+	found := presentFields(t, rewritten, newCT)
+	if !found["language"] {
+		t.Error("language must be preserved when StripLanguage=false")
 	}
 }
 
@@ -161,7 +218,7 @@ func TestRewriteMultipart_ConvertToWAV(t *testing.T) {
 	body, ct := buildMultipart(t, map[string]string{"language": "en"}, "audio.m4a", string(wavData))
 	boundary := parseBoundary(ct)
 
-	rewritten, newCT, err := rewriteMultipart(body, boundary, true, "", "")
+	rewritten, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{ConvertToWAV: true})
 	if err != nil {
 		t.Fatalf("rewriteMultipart error: %v", err)
 	}
@@ -322,6 +379,64 @@ func TestTranscriptionHandler_FallbackModelRouteLogs(t *testing.T) {
 	}
 }
 
+func TestTranscriptionHandler_AutoDetectRoutesToFallback(t *testing.T) {
+	// `language=auto` must route to the fallback model and strip the `language`
+	// field from the upstream multipart body so native LID can run.
+	var upstreamLanguage string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mr, err := r.MultipartReader()
+		if err != nil {
+			t.Fatalf("backend: read multipart: %v", err)
+		}
+		for {
+			part, perr := mr.NextPart()
+			if perr != nil {
+				break
+			}
+			if part.FormName() == "language" {
+				b, _ := io.ReadAll(part)
+				upstreamLanguage = string(b)
+			}
+			part.Close()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"text":"detected"}`)
+	}))
+	defer backend.Close()
+
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "canary-v2", URL: backend.URL, Aliases: []string{"canary-v2"}},
+			{Name: "large-v3-turbo", URL: backend.URL, Aliases: []string{"large-v3-turbo"}},
+		},
+		health:        newHealthState(),
+		defaultModel:  "canary-v2",
+		fallbackModel: "large-v3-turbo",
+		maxBodySize:   10 * 1024 * 1024,
+	}
+	g.health.set("canary-v2", true)
+	g.health.set("large-v3-turbo", true)
+
+	body, ct := buildMultipart(t, map[string]string{"language": "auto"}, "audio.m4a", "fake-audio")
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", ct)
+	rr := httptest.NewRecorder()
+	g.TranscriptionHandler()(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d", rr.Code)
+	}
+	if upstreamLanguage != "" {
+		t.Errorf("language must be stripped upstream when auto-detect is active; got %q", upstreamLanguage)
+	}
+	if got := rr.Header().Get("X-Diction-Route-Model"); got != "large-v3-turbo" {
+		t.Errorf("Route-Model: want large-v3-turbo, got %q", got)
+	}
+	if got := rr.Header().Get("X-Diction-Route-Detect"); got != "true" {
+		t.Errorf("Route-Detect: want true, got %q", got)
+	}
+}
+
 func TestTranscriptionHandler_OnTranscriptionCallback(t *testing.T) {
 	// OnTranscription hook is called when the response is rewritten (enhance=true path).
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -339,7 +454,7 @@ func TestTranscriptionHandler_OnTranscriptionCallback(t *testing.T) {
 		health:       newHealthState(),
 		defaultModel: "small",
 		maxBodySize:  10 * 1024 * 1024,
-		OnTranscription: func(model string, _ int64, chars int, _, _ bool) {
+		OnTranscription: func(_ context.Context, model string, _ int64, chars int, _ int64, _, _ bool) {
 			gotModel = model
 			gotChars = chars
 		},
@@ -615,7 +730,7 @@ func TestRewriteMultipart_InjectsWhisperPrompt(t *testing.T) {
 	body, ct := buildMultipart(t, map[string]string{"language": "en"}, "audio.m4a", "audio")
 	boundary := parseBoundary(ct)
 
-	rewritten, newCT, err := rewriteMultipart(body, boundary, false, "", "Kubernetes, PostgreSQL")
+	rewritten, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{WhisperPrompt: "Kubernetes, PostgreSQL"})
 	if err != nil {
 		t.Fatalf("rewriteMultipart: %v", err)
 	}
@@ -649,7 +764,7 @@ func TestRewriteMultipart_NoPromptWhenEmpty(t *testing.T) {
 	body, ct := buildMultipart(t, map[string]string{"language": "en"}, "audio.m4a", "audio")
 	boundary := parseBoundary(ct)
 
-	rewritten, newCT, err := rewriteMultipart(body, boundary, false, "", "")
+	rewritten, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{})
 	if err != nil {
 		t.Fatalf("rewriteMultipart: %v", err)
 	}
@@ -751,7 +866,7 @@ func TestTranscriptionHandler_NoPromptWhenNoCustomWords(t *testing.T) {
 func TestRewriteMultipart_StripsContextField(t *testing.T) {
 	body, ct := buildMultipart(t, map[string]string{"context": `{"before":"x"}`, "language": "en"}, "audio.wav", "audio")
 	boundary := parseBoundary(ct)
-	rewritten, newCT, err := rewriteMultipart(body, boundary, false, "", "")
+	rewritten, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{})
 	if err != nil {
 		t.Fatalf("rewriteMultipart: %v", err)
 	}
@@ -977,6 +1092,192 @@ func TestTranscriptionHandler_NonJSONBackendResponse(t *testing.T) {
 	}
 }
 
+// --- response_format (OpenAI compatibility) ---
+
+func TestResponseFormat_Text_ReturnsPlainText(t *testing.T) {
+	// response_format=text: gateway unwraps the backend's {"text":"..."} and returns a plain body.
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"text":"hello plain world"}`)
+	}))
+	defer backend.Close()
+
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", URL: backend.URL, Aliases: []string{"small"}},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+
+	body, ct := buildMultipart(t, map[string]string{"response_format": "text"}, "audio.m4a", "fake-audio")
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", ct)
+	rr := httptest.NewRecorder()
+	g.TranscriptionHandler()(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
+		t.Errorf("Content-Type: want text/plain, got %q", got)
+	}
+	if got := rr.Body.String(); got != "hello plain world" {
+		t.Errorf("body: want plain transcript, got %q", got)
+	}
+}
+
+func TestResponseFormat_Json_Unchanged(t *testing.T) {
+	// Default (no response_format) keeps the {"text":"..."} JSON shape.
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"text":"still json"}`)
+	}))
+	defer backend.Close()
+
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", URL: backend.URL, Aliases: []string{"small"}},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+
+	body, ct := buildMultipart(t, map[string]string{}, "audio.m4a", "fake-audio")
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", ct)
+	rr := httptest.NewRecorder()
+	g.TranscriptionHandler()(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d", rr.Code)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("default response must be JSON, got: %s", rr.Body.String())
+	}
+	if resp["text"] != "still json" {
+		t.Errorf("text: want 'still json', got %v", resp["text"])
+	}
+}
+
+func TestResponseFormat_UnsupportedRejected(t *testing.T) {
+	// verbose_json/srt/vtt require word timestamps we don't produce — reject loud.
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", URL: "http://unreachable:0", Aliases: []string{"small"}},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+
+	body, ct := buildMultipart(t, map[string]string{"response_format": "verbose_json"}, "audio.m4a", "fake-audio")
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", ct)
+	rr := httptest.NewRecorder()
+	g.TranscriptionHandler()(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status: want 400, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "verbose_json") {
+		t.Errorf("error should name the unsupported format, got: %s", rr.Body.String())
+	}
+}
+
+func TestResponseFormat_E2EConflict(t *testing.T) {
+	// text body + E2E envelope are semantically incompatible — reject rather than silently
+	// downgrade (both sides of the contract get violated otherwise).
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", URL: "http://unreachable:0", Aliases: []string{"small"}},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+
+	clientPriv, _ := ecdh.X25519().GenerateKey(rand.Reader)
+	clientPubB64 := base64.RawURLEncoding.EncodeToString(clientPriv.PublicKey().Bytes())
+
+	body, ct := buildMultipart(t, map[string]string{"response_format": "text"}, "audio.m4a", "fake-audio")
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", ct)
+	req.Header.Set("X-Diction-E2E", clientPubB64)
+	rr := httptest.NewRecorder()
+	g.TranscriptionHandler()(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status: want 400, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+}
+
+func TestResponseFormat_BackendError_StaysJSON(t *testing.T) {
+	// Backend 5xx must not get wrapped as plain text just because the client asked
+	// for text output — OpenAI convention is that errors always come back as JSON,
+	// and our writeTranscriptionResponse helper only runs on 2xx.
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"error":"backend down"}`)
+	}))
+	defer backend.Close()
+
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", URL: backend.URL, Aliases: []string{"small"}},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+
+	body, ct := buildMultipart(t, map[string]string{"response_format": "text"}, "audio.m4a", "fake-audio")
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", ct)
+	rr := httptest.NewRecorder()
+	g.TranscriptionHandler()(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status: want 500 (backend passthrough), got %d", rr.Code)
+	}
+	// Error body must remain JSON, not a plain-text rewrite.
+	var errResp map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &errResp); err != nil {
+		t.Errorf("backend error should stay JSON-shaped, got: %s", rr.Body.String())
+	}
+}
+
+func TestRewriteMultipart_StripsResponseFormat(t *testing.T) {
+	// response_format is a gateway-side control field; it must not be forwarded to the backend.
+	body, ct := buildMultipart(t, map[string]string{"response_format": "text", "language": "en"}, "audio.m4a", "audio")
+	boundary := parseBoundary(ct)
+
+	rewritten, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{})
+	if err != nil {
+		t.Fatalf("rewriteMultipart: %v", err)
+	}
+
+	_, params, _ := parseMediaType(newCT)
+	reader := multipart.NewReader(bytes.NewReader(rewritten), params["boundary"])
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("read part: %v", err)
+		}
+		if part.FormName() == "response_format" {
+			t.Error("response_format should have been stripped from multipart")
+		}
+		part.Close()
+	}
+}
+
 func TestTranscriptionHandler_TargetPath(t *testing.T) {
 	// Backends with TargetPath (e.g. canary-v2) must use that path instead of /v1/audio/transcriptions.
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1014,5 +1315,200 @@ func TestTranscriptionHandler_TargetPath(t *testing.T) {
 	// Canary's "timestamps":null must be stripped — gateway contract is {"text":"..."}
 	if bytes.Contains(rr.Body.Bytes(), []byte("timestamps")) {
 		t.Errorf("timestamps field leaked into response: %s", rr.Body.String())
+	}
+}
+
+// --- Commit D: proxy-cancel errors point ---
+
+// TestTranscriptionHandler_UpstreamCanceled_EmitsError verifies the proxy
+// ErrorHandler fires an errors point with kind=stt_upstream_canceled when the
+// client cancels mid-flight (visibility hook from Commit D — without it these
+// failures disappear from Influx, confirmed 30d sweep) but that a pure client
+// cancel is NOT treated as a backend fault: the backend stays healthy, no
+// stt_backend_5xx is emitted, OnRequestFailed is not called, and no fallback
+// retry fires. A context.Canceled is client-initiated by definition (transport
+// timeouts surface as context.DeadlineExceeded), so it must never demote a
+// healthy backend or burn a wasteful fallback GPU inference for a client that
+// is already gone.
+// Not parallel-safe: mutates core.OnError / OnRequestFailed.
+func TestTranscriptionHandler_UpstreamCanceled_EmitsError(t *testing.T) {
+	events, restoreErr := withCapturedOnError(t)
+	defer restoreErr()
+	failures, restoreFail := withCapturedOnRequestFailed(t)
+	defer restoreFail()
+
+	// Backend blocks until the test releases it — the client cancels before
+	// the backend ever responds. We release after asserting so Close() doesn't
+	// deadlock on the still-active handler goroutine.
+	blockStart := make(chan struct{})
+	release := make(chan struct{})
+	var startOnce sync.Once
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		startOnce.Do(func() { close(blockStart) })
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		case <-time.After(5 * time.Second):
+		}
+	}))
+	defer backend.Close()
+	defer close(release)
+
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", URL: backend.URL, Aliases: []string{"small"}},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+	// Mark the backend explicitly healthy so a later demotion is detectable
+	// (health.get defaults to false for unset names).
+	g.health.set("small", true)
+
+	body, ct := buildMultipart(t, map[string]string{"model": "small"}, "audio.m4a", "fake-audio")
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body)).WithContext(ctx)
+	req.Header.Set("Content-Type", ct)
+	rr := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		g.TranscriptionHandler()(rr, req)
+	}()
+
+	// Wait for the proxy to reach the backend, then cancel.
+	<-blockStart
+	cancel()
+	<-done
+
+	if len(*events) == 0 {
+		t.Fatal("no OnError event captured on proxy cancel")
+	}
+	got := (*events)[0]
+	if got.Kind != "stt_upstream_canceled" {
+		t.Errorf("kind: want stt_upstream_canceled, got %q", got.Kind)
+	}
+	if got.Source != "stt" {
+		t.Errorf("source: want stt, got %q", got.Source)
+	}
+
+	// Regression (error-stt-upstream-canceled): a client cancel must NOT be
+	// misrouted through the 5xx backend-failure path. Before the fix the
+	// ErrorHandler wrote 502, so the caller demoted the backend, emitted a
+	// stt_backend_5xx event, and (having no alternative) called
+	// OnRequestFailed(errTypeSTTError) — inflating the Din error-rate alerter
+	// on a benign double-tap. None of that may happen now.
+	for _, e := range *events {
+		if e.Kind == "stt_backend_5xx" {
+			t.Errorf("client cancel wrongly emitted stt_backend_5xx: %+v", e)
+		}
+	}
+	if !g.health.get("small") {
+		t.Error("client cancel wrongly demoted the backend (health=false); a cancel is not a backend fault")
+	}
+	if len(*failures) != 0 {
+		t.Errorf("OnRequestFailed must NOT be called on a pure client cancel, got %d call(s): %v", len(*failures), *failures)
+	}
+	if rr.Code != statusClientClosed {
+		t.Errorf("status: want %d (client closed), got %d", statusClientClosed, rr.Code)
+	}
+}
+
+// TestTranscriptionHandler_UpstreamUnreachable_EmitsBackendError verifies
+// non-cancel transport errors are classified as stt_backend_error (not
+// stt_upstream_canceled), keeping the closed vocabulary coherent.
+func TestTranscriptionHandler_UpstreamUnreachable_EmitsBackendError(t *testing.T) {
+	events, restoreErr := withCapturedOnError(t)
+	defer restoreErr()
+	failures, restoreFail := withCapturedOnRequestFailed(t)
+	defer restoreFail()
+
+	g := &Gateway{
+		backends: []Backend{
+			// Port 1: guaranteed closed.
+			{Name: "small", URL: "http://127.0.0.1:1", Aliases: []string{"small"}},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+
+	body, ct := buildMultipart(t, map[string]string{"model": "small"}, "audio.m4a", "fake-audio")
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", ct)
+	rr := httptest.NewRecorder()
+	g.TranscriptionHandler()(rr, req)
+
+	if len(*events) == 0 {
+		t.Fatal("no OnError event captured for unreachable backend")
+	}
+	if (*events)[0].Kind != "stt_backend_error" {
+		t.Errorf("kind: want stt_backend_error, got %q", (*events)[0].Kind)
+	}
+	if len(*failures) == 0 {
+		t.Error("OnRequestFailed not called on transport error")
+	}
+}
+
+// --- rewriteMultipart LanguageOverride and InjectVerboseJSON ---
+
+// fieldValues returns a map of field name → value for all non-file parts.
+func fieldValues(t *testing.T, body []byte, ct string) map[string]string {
+	t.Helper()
+	_, params, _ := parseMediaType(ct)
+	reader := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+	vals := map[string]string{}
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("fieldValues: read part: %v", err)
+		}
+		if part.FileName() == "" {
+			data, _ := io.ReadAll(part)
+			vals[part.FormName()] = string(data)
+		}
+		part.Close()
+	}
+	return vals
+}
+
+func TestRewriteMultipart_LanguageOverride(t *testing.T) {
+	// LanguageOverride strips the client language and injects the given code.
+	body, ct := buildMultipart(t, map[string]string{"language": "auto"}, "audio.m4a", "audio")
+	boundary := parseBoundary(ct)
+
+	rewritten, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{
+		LanguageOverride: "cs",
+	})
+	if err != nil {
+		t.Fatalf("rewriteMultipart: %v", err)
+	}
+
+	vals := fieldValues(t, rewritten, newCT)
+	if vals["language"] != "cs" {
+		t.Errorf("language: want cs, got %q", vals["language"])
+	}
+}
+
+func TestRewriteMultipart_InjectVerboseJSON(t *testing.T) {
+	// InjectVerboseJSON adds response_format=verbose_json after stripping any client value.
+	body, ct := buildMultipart(t, map[string]string{"language": "en"}, "audio.m4a", "audio")
+	boundary := parseBoundary(ct)
+
+	rewritten, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{
+		InjectVerboseJSON: true,
+	})
+	if err != nil {
+		t.Fatalf("rewriteMultipart: %v", err)
+	}
+
+	vals := fieldValues(t, rewritten, newCT)
+	if vals["response_format"] != "verbose_json" {
+		t.Errorf("response_format: want verbose_json, got %q", vals["response_format"])
 	}
 }

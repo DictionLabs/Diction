@@ -16,11 +16,12 @@ import (
 )
 
 type llmConfig struct {
-	Enabled bool
-	BaseURL string
-	APIKey  string
-	Model   string
-	Prompt  string
+	Enabled         bool
+	BaseURL         string
+	APIKey          string
+	Model           string
+	Prompt          string
+	ReasoningEffort string
 }
 
 func llmConfigFromEnv() llmConfig {
@@ -46,11 +47,12 @@ func llmConfigFromEnv() llmConfig {
 	}
 
 	return llmConfig{
-		Enabled: enabled,
-		APIKey:  core.EnvOrDefault("LLM_API_KEY", ""),
-		BaseURL: baseURL,
-		Model:   model,
-		Prompt:  prompt,
+		Enabled:         enabled,
+		APIKey:          core.EnvOrDefault("LLM_API_KEY", ""),
+		BaseURL:         baseURL,
+		Model:           model,
+		Prompt:          prompt,
+		ReasoningEffort: core.EnvOrDefault("LLM_REASONING_EFFORT", ""),
 	}
 }
 
@@ -66,6 +68,7 @@ func (c llmConfig) process(ctx context.Context, transcript string) (string, erro
 		Messages            []message `json:"messages"`
 		MaxCompletionTokens int       `json:"max_completion_tokens"`
 		Temperature         float64   `json:"temperature"`
+		ReasoningEffort     string    `json:"reasoning_effort,omitempty"`
 	}
 
 	maxTokens := len(transcript)/2 + 200
@@ -84,6 +87,7 @@ func (c llmConfig) process(ctx context.Context, transcript string) (string, erro
 		},
 		MaxCompletionTokens: maxTokens,
 		Temperature:         0.0,
+		ReasoningEffort:     c.ReasoningEffort,
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal request: %w", err)

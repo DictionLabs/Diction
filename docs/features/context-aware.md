@@ -7,7 +7,7 @@ description: Diction reads the text around your cursor and adapts your dictation
 
 # Context-Aware Text Editing
 
-Diction is not a blank-page dictation tool. It sees where your cursor is, reads the text before and after the insertion point, and understands what you have selected. When AI Companion is active, every dictation is shaped to fit the context it is landing in.
+Diction is not a blank-page dictation tool. It sees where your cursor is, reads the text before and after the insertion point, and understands what you have selected. When Writing Tools are active, every dictation is shaped to fit the context it is landing in.
 
 This turns Diction from a transcription tool into a voice-powered text editor.
 
@@ -115,24 +115,24 @@ Every time you tap the mic, Diction captures:
 - The text after your cursor (up to 500 characters)
 - Any selected text
 
-This context is sent alongside your audio. AI Companion uses it to decide capitalisation, punctuation, formatting, and tone. The result is text that reads like it was typed in place, not pasted from a separate dictation box.
+This context is sent alongside your audio. Writing Tools use it to decide capitalisation, punctuation, formatting, and tone. The result is text that reads like it was typed in place, not pasted from a separate dictation box.
 
 ## When Is Context Used?
 
-Context-aware editing requires **AI Companion** to be active. AI Companion is available with Diction One cloud.
+Context-aware editing requires **Writing Tools** to be active. Writing Tools are available with Diction One cloud.
 
-Without AI Companion (on-device or self-hosted without cloud post-processing), Diction still handles select-and-replace correctly -- your dictation replaces the selection. But the formatting will not adapt to surrounding text.
+Without Writing Tools (on-device or self-hosted without cloud post-processing), Diction still handles select-and-replace correctly. Your dictation replaces the selection. But the formatting will not adapt to surrounding text.
 
 | Mode | Select and Replace | Context-Aware Formatting |
 |------|-------------------|------------------------|
 | On-Device | Yes | -- |
 | Self-Hosted | Yes | -- |
 | Diction One Cloud | Yes | Yes |
-| Diction One Cloud (AI Companion off) | Yes | -- |
+| Diction One Cloud (Writing Tools off) | Yes | . |
 
 ## Tips
 
 - **Place your cursor precisely.** The more context Diction has on both sides, the better the formatting. Tap to position your cursor where you want the text to go.
 - **Select generously.** When replacing, select the full phrase or sentence you want to rewrite. Diction works best when it can see the whole thing you are replacing.
-- **Speak naturally.** You do not need to dictate punctuation or capitalisation. AI Companion handles it based on context.
+- **Speak naturally.** You do not need to dictate punctuation or capitalisation. Writing Tools handle it based on context.
 - **Use it for edits, not just dictation.** Diction is most powerful when you are refining existing text. First drafts, rewrites, quick fixes -- it handles all of them.

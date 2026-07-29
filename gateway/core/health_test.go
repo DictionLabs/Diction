@@ -47,6 +47,18 @@ func TestHealthState_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+func TestGateway_SetAndIsServiceHealthy(t *testing.T) {
+	g := &Gateway{health: newHealthState()}
+	g.SetServiceHealth("wlk", true)
+	if !g.IsServiceHealthy("wlk") {
+		t.Error("want true after SetServiceHealth(true)")
+	}
+	g.SetServiceHealth("wlk", false)
+	if g.IsServiceHealthy("wlk") {
+		t.Error("want false after SetServiceHealth(false)")
+	}
+}
+
 func TestStartHealthChecker_UpdatesState(t *testing.T) {
 	// Start a mock backend that returns 200 OK for /health
 	healthyBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

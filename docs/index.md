@@ -5,8 +5,8 @@ description: Voice keyboard for iPhone with open-source server. On-device, self-
 
 hero:
   name: Diction
-  text: "Powerful<br>speech to text<br>iPhone keyboard"
-  tagline: "Your voice. Your data. On your device or self-hosted.<br>No limits · Private · Encrypted · 99 languages"
+  text: "Speak to Type and Edit"
+  tagline: "5x faster than typing, in any app.<br>On-device, self-hosted, or cloud. Your choice."
   actions:
     - theme: brand
       text: Download for iOS
@@ -43,8 +43,8 @@ features:
     details: Automatic multilingual speech recognition. Speak in your language, or translate to another - Diction handles both.
   - icon:
       src: /icon-chat.svg
-    title: AI Companion
-    details: Polishes your speech into clean text and understands voice commands to rewrite, translate, or edit. Per-app tone presets, custom dictionary, context-aware formatting.
+    title: Writing Tools
+    details: Speak to edit, not just dictate. Say "translate this" or "make it more formal" and Diction rewrites your text on the spot. Per-app tones, custom dictionary, context-aware formatting.
   - icon:
       src: /icon-cloud.svg
     title: Diction One
@@ -53,11 +53,16 @@ features:
 
 <script setup>
 import VPButton from 'vitepress/dist/client/theme-default/components/VPButton.vue'
+import HowItWorks from './.vitepress/theme/HowItWorks.vue'
+import TestimonialsSection from './.vitepress/theme/TestimonialsSection.vue'
+import KeyboardThemes from './.vitepress/theme/KeyboardThemes.vue'
 </script>
 
+<HowItWorks />
+<TestimonialsSection />
+<KeyboardThemes />
+
 <div class="cta-bottom">
-<h2>Enough said.<br>Your move.</h2>
-<p>We could keep going but at this point we're just holding you back. Go talk to your phone.</p>
 <div class="VPHero"><div class="actions">
 <VPButton tag="a" text="Download for iOS" href="https://apps.apple.com/app/id6759807364" theme="brand" />
 </div></div>

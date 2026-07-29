@@ -1,0 +1,42 @@
+[
+  {
+    "title": "Absolute amazing, secure, voice to text application!",
+    "body": "I've been using this non-stop for two or three months now, and this is the exact application I wanted for this process. I wanted to be able to do it completely on device or through my own hosted voice transcription server, which this offers as well as extremely powerful. Or you can get really Powerful Third-party hosted solution that you can pay a small amount for. I'm extremely security and privacy conscious, so I wanted things I can control locally\n\nThe developer has added many new options over the months, including a newer model called NVIDIA Parakeet that is Is still extremely accurate, but smaller and significantly faster than the largest whisper model that was originally the best one in terms of accuracy.\n\nThis works extremely fast, even on device, on both my iPhone 17 Pro Max and my iPad Mini 7th generation (which uses the same CPU/SOC as the iPhone 15 Pro) which means it should be extremely fast on any modern iPhone or iPad.\n\nEarlier versions had some minor bugs, but they have been fixed and the developer has been very responsive to the bug reports that I've made and they are working diligently to make this application better and better by day!",
+    "author": "HClark86"
+  },
+  {
+    "title": "非常推荐的一个软件。",
+    "body": "如果你自己有Mac的话，可以非常简易地搭载后端，后端的搭载的扩展能力也很强。你可以，如果你懂一点技术的话，可以把后端也扩展起来。前端已经是一个非常Polish的一个界面。我觉得对于稍稍懂一点技术的来说，是一个非常好的选择。而且你可以能够控制自己的隐私。对于不懂技术的小白玩家来说，直接冲无脑冲这个 注册 也是一个非常好的选择。最终来说，这是一个非常好的软件，我非常喜欢它。",
+    "author": "CheneyYan"
+  },
+  {
+    "title": "Better than Wispr Flow highly recommend",
+    "body": "This app is truly incredible. It has all your bells and whistles and really great features that I really like and the local model Parakeet is very accurate. I used to be a Whisperflow user, and I just got sick and tired of having to context-switch and leave my app, and I feel like with this app, it's a lot more frictionless. Since the model locale you don't have to worry about your voice data being sent to a server if you just leave your microphone on all the time. I'm super satisfied with this app.",
+    "author": "sudo-super-su"
+  },
+  {
+    "title": "Perfect dictation even for my southern accent!",
+    "body": "Works amazing. Especially on job sites with equipment running in the background. I'm using it now to leave this review. It looks very professional when texting with clients because it corrects my bad grammar and corrects some of my Southern accent. 10 out of 10 would recommend!",
+    "author": "OMGitsMiniMe"
+  },
+  {
+    "title": "Interesting idea",
+    "body": "I like the concept and provides multiple options for the user",
+    "author": "Emily Voss"
+  },
+  {
+    "title": "Great, works offline!",
+    "body": "Finally, a voice keyboard that actually understands me and doesn't harvest my personal data! It works flawlessly across all my apps, and having the option to run it completely offline is a huge bonus.",
+    "author": "Zilbertas"
+  },
+  {
+    "title": "Goodbye Siri Dictation",
+    "body": "I've grown to be frustrated with Apples Siri and the dictation functionality. Too many times it gets it wrong with bad punctuation. Until diction arrived my workflow was to dictate on mobile using ChatGPT, copy it, then go into the app and paste my text. Too cumbersome! now with diction I self host whisper and I can seamlessly dictate. Love it.",
+    "author": "dkshaw"
+  },
+  {
+    "title": "Great",
+    "body": "Very practical app for voice dictation. I like the simple interface, the fast transcription, and the focus on privacy. Perfect for taking notes, replying to messages, or working without having to type.",
+    "author": "Sarah-Cu"
+  }
+]

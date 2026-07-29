@@ -11,6 +11,22 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'FiraSans';
+  src: url('/fonts/FiraSans-ExtraLightItalic.ttf') format('truetype');
+  font-weight: 200;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'FiraSans';
+  src: url('/fonts/FiraSans-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
 :root {
   /* Brand palette */
   --diction-blue: #007AFF;
@@ -110,6 +126,17 @@
   transition: none;
 }
 
+.VPHero .text {
+  font-family: 'FiraSans', sans-serif;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--diction-black);
+}
+
+.dark .VPHero .text {
+  color: #e8e8e8;
+}
+
 /* -- Hero takes full viewport, centered -- */
 .VPHero {
   min-height: calc(100dvh - var(--vp-nav-height, 64px));
@@ -130,11 +157,11 @@
   min-height: 580px;
 }
 
-/* -- Text block: center everything vertically & horizontally -- */
+/* -- Text block: left-aligned, centered vertically -- */
 .VPHero .main {
   display: flex !important;
   flex-direction: column !important;
-  align-items: center !important;
+  align-items: flex-start !important;
   justify-content: center !important;
   max-width: none !important;
   flex: 1 1 55% !important;
@@ -157,18 +184,18 @@
 }
 
 .VPHero .main {
-  text-align: center;
-  align-items: center;
+  text-align: left;
+  align-items: flex-start;
 }
 
 .VPHero .heading {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .VPHero .actions {
-  justify-content: center !important;
+  justify-content: flex-start !important;
   margin-top: 24px !important;
 }
 
@@ -186,17 +213,22 @@
 .VPHero .name {
   font-size: 96px !important;
   line-height: 1.1 !important;
-  margin-bottom: 40px !important;
+  margin-bottom: 16px !important;
 }
 
 .VPHero .text {
-  font-size: 72px !important;
-  line-height: 1.15 !important;
+  font-size: 44px !important;
+  line-height: 1.2 !important;
+  margin-bottom: 24px !important;
 }
 
 .VPHero .tagline {
-  font-size: 22px !important;
-  line-height: 1.5 !important;
+  font-family: 'FiraSans', sans-serif;
+  font-weight: 400;
+  font-style: italic;
+  font-size: 28px !important;
+  line-height: 1.35 !important;
+  max-width: 560px !important;
 }
 
 .VPHero .actions .VPButton {
@@ -264,10 +296,14 @@
 .VPFeatures .VPFeature .VPImage {
   width: 36px !important;
   height: 36px !important;
+  filter: brightness(0) saturate(100%) invert(27%) sepia(97%) saturate(3000%) hue-rotate(211deg) brightness(118%) contrast(101%);
 }
 
 .VPFeatures .VPFeature .title {
-  font-size: 28px !important;
+  font-family: 'FiraSans', sans-serif;
+  font-weight: 400;
+  font-style: italic;
+  font-size: 22px !important;
 }
 
 /* -- Feature cards -- white bg with lift on hover -- */
@@ -294,7 +330,7 @@
 }
 
 .dark .VPFeatures .VPFeature .VPImage {
-  filter: brightness(0) invert(1) brightness(0.8);
+  filter: brightness(0) saturate(100%) invert(63%) sepia(60%) saturate(1200%) hue-rotate(196deg) brightness(108%) contrast(101%);
 }
 
 /* -- Diction One feature card -- */
@@ -350,19 +386,36 @@
 
   .VPHero .main {
     max-width: 100%;
+    align-items: center !important;
+    text-align: center !important;
+  }
+
+  .VPHero .heading {
+    align-items: center !important;
+  }
+
+  .VPHero .actions {
+    justify-content: center !important;
+  }
+
+  .VPHero .tagline {
+    text-align: center;
+    margin-left: auto;
+    margin-right: auto;
   }
 
   .VPHero .name {
     font-size: 64px !important;
-    margin-bottom: 24px !important;
+    margin-bottom: 12px !important;
   }
 
   .VPHero .text {
-    font-size: 40px !important;
+    font-size: 32px !important;
+    margin-bottom: 16px !important;
   }
 
   .VPHero .tagline {
-    font-size: 17px !important;
+    font-size: 20px !important;
   }
 
   /* Neutralize the blue gradient behind the inline font on mobile */
@@ -374,15 +427,16 @@
 @media (max-width: 480px) {
   .VPHero .name {
     font-size: 52px !important;
-    margin-bottom: 20px !important;
+    margin-bottom: 10px !important;
   }
 
   .VPHero .text {
-    font-size: 32px !important;
+    font-size: 26px !important;
+    margin-bottom: 14px !important;
   }
 
   .VPHero .tagline {
-    font-size: 15px !important;
+    font-size: 17px !important;
   }
 }
 

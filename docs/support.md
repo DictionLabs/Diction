@@ -66,7 +66,7 @@ You can cancel at any time. Your subscription remains active until the end of th
 <summary>Is it really free?</summary>
 <div>
 
-On-device and self-hosted modes are completely free. No word limits, no daily caps. Diction One unlocks cloud transcription with the highest accuracy, plus AI Companion with tone presets and a custom dictionary. Free trial included.
+On-device and self-hosted modes are completely free. No word limits, no daily caps. Diction One unlocks cloud transcription with the highest accuracy, plus Writing Tools with per-app tones and a custom dictionary. Free trial included.
 
 </div>
 </details>
@@ -75,7 +75,7 @@ On-device and self-hosted modes are completely free. No word limits, no daily ca
 <summary>How is it better than Apple Dictation?</summary>
 <div>
 
-More accurate speech models, no session time limits, no word caps. AI Companion cleans up filler words and grammar automatically. Context-aware editing reads the text around your cursor so dictating mid-sentence produces correct capitalization and punctuation. Set a tone per app, add your own words for names and jargon, and search your full dictation history. Apple offers none of that.
+More accurate speech models, no session time limits, no word caps. Writing Tools clean up filler words and grammar automatically. Context-aware editing reads the text around your cursor so dictating mid-sentence produces correct capitalization and punctuation. Set a tone per app, add your own words for names and jargon, and search your full dictation history. Apple offers none of that.
 
 </div>
 </details>
@@ -117,7 +117,7 @@ Never. On-device mode processes audio in memory and discards it immediately. Sel
 </details>
 
 <details>
-<summary>What is AI Companion?</summary>
+<summary>What are Writing Tools?</summary>
 <div>
 
 After transcription, Diction can optionally clean up your text. It removes filler words, fixes grammar, and polishes the result. Set a tone per app (Professional for email, Casual for chat) and add your own words to a custom dictionary so names and jargon come through right. Only the text is sent to the AI, never the audio.

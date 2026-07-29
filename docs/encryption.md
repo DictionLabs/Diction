@@ -24,15 +24,15 @@ We do not ask you to trust us. We give you the code.
 - **Automatic on Diction One and self-hosted**: the same protection runs on our cloud and on every community-deployed gateway. No configuration. No opt-in.
 - **Open-source implementation**: the encryption code is public on GitHub. Read it, audit it, run it yourself.
 
-## AI Companion: Encrypted Both Ways
+## Writing Tools: Encrypted Both Ways
 
-When AI Companion cleans up your transcription, the text makes a round trip. Your raw words go to the server. The polished version comes back.
+When Writing Tools clean up your transcription, the text makes a round trip. Your raw words go to the server. The polished version comes back.
 
 Both directions are encrypted.
 
 Your text is sealed on your device before it leaves. The server decrypts it, runs the cleanup, and encrypts the result with a fresh key before sending it back. At no point does your text travel unprotected.
 
-This is not something you configure. It happens on every AI Companion request, automatically.
+This is not something you configure. It happens on every Writing Tools request, automatically.
 
 ## On-Device Is Still the Gold Standard
 

@@ -319,3 +319,60 @@ func TestNewGateway_WithCustomBackend(t *testing.T) {
 		t.Errorf("defaultModel: want custom, got %s", g.defaultModel)
 	}
 }
+
+// --- EnvFloatOrDefault ---
+
+func TestEnvFloatOrDefault_ReturnsDefault(t *testing.T) {
+	if got := EnvFloatOrDefault("DICTION_NONEXISTENT_XYZ_123", 0.75); got != 0.75 {
+		t.Errorf("got %v, want 0.75", got)
+	}
+}
+
+func TestEnvFloatOrDefault_ReturnsEnvValue(t *testing.T) {
+	os.Setenv("DICTION_TEST_FLOAT_XYZ", "1.23")
+	defer os.Unsetenv("DICTION_TEST_FLOAT_XYZ")
+	if got := EnvFloatOrDefault("DICTION_TEST_FLOAT_XYZ", 0.75); got != 1.23 {
+		t.Errorf("got %v, want 1.23", got)
+	}
+}
+
+// Guards the canary-qwen disabled state: its container doesn't fit on the 16GB
+// GPU (server/docker-compose.yml), so it must stay Disabled — otherwise warmup
+// and the health poller hammer a dead host (http://canary-qwen:9000 → 127.0.0.1).
+func TestDefaultBackends_CanaryQwenDisabled(t *testing.T) {
+	for _, b := range DefaultBackends() {
+		if b.Name == "canary-qwen" {
+			if !b.Disabled {
+				t.Error("canary-qwen must stay Disabled until its container is deployed")
+			}
+			return
+		}
+	}
+	t.Error("canary-qwen backend not found in DefaultBackends")
+}
+
+// Exercises the Disabled skip in the health checker: a disabled backend with an
+// unroutable URL must be skipped (not polled), so NewGateway's synchronous first
+// check returns instantly and never marks it. A live backend is still polled.
+func TestHealthChecker_SkipsDisabledBackend(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	g := NewGateway(Config{
+		Backends: []Backend{
+			{Name: "live", URL: srv.URL, Aliases: []string{"live"}},
+			{Name: "dead", URL: "http://10.255.255.1:9", Aliases: []string{"dead"}, Disabled: true},
+		},
+		DefaultModel: "live",
+		MaxBodySize:  1 << 20,
+	})
+
+	if !g.IsServiceHealthy("live") {
+		t.Error("live backend should be healthy after the initial check")
+	}
+	if g.IsServiceHealthy("dead") {
+		t.Error("disabled backend must be skipped, not polled or marked healthy")
+	}
+}

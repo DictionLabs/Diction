@@ -53,11 +53,13 @@ func TestLLM_ConfigFromEnv_Enabled(t *testing.T) {
 	os.Setenv("LLM_MODEL", "gemma2:9b")
 	os.Setenv("LLM_API_KEY", "test-key")
 	os.Setenv("LLM_PROMPT", "Fix grammar.")
+	os.Setenv("LLM_REASONING_EFFORT", "none")
 	defer func() {
 		os.Unsetenv("LLM_BASE_URL")
 		os.Unsetenv("LLM_MODEL")
 		os.Unsetenv("LLM_API_KEY")
 		os.Unsetenv("LLM_PROMPT")
+		os.Unsetenv("LLM_REASONING_EFFORT")
 	}()
 
 	cfg := llmConfigFromEnv()
@@ -75,6 +77,9 @@ func TestLLM_ConfigFromEnv_Enabled(t *testing.T) {
 	}
 	if cfg.Prompt != "Fix grammar." {
 		t.Errorf("Prompt: got %q", cfg.Prompt)
+	}
+	if cfg.ReasoningEffort != "none" {
+		t.Errorf("ReasoningEffort: got %q", cfg.ReasoningEffort)
 	}
 }
 
@@ -128,9 +133,10 @@ func TestLLM_Process_Success(t *testing.T) {
 		}
 
 		var req struct {
-			Model       string                           `json:"model"`
-			Messages    []struct{ Role, Content string } `json:"messages"`
-			Temperature float64                          `json:"temperature"`
+			Model           string                           `json:"model"`
+			Messages        []struct{ Role, Content string } `json:"messages"`
+			Temperature     float64                          `json:"temperature"`
+			ReasoningEffort string                           `json:"reasoning_effort"`
 		}
 		json.NewDecoder(r.Body).Decode(&req)
 
@@ -149,6 +155,9 @@ func TestLLM_Process_Success(t *testing.T) {
 		if req.Temperature != 0.0 {
 			t.Errorf("temperature: got %f", req.Temperature)
 		}
+		if req.ReasoningEffort != "none" {
+			t.Errorf("reasoning_effort: got %q", req.ReasoningEffort)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -160,11 +169,12 @@ func TestLLM_Process_Success(t *testing.T) {
 	defer srv.Close()
 
 	cfg := llmConfig{
-		Enabled: true,
-		BaseURL: srv.URL,
-		APIKey:  "test-key",
-		Model:   "gemma2:9b",
-		Prompt:  "Fix grammar.",
+		Enabled:         true,
+		BaseURL:         srv.URL,
+		APIKey:          "test-key",
+		Model:           "gemma2:9b",
+		Prompt:          "Fix grammar.",
+		ReasoningEffort: "none",
 	}
 
 	result, err := cfg.process(context.Background(), "hello world")

@@ -13,7 +13,7 @@ const OG_IMAGE = `${SITE_URL}/og-image.png`;
 function getBreadcrumbList(relativePath: string, title: string): string {
   const cleanPath = relativePath.replace(/\.md$/, '').replace(/\/index$/, '');
   const parts = cleanPath.split('/').filter(Boolean);
-  const sectionLabels: Record<string, string> = { vs: 'Compare', features: 'Features' };
+  const sectionLabels: Record<string, string> = { features: 'Features' };
   const items: object[] = [{ '@type': 'ListItem', position: 1, name: 'Diction', item: SITE_URL }];
   if (parts.length === 1) {
     items.push({ '@type': 'ListItem', position: 2, name: title, item: `${SITE_URL}/${parts[0]}` });
@@ -211,10 +211,10 @@ gtag('config', 'G-PCV64Y7GFM');`,
           },
           {
             '@type': 'Question',
-            name: 'What is AI Companion?',
+            name: 'What are Writing Tools?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'After transcription, Diction can optionally clean up your text — removing filler words like "um" and "uh", fixing grammar, adding punctuation, and polishing the result. It also understands voice commands to rewrite, translate, or edit text. Only the text is sent to the AI model, never the audio. AI Companion is off by default.',
+              text: 'After transcription, Diction can optionally clean up your text: removing filler words like "um" and "uh", fixing grammar, adding punctuation, and polishing the result. Writing Tools also understand voice commands to rewrite, translate, or edit text. Only the text is sent for processing, never the audio.',
             },
           },
           {
@@ -298,11 +298,11 @@ gtag('config', 'G-PCV64Y7GFM');`,
             { text: 'Overview', link: '/features/' },
             { text: 'Context-Aware Text Editing', link: '/features/context-aware' },
             {
-              text: 'AI Companion',
-              link: '/features/ai-companion',
+              text: 'Writing Tools',
+              link: '/features/writing-tools',
               items: [
-                { text: 'Profile', link: '/features/ai-companion#profile' },
-                { text: 'Tone Presets', link: '/features/tone-presets' },
+                { text: 'Writing Style', link: '/features/writing-tools#writing-style' },
+                { text: 'Tones', link: '/features/tone-presets' },
                 { text: 'My Words', link: '/features/my-words' },
               ],
             },
@@ -330,15 +330,6 @@ gtag('config', 'G-PCV64Y7GFM');`,
             { text: 'Keyboard Preferences', link: '/features/preferences' },
             { text: 'Self-Hosting Setup', link: '/features/self-hosting-setup' },
             { text: 'Use Your Own Model', link: '/features/custom-model' },
-          ],
-        },
-        {
-          text: 'Compare',
-          items: [
-            { text: 'vs Wispr Flow', link: '/vs/wispr-flow' },
-            { text: 'vs Apple Dictation', link: '/vs/apple-dictation' },
-            { text: 'vs Willow', link: '/vs/willow' },
-            { text: 'vs Superwhisper', link: '/vs/superwhisper' },
           ],
         },
         {

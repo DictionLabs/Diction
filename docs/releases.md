@@ -7,6 +7,77 @@ description: What's new in each Diction release. Full changelog for every App St
 
 # Release Notes
 
+## Diction 11.0
+
+- Everything that cleans up and reshapes your words now lives in one place: Writing Tools. Turn each cleanup on or off individually, and choose whether it runs in the cloud or right on your iPhone.
+- Tones are back.
+- Started a recording by accident? You can now abandon it without losing the audio. It goes to History under "Not processed," where you can still turn it into text later. Kept for 7 days.
+- Cleaner transcripts everywhere. Filler words and accidental repetitions are stripped out before you ever see the text.
+- Numbers, dates, and times come out properly formatted when you dictate in English on your device.
+- My Words now works with on-device dictation too, so your names and jargon land right whether you're online or not.
+- Fixed a run of first-launch problems: a setup crash, a screen that could get stuck, and a frozen waveform on a fresh install.
+- Themed keyboards now behave correctly in apps that force light or dark mode, and edit mode no longer looks like it's recording.
+- Self-hosted servers fall back gracefully instead of hammering a dead connection, and a self-hosted hiccup no longer knocks out your cloud access.
+- The keyboard holds up better when you're switching between apps a lot, and you'll get a warning before a model download if your device is nearly full.
+- Various polish across the keyboard, settings, and History.
+
+## Diction 10.1
+
+- Themes. Pick a color palette and make the keyboard yours. Six themes at launch, with a live preview as you browse.
+- Self-hosted users running a direct Whisper server without the Diction Gateway no longer get stuck in a silent retry loop. Diction falls back to the batch endpoint correctly.
+- Free trial extended for everyone, so you can try the new fine-tuned cloud models across all three Diction Cloud tiers.
+
+## Diction 10.0
+
+- Diction One runs on a brand new cloud model. English, Spanish, German, French, Italian, Portuguese, and Dutch are now up to six times faster, and just as accurate or better.
+- Polish transcription quality has been fixed.
+- Fewer failed dictations. Cloud retries properly and falls back faster when something does go wrong.
+- Autocorrect on the QWERTY keyboard fixes typos as you type, splits run-together words, and completes contractions.
+- Word suggestions above the keys. Tap one to accept.
+- The keyboard learns the words you correct back, and stops changing them.
+- Much better corrections and accents when typing in Spanish, Portuguese, French, and German.
+- Typing feels smoother. No more key-callout blinking or jitter.
+- The keyboard no longer freezes, and a stuck dictation can be cancelled instead of spinning on retry.
+- You land back in the app you were typing in after you dictate, on the latest iOS.
+- AI Companion now formats what you say into paragraphs and lists instead of one long block.
+- Real iPad support. Wider layouts, a globe key, and right-sized emoji.
+- Bigger, clearer emoji on iPhone too.
+- Your music stays on the car speakers when you dictate over CarPlay.
+- Your music app gets its playback controls back the moment dictation ends.
+- On-device dictation is reliable on the latest iOS, and fast on every launch after the first.
+
+## Diction 9.0
+
+- Cloud transcription is about twice as fast end to end, so text lands in your app almost as soon as you stop speaking.
+- An emoji picker is built into the keyboard, with search and skin tone variants, so you can grab the right one without leaving Diction.
+- The QWERTY spacebar row now has a period key, so ending a sentence is one tap instead of a stretch.
+- Pause and resume mid-dictation. Take a breath, gather a thought, then pick up where you left off without losing context.
+- Hold space and slide to move the cursor like a trackpad, matching what your thumb already knows from the system keyboard.
+- The mic releases the instant your phone rings, so you never miss a call because Diction is holding the audio session.
+- Diction mode is now equally reliable online or offline. No more failed attempts when your network drops for a moment.
+- Choose what music does while you dictate: keep playing, duck, or pause. Whichever fits how you use audio.
+
+## Diction 8.0
+
+- Brand-new autocorrect engine, the first real one in Diction. It quietly fixes common mistakes as you type, with no setup required.
+- The QWERTY keyboard layout has been updated: more compact, more responsive, and easier to use. Suggestion chips now sit inline next to the mic button, and the dismiss key lives in the keyboard row itself.
+- Suggestions are significantly more reliable. They now track context correctly after backspace and edits, and tapping them works consistently wherever you are.
+- When you have text selected and speak an edit instruction, the live streaming preview no longer overwrites your selection mid-way. The replacement arrives as a single, clean swap.
+- Tap the mic inside any transcript to record more and insert it at the cursor. In Live mode, the detail view opens right away so text streams in as you speak.
+- Added a numpad for number fields. Tap into a phone number, PIN, or numeric field and the keyboard adapts automatically.
+
+## Diction 7.0
+
+- A built-in QWERTY keyboard. When you can't talk out loud, just type without leaving Diction. Autocorrect, word suggestions, long-press accents, key popups, caps lock, double-space-to-period, backspace acceleration, and the feel of a native keyboard.
+- Diction Live (Beta). Your words now appear as you speak them, in real time, instead of only after you stop.
+- Automatic language detection. Switch between languages a lot? Diction can now work out which one you're speaking. No need to set it each time. Optional, off by default.
+- Smarter capitalization. Dictation now respects the field you're writing in, so email addresses, code, and similar text don't get wrongly capitalized.
+- A cleaner mode switcher. Picking Diction One, Live, an on-device model, or your own server is now a dedicated one-tap screen, with your current plan shown at a glance.
+- Record and transcribe right inside the app. A new mic button on the home screen lets you capture speech without the keyboard, then copy the text or send it straight to any app with the share button.
+- More reliable in the moment. Better retry and fallback when a transcription fails, sturdier live-streaming connections, and a refined suggestion strip that stays out of your way.
+- The keyboard's default key row now includes a period key, and choosing an on-device model starts downloading right away with no extra confirmation step.
+- Fully localized across all 13 languages, with faster recording start, proper light and dark keyboard theming, and lots of smaller polish and stability fixes.
+
 ## Diction 6.0
 
 - Customizable keyboard row. Tap any key to change what it does, rename it, resize it. Add new keys, drag to reorder, delete what you don't need. The whole row is yours now.

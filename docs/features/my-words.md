@@ -1,6 +1,6 @@
 ---
 title: "My Words"
-description: Add names, places, and terms to your personal dictionary. Diction uses them to improve transcription and AI Companion accuracy
+description: Add names, places, and terms to your personal dictionary. Diction uses them to improve transcription and Writing Tools accuracy
 keywords: "custom dictionary voice keyboard, speech recognition custom words, add words dictation, improve transcription accuracy, voice keyboard custom vocabulary, custom vocabulary ios"
 ---
 
@@ -27,7 +27,7 @@ For example:
 | Acai | Ah Sigh, A Kai |
 | Peloton | Pellet On, Pell A Ton |
 
-When you dictate, Diction checks your custom words against the transcription. The speech model uses your words as hints during recognition, and AI Companion corrects any remaining mismatches. Both layers work together.
+When you dictate, Diction checks your custom words against the transcription. The speech model uses your words as hints during recognition, and Writing Tools correct any remaining mismatches. Both layers work together.
 
 ## What It Catches
 
@@ -35,7 +35,7 @@ My Words works at two levels:
 
 1. **During transcription.** Your custom words nudge the speech model toward the right word when the audio is ambiguous. "Nguyen" is more likely to come through correctly because the model knows to listen for it.
 
-2. **During cleanup.** Even if the raw transcription still gets it wrong, AI Companion knows your words and swaps in the correct spelling. "New Win" becomes "Nguyen" because Diction knows that is what you meant.
+2. **During cleanup.** Even if the raw transcription still gets it wrong, Writing Tools know your words and swap in the correct spelling. "New Win" becomes "Nguyen" because Diction knows that is what you meant.
 
 The combination catches most cases. The speech model gets it right more often, and the cleanup catches what slips through.
 
@@ -49,6 +49,6 @@ The combination catches most cases. The speech model gets it right more often, a
 
 ## Requirements
 
-The My Words settings screen is accessible when [AI Companion](/features/ai-companion) is enabled. AI Companion requires a Diction One subscription and works across all transcription modes.
+My Words lives on the [Writing Tools](/features/writing-tools) screen in the app. The cleanup layer requires a Diction One subscription, and works across all transcription modes.
 
-Your custom words improve both raw transcription (via hints to the speech model) and AI Companion (via the cleanup step). The hints work regardless of whether AI Companion is on, but the cleanup correction layer requires it.
+Your custom words improve both raw transcription (via hints to the speech model) and Writing Tools (via the cleanup step). The hints work whether or not Writing Tools are on, but the cleanup correction layer needs them.

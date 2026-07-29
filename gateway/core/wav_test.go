@@ -74,6 +74,37 @@ func TestWriteWAVHeader(t *testing.T) {
 	}
 }
 
+func TestParseWAVDurationMs(t *testing.T) {
+	// 1 second at 16kHz 16-bit mono = 32000 bytes
+	const dataSize = 32000
+	var buf bytes.Buffer
+	if err := WriteWAVHeader(&buf, dataSize); err != nil {
+		t.Fatal(err)
+	}
+	buf.Write(make([]byte, dataSize))
+	got := ParseWAVDurationMs(buf.Bytes())
+	if got != 1000 {
+		t.Errorf("ParseWAVDurationMs: want 1000ms, got %d", got)
+	}
+
+	// 2.5 seconds
+	var buf2 bytes.Buffer
+	dataSize2 := 32000 * 5 / 2
+	if err := WriteWAVHeader(&buf2, dataSize2); err != nil {
+		t.Fatal(err)
+	}
+	buf2.Write(make([]byte, dataSize2))
+	got2 := ParseWAVDurationMs(buf2.Bytes())
+	if got2 != 2500 {
+		t.Errorf("ParseWAVDurationMs 2.5s: want 2500ms, got %d", got2)
+	}
+
+	// Non-WAV returns 0
+	if got3 := ParseWAVDurationMs([]byte("not a wav file")); got3 != 0 {
+		t.Errorf("non-WAV: want 0, got %d", got3)
+	}
+}
+
 func TestWriteWAVHeader_ZeroData(t *testing.T) {
 	var buf bytes.Buffer
 	if err := WriteWAVHeader(&buf, 0); err != nil {

@@ -1,20 +1,20 @@
 ---
-title: "Tone Presets"
+title: "Tones"
 description: Set a writing style per app. Professional for email, casual for messages. Diction remembers which tone to use where and applies it automatically
 keywords: "tone presets voice keyboard, per app writing style, ai dictation tone, professional dictation, casual dictation, voice keyboard writing style"
 ---
 
 <img src="/illustration-tone-presets.svg" alt="Tone presets" class="illustration" style="max-width: 480px; margin: 0 auto 2rem; display: block;" />
 
-# Tone Presets
+# Tones
 
 You write differently depending on where you are typing. An email to your boss sounds different from a message to a friend. A Slack reply to a colleague has a different register than a note to yourself.
 
-Tone Presets let you set a writing style per app. Diction remembers which tone goes with which app and applies it every time, without you changing anything.
+Tones let you set a writing style per app. Diction remembers which tone goes with which app and applies it every time, without you changing anything.
 
 ## How It Works
 
-Open the Diction app, go to Tones, and assign a tone to any app on your phone. When you dictate into that app, AI Companion shapes the output to match the tone you picked.
+Open the Diction app, go to Writing Tools, then Tones, and assign a tone to any app on your phone. When you dictate into that app, Writing Tools shape the output to match the tone you picked.
 
 Four built-in tones:
 
@@ -51,7 +51,7 @@ No toggling. No remembering which mode you are in. Open the app, tap the mic, sp
 
 ## Custom Tones
 
-The four built-in tones cover most situations, but you might need something specific. A custom tone is a plain-language instruction that tells AI Companion exactly how to shape the output.
+The four built-in tones cover most situations, but you might need something specific. A custom tone is a plain-language instruction that tells Writing Tools exactly how to shape the output.
 
 Examples:
 
@@ -63,6 +63,6 @@ Custom tones work exactly like the built-in ones. Assign them per app, and they 
 
 ## Requirements
 
-Tone Presets require [AI Companion](/features/ai-companion) to be active. AI Companion requires a Diction One subscription and works across all transcription modes.
+Tones require [Writing Tools](/features/writing-tools) to be active. That means a Diction One subscription, and it works across all transcription modes.
 
-Without AI Companion, Diction still transcribes accurately, but the output is raw text without tone shaping.
+Without Writing Tools, Diction still transcribes accurately, but the output is raw text without tone shaping.
