@@ -45,7 +45,7 @@ Adds our open-source gateway in front of Whisper. The gateway exposes a WebSocke
 # docker-compose.yml
 services:
   gateway:
-    image: ghcr.io/omachala/diction-gateway:latest
+    image: ghcr.io/dictionlabs/gateway:latest
     ports:
       - "8080:8080"
     environment:
@@ -76,7 +76,7 @@ The trade-off: if you need Asian, Arabic, or other non-European languages, use W
 # docker-compose.yml
 services:
   gateway:
-    image: ghcr.io/omachala/diction-gateway:latest
+    image: ghcr.io/dictionlabs/gateway:latest
     ports:
       - "8080:8080"
     environment:

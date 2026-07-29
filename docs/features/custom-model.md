@@ -39,7 +39,7 @@ You run just the gateway, pointed at your existing backend:
 ```yaml
 services:
   gateway:
-    image: ghcr.io/omachala/diction-gateway:latest
+    image: ghcr.io/dictionlabs/gateway:latest
     ports:
       - "8080:8080"
     environment:

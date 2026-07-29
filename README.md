@@ -109,7 +109,7 @@ services:
       WHISPER__INFERENCE_DEVICE: cpu
 
   gateway:
-    image: ghcr.io/omachala/diction-gateway:latest
+    image: ghcr.io/dictionlabs/gateway:latest
     platform: linux/amd64
     container_name: diction-gateway
     restart: unless-stopped
@@ -123,6 +123,8 @@ services:
 volumes:
   whisper-models:
 ```
+
+> **Existing installs on `ghcr.io/omachala/diction-gateway` continue to work and receive identical images — no action needed.** Images are now published under [Diction Labs](https://github.com/DictionLabs) on both GHCR and Docker Hub.
 
 The `whisper-models` volume persists the model weights (~500 MB for `small`) so they survive container rebuilds. `DEFAULT_MODEL: small` maps to the service named `whisper-small` - see [Swap the Speech Model](#swap-the-speech-model) if you change the model.
 
@@ -314,7 +316,7 @@ services:
               capabilities: [gpu]
 
   gateway:
-    image: ghcr.io/omachala/diction-gateway:latest
+    image: ghcr.io/dictionlabs/gateway:latest
     platform: linux/amd64
     container_name: diction-gateway
     restart: unless-stopped
@@ -355,7 +357,7 @@ services:
               capabilities: [gpu]
 
   gateway:
-    image: ghcr.io/omachala/diction-gateway:latest
+    image: ghcr.io/dictionlabs/gateway:latest
     platform: linux/amd64
     container_name: diction-gateway
     restart: unless-stopped
@@ -381,7 +383,7 @@ Keep it. Use `CUSTOM_BACKEND_URL` to put the Diction Gateway in front of your ex
 ```yaml
 services:
   gateway:
-    image: ghcr.io/omachala/diction-gateway:latest
+    image: ghcr.io/dictionlabs/gateway:latest
     platform: linux/amd64
     container_name: diction-gateway
     restart: unless-stopped
