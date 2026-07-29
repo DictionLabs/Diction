@@ -100,12 +100,44 @@ Create a folder for the stack and save this as `docker-compose.yml`:
 
 ```yaml
 services:
+  # The whisper server runs as uid 1000. A volume left behind by the older root-based
+  # images is owned by root, so without this the server cannot write and every model
+  # download fails with a permission error. No-op on a fresh install.
+  whisper-models-init:
+    image: dictionlabs/whisper-server:latest-cpu
+    user: root
+    volumes:
+      - whisper-models:/cache
+    entrypoint: ["sh", "-c", "chown -R 1000:1000 /cache"]
+    restart: "no"
+
   whisper-small:
     image: dictionlabs/whisper-server:latest-cpu
     container_name: diction-whisper-small
     restart: unless-stopped
+    depends_on:
+      whisper-models-init:
+        condition: service_completed_successfully
     volumes:
       - whisper-models:/home/ubuntu/.cache/huggingface/hub
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+  # The whisper server never downloads a model on demand: it answers "not installed
+  # locally" instead of fetching. Without this one-shot pull the stack starts cleanly
+  # and then fails every transcription. Idempotent, exits once the model is on disk.
+  whisper-small-pull:
+    image: dictionlabs/whisper-server:latest-cpu
+    depends_on:
+      whisper-small:
+        condition: service_healthy
+    entrypoint: ["curl", "-fsS", "-X", "POST",
+                 "http://whisper-small:8000/v1/models/DictionLabs/whisper-small-ct2"]
+    restart: "no"
 
   gateway:
     image: ghcr.io/dictionlabs/gateway:latest
@@ -126,6 +158,9 @@ volumes:
 > **Existing installs on `ghcr.io/omachala/diction-gateway` continue to work and receive identical images — no action needed.** Images are now published under [Diction Labs](https://github.com/DictionLabs) on both GHCR and Docker Hub.
 
 The `whisper-models` volume persists the model weights (~500 MB for `small`) so they survive container rebuilds. `DEFAULT_MODEL: small` maps to the service named `whisper-small` - see [Swap the Speech Model](#swap-the-speech-model) if you change the model.
+
+The first `up` takes a few minutes longer than later ones while `whisper-small-pull` downloads
+the model. It exits as soon as that finishes, and subsequent starts skip straight past it.
 
 ### Step 2 - Start the Stack
 
@@ -182,12 +217,23 @@ curl -sS -D - -o /dev/null \
   -F "file=@test.aiff" -F "model=small" | grep -i diction
 ```
 
-`X-Diction-Whisper-Ms` shows the speech model's inference latency.
+That returns three headers, verified against a live gateway:
+
+| Header | Meaning |
+|--------|---------|
+| `X-Diction-Whisper-Ms` | speech model inference latency in milliseconds |
+| `X-Diction-Route-Model` | which backend actually served the request |
+| `X-Diction-Route-Lang` | detected language, empty when detection didn't run |
+
+`X-Diction-LLM-Ms` is added when AI cleanup runs. `X-Diction-Route-Model` is the quickest way to
+confirm a model switch took effect, since an unrecognised model name silently falls back to
+`DEFAULT_MODEL`.
 
 | Response | Cause |
 |----------|-------|
 | Connection refused | Gateway not running - `docker compose ps` |
-| 504 Gateway Timeout | Whisper still loading - wait 60s |
+| 502 Bad Gateway | Whisper unreachable, still loading, or `DEFAULT_MODEL` names a service that isn't running |
+| 400 Bad Request | Unsupported `response_format` (only `json` and `text`) |
 | 404 Not Found | URL typo - path must be exactly `/v1/audio/transcriptions` |
 | OOM / container crash | Model too large for available RAM |
 
@@ -270,18 +316,23 @@ Pick a compose profile and set `DEFAULT_MODEL` on the gateway to match:
 |-----------------|-----------------|--------------|----------------|-----|-------|
 | `small` | `small` | `whisper-small` | `DictionLabs/whisper-small-ct2` | ~850 MB | Best for CPU |
 | `medium` | `medium` | `whisper-medium` | `DictionLabs/whisper-medium-ct2` | ~2.1 GB | More accurate, slower on CPU |
-| `large-v3-turbo` | `large` | `whisper-large-turbo` | `DictionLabs/whisper-large-v3-turbo-ct2` | ~2.3 GB | Best with NVIDIA GPU |
-| `parakeet-v3` | `parakeet` | `parakeet` | baked into the image | ~2 GB | NVIDIA GPU, 25 European languages |
+| `large-v3-turbo` | `large` | `whisper-large-turbo` | `DictionLabs/whisper-large-v3-turbo-ct2` | ~2.3 GB | Highest accuracy; slow on CPU, fast on GPU |
+| `parakeet-v3` | `parakeet` | `parakeet` | baked into the image | ~2 GB | 25 European languages; fast on CPU, faster on GPU |
 
 ```bash
 docker compose --profile small up -d
 ```
 
 `DEFAULT_MODEL` and the service name must both match the table: the gateway resolves backends by
-Docker hostname, and a mismatch returns 404 on every request.
+Docker hostname, so if the named service isn't running every request fails with `502`.
 
-The weights column is informational. You do not set it anywhere. The gateway names the model when
-it forwards the request, and the whisper server downloads it on first start. Those are our own
+An unrecognised model name is not an error. The gateway falls back to `DEFAULT_MODEL`, so a typo
+transcribes successfully with the wrong model rather than telling you. Check the
+`X-Diction-Route-Model` response header to see which backend actually served a request.
+
+The weights column is informational. You do not set it anywhere: the gateway names the model when
+it forwards each request. The whisper server does **not** fetch models on demand, so the compose
+file ships a one-shot pull service per profile that installs the model before first use. Those are our own
 CTranslate2 builds of OpenAI's checkpoints, published at
 [huggingface.co/DictionLabs](https://huggingface.co/DictionLabs), so the models your server pulls
 come from a namespace we control rather than a third party's conversion.
@@ -404,7 +455,7 @@ services:
 |----------|-------------|
 | `CUSTOM_BACKEND_AUTH` | Authorization header forwarded to your backend, e.g. `Bearer sk-xxx` |
 | `CUSTOM_BACKEND_NEEDS_WAV` | Set to `"true"` if your backend only accepts WAV - the gateway converts with ffmpeg |
-| `CUSTOM_BACKEND_CANONICAL_ID` | HuggingFace-style ID advertised via `/v1/models` (default: `CUSTOM_BACKEND_MODEL`) |
+| `CUSTOM_BACKEND_CANONICAL_ID` | HuggingFace-style ID advertised via `/v1/models` (default: `CUSTOM_BACKEND_MODEL`, or the literal `custom` if that is unset too) |
 
 ---
 
@@ -562,7 +613,7 @@ client = OpenAI(
 with open("audio.wav", "rb") as f:
     result = client.audio.transcriptions.create(
         file=f,
-        model="small",            # or "Systran/faster-whisper-small"
+        model="small",            # or "DictionLabs/whisper-small-ct2"
         response_format="text",
     )
 print(result)
@@ -573,7 +624,7 @@ Works with the Node SDK, LangChain, Flowise, n8n, or any tool that expects OpenA
 **Supported:**
 
 - `POST /v1/audio/transcriptions` - `file`, `model`, `language`, `prompt`, `response_format=json|text`
-- `GET /v1/models` - returns an OpenAI-compatible `data[]` array plus a `providers[]` grouping consumed by the iOS app. Both HuggingFace IDs (`Systran/faster-whisper-small`, `nvidia/parakeet-tdt-0.6b-v3`) and short aliases (`small`, `medium`, `large-v3-turbo`, `parakeet-v3`) are accepted.
+- `GET /v1/models` - returns an OpenAI-compatible `data[]` array plus a `providers[]` grouping consumed by the iOS app. HuggingFace IDs (`DictionLabs/whisper-small-ct2`, `nvidia/parakeet-tdt-0.6b-v3`) and short aliases (`small`, `medium`, `large-v3-turbo`, `parakeet-v3`) are both accepted. The older `Systran/*` and `deepdml/*` ids stay accepted as aliases, so existing scripts keep working.
 - WebSocket `/v1/audio/stream` - used by the Diction app for low-latency streaming
 
 **Not supported:**
@@ -584,9 +635,15 @@ Works with the Node SDK, LangChain, Flowise, n8n, or any tool that expects OpenA
 - Model download/delete (`POST`/`DELETE /v1/models/{id}`)
 - OpenAI Realtime API (`/v1/realtime`)
 
-**Authentication** is off by default (`AUTH_ENABLED=false`). Pass any non-empty string as the API key from the client - the gateway doesn't check it. To lock down a public-facing deployment, set `AUTH_ENABLED=true` and configure tokens in the gateway env.
+**Authentication** is off by default (`AUTH_ENABLED=false`). Pass any non-empty string as the API key from the client - the gateway doesn't check it.
 
-**Error shape:** errors return `{"error":"<message>"}`, not OpenAI's nested `{"error":{"message":"...","type":"..."}}`. Most SDKs surface these as `HTTPError` rather than `APIError`.
+> **Do not set `AUTH_ENABLED=true` on a self-hosted deployment.** It does not enable a shared
+> secret. The middleware accepts only an Apple App Store JWS validated against the Apple root CA,
+> or an HMAC trial token signed with `TRIAL_SECRET`. Both exist for Diction One. Turning it on
+> locks you out of your own server. To expose a gateway publicly, put it behind a reverse proxy
+> or tunnel that does the auth, or keep it on a VPN.
+
+**Error shape:** errors return `{"error":"<message>"}`, except auth failures, which return `{"error":"unauthorized","reason":"...","message":"..."}`, not OpenAI's nested `{"error":{"message":"...","type":"..."}}`. Most SDKs surface these as `HTTPError` rather than `APIError`.
 
 ---
 
