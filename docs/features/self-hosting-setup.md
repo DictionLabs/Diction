@@ -19,12 +19,14 @@ The minimal setup. One container. No gateway, no extra moving parts.
 # docker-compose.yml
 services:
   whisper:
-    image: fedirz/faster-whisper-server:latest-cpu
+    image: dictionlabs/whisper-server:latest-cpu
     ports:
       - "8000:8000"
-    environment:
-      WHISPER__MODEL: Systran/faster-whisper-small
-      WHISPER__INFERENCE_DEVICE: cpu
+    volumes:
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
+
+volumes:
+  whisper-models:
 ```
 
 ```bash
@@ -52,10 +54,9 @@ services:
       DEFAULT_MODEL: small
 
   whisper-small:
-    image: fedirz/faster-whisper-server:latest-cpu
-    environment:
-      WHISPER__MODEL: Systran/faster-whisper-small
-      WHISPER__INFERENCE_DEVICE: cpu
+    image: dictionlabs/whisper-server:latest-cpu
+    volumes:
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
 ```
 
 ```bash
@@ -104,7 +105,7 @@ Paths 1 and 2 support any Whisper model. Pick based on your hardware and what yo
 | `Systran/faster-whisper-medium` | 769M | ~2.1 GB | Better with accents and background noise. Slow on CPU, good on GPU. |
 | `deepdml/faster-whisper-large-v3-turbo-ct2` | 809M | ~2.3 GB | Highest accuracy. Manageable on modern CPUs, near-instant on GPU. |
 
-Swap the model by changing `WHISPER__MODEL` in the service. For Path 2 (gateway), also update `DEFAULT_MODEL` on the gateway service and make sure the Whisper service is named to match: `whisper-small`, `whisper-medium`, or `whisper-large-turbo`.
+For Path 2 (gateway), update `DEFAULT_MODEL` on the gateway service and make sure the Whisper service is named to match: `whisper-small`, `whisper-medium`, or `whisper-large-turbo`. The gateway injects the correct model ID into each request automatically.
 
 Path 3 uses a different engine with models baked into the image. No model selection needed.
 
@@ -147,7 +148,7 @@ If your server is behind an API key (common with reverse proxies or hosted endpo
 
 None of the paths lock you to our containers. The Diction app and the gateway both talk the standard OpenAI transcription API. Anything that accepts `POST /v1/audio/transcriptions` with a file upload and returns a JSON transcript works:
 
-- [faster-whisper-server](https://github.com/fedirz/faster-whisper-server) (used in both paths above)
+- [Speaches](https://github.com/speaches-ai/speaches) (the engine behind `dictionlabs/whisper-server`)
 - [whisper.cpp](https://github.com/ggerganov/whisper.cpp) HTTP server
 - OpenAI's own Whisper API
 - Any future model that speaks the same protocol

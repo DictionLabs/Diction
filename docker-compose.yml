@@ -61,10 +61,7 @@ services:
     restart: unless-stopped
     profiles: ["small"]
     volumes:
-      - whisper-models:/root/.cache/huggingface
-    environment:
-      WHISPER__MODEL: Systran/faster-whisper-small
-      WHISPER__INFERENCE_DEVICE: cpu
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
       interval: 30s
@@ -78,10 +75,7 @@ services:
     restart: unless-stopped
     profiles: ["medium"]
     volumes:
-      - whisper-models:/root/.cache/huggingface
-    environment:
-      WHISPER__MODEL: Systran/faster-whisper-medium
-      WHISPER__INFERENCE_DEVICE: cpu
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
       interval: 30s
@@ -95,10 +89,7 @@ services:
     restart: unless-stopped
     profiles: ["large"]
     volumes:
-      - whisper-models:/root/.cache/huggingface
-    environment:
-      WHISPER__MODEL: deepdml/faster-whisper-large-v3-turbo-ct2
-      WHISPER__INFERENCE_DEVICE: cpu
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
       interval: 30s

@@ -103,10 +103,7 @@ services:
     container_name: diction-whisper-small
     restart: unless-stopped
     volumes:
-      - whisper-models:/root/.cache/huggingface
-    environment:
-      WHISPER__MODEL: Systran/faster-whisper-small
-      WHISPER__INFERENCE_DEVICE: cpu
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
 
   gateway:
     image: ghcr.io/dictionlabs/gateway:latest
@@ -343,11 +340,7 @@ services:
     container_name: diction-whisper-large-turbo
     restart: unless-stopped
     volumes:
-      - whisper-models:/root/.cache/huggingface
-    environment:
-      WHISPER__MODEL: deepdml/faster-whisper-large-v3-turbo-ct2
-      WHISPER__INFERENCE_DEVICE: cuda
-      WHISPER__COMPUTE_TYPE: float16
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
     deploy:
       resources:
         reservations:
