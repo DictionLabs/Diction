@@ -34,8 +34,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/omachala/diction/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
-  <a href="https://codecov.io/gh/omachala/diction"><img src="https://img.shields.io/codecov/c/github/omachala/diction?style=for-the-badge&label=coverage" alt="Coverage"></a>
+  <a href="https://github.com/DictionLabs/Diction/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
+  <a href="https://codecov.io/gh/DictionLabs/Diction"><img src="https://img.shields.io/codecov/c/github/DictionLabs/Diction?style=for-the-badge&label=coverage" alt="Coverage"></a>
 </p>
 
 <p align="center"><strong>Contributors</strong></p>
@@ -508,14 +508,14 @@ If `LLM_PROMPT` starts with `/`, the gateway reads it as a file. Otherwise it us
 The repo ships a flake with a hardened systemd module - no Docker needed.
 
 ```bash
-nix run github:omachala/diction#diction-gateway
+nix run github:DictionLabs/Diction#diction-gateway
 ```
 
 Enable as a service:
 
 ```nix
 {
-  inputs.diction.url = "github:omachala/diction";
+  inputs.diction.url = "github:DictionLabs/Diction";
 
   outputs = { nixpkgs, diction, ... }: {
     nixosConfigurations.your-host = nixpkgs.lib.nixosSystem {

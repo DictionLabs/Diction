@@ -23,7 +23,7 @@ You have three ways to run it.
 One container, no extras. Start any OpenAI-compatible Whisper server, point the app at its address.
 
 ```bash
-git clone https://github.com/omachala/diction.git
+git clone https://github.com/DictionLabs/Diction.git
 cd diction
 docker compose --profile small up -d
 ```

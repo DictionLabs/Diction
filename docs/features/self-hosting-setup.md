@@ -83,7 +83,7 @@ services:
       DEFAULT_MODEL: parakeet-v3
 
   parakeet:
-    image: ghcr.io/achetronic/parakeet:latest-int8
+    image: dictionlabs/parakeet:latest-int8
 ```
 
 ```bash
@@ -108,7 +108,7 @@ Swap the model by changing `WHISPER__MODEL` in the service. For Path 2 (gateway)
 
 Path 3 uses a different engine with models baked into the image. No model selection needed.
 
-The full compose file in the [GitHub repository](https://github.com/omachala/diction) puts each engine behind a profile. Pick one and start:
+The full compose file in the [GitHub repository](https://github.com/DictionLabs/Diction) puts each engine behind a profile. Pick one and start:
 
 ```bash
 docker compose --profile small up -d      # Whisper small
@@ -161,4 +161,4 @@ Already running one? See [Use Your Own Model](/features/custom-model).
 
 ## Full configuration
 
-The complete compose file with multiple model profiles, and all gateway environment variables, is in the [public GitHub repository](https://github.com/omachala/diction).
+The complete compose file with multiple model profiles, and all gateway environment variables, is in the [public GitHub repository](https://github.com/DictionLabs/Diction).

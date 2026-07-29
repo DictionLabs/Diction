@@ -56,7 +56,7 @@ Diction has no QWERTY keyboard. There is nothing to type into it, and therefore 
 
 We do not ask you to take this on faith.
 
-**Server code:** the gateway that handles your audio is [open source on GitHub](https://github.com/omachala/diction). Read the transcription handler. Verify that audio is not stored.
+**Server code:** the gateway that handles your audio is [open source on GitHub](https://github.com/DictionLabs/Diction). Read the transcription handler. Verify that audio is not stored.
 
 **Encryption:** the AES-256-GCM and X25519 implementation is in the same repository. Read it, audit it, or run it yourself.
 
@@ -66,4 +66,4 @@ We do not ask you to take this on faith.
 
 On-device, self-hosted, or cloud. The principle is the same. Your voice is yours. We process it, return the text, and get out of the way.
 
-[Download on the App Store](https://apps.apple.com/app/id6759807364) &nbsp;·&nbsp; [Server on GitHub](https://github.com/omachala/diction)
+[Download on the App Store](https://apps.apple.com/app/id6759807364) &nbsp;·&nbsp; [Server on GitHub](https://github.com/DictionLabs/Diction)

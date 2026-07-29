@@ -13,7 +13,7 @@ hero:
       link: https://apps.apple.com/app/id6759807364
     - theme: alt
       text: GitHub
-      link: https://github.com/omachala/diction
+      link: https://github.com/DictionLabs/Diction
 
 features:
   - icon:

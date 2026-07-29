@@ -10,7 +10,7 @@ This repository contains the **self-hosting infrastructure** and **documentation
 
 ### Bug Reports
 
-Found a bug with the self-hosting setup? [Open an issue](https://github.com/omachala/diction/issues/new?template=bug_report.md) with:
+Found a bug with the self-hosting setup? [Open an issue](https://github.com/DictionLabs/Diction/issues/new?template=bug_report.md) with:
 
 - Your Docker and OS version
 - The model(s) you're running
@@ -19,7 +19,7 @@ Found a bug with the self-hosting setup? [Open an issue](https://github.com/omac
 
 ### Feature Requests
 
-Have an idea? [Open a feature request](https://github.com/omachala/diction/issues/new?template=feature_request.md). We especially welcome suggestions for:
+Have an idea? [Open a feature request](https://github.com/DictionLabs/Diction/issues/new?template=feature_request.md). We especially welcome suggestions for:
 
 - Self-hosting improvements
 - Docker configuration options

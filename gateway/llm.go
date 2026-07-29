@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/omachala/diction/gateway/core"
+	"github.com/DictionLabs/Diction/gateway/core"
 )
 
 type llmConfig struct {

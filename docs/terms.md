@@ -53,7 +53,7 @@ On-device and self-hosted modes are free with **no word limits, no daily caps, a
 
 ## Intellectual Property
 
-Diction, its name, logo, and cloud infrastructure are the property of their respective owner. The self-hosted server infrastructure is open source. See the [GitHub repository](https://github.com/omachala/diction) for licence details. The iOS app is proprietary and distributed exclusively through the App Store.
+Diction, its name, logo, and cloud infrastructure are the property of their respective owner. The self-hosted server infrastructure is open source. See the [GitHub repository](https://github.com/DictionLabs/Diction) for licence details. The iOS app is proprietary and distributed exclusively through the App Store.
 
 Your transcriptions belong to you.
 

@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/omachala/diction/gateway/core"
+	"github.com/DictionLabs/Diction/gateway/core"
 )
 
 // --- Trial store (JSON-backed) ---

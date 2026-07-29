@@ -88,4 +88,4 @@ If we update this policy, the revised version will be posted here with an update
 
 ## Contact
 
-Questions about privacy? Email [support@diction.one](mailto:support@diction.one) or open an issue on [GitHub](https://github.com/omachala/diction/issues).
+Questions about privacy? Email [support@diction.one](mailto:support@diction.one) or open an issue on [GitHub](https://github.com/DictionLabs/Diction/issues).

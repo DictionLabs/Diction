@@ -48,7 +48,7 @@ Check your internet connection (not needed for on-device mode). If you are using
 
 ## Self-Hosting
 
-Diction works with any speech-to-text server that supports the standard transcription API format. For setup guides, Docker Compose files, and documentation, see the [GitHub repository](https://github.com/omachala/diction).
+Diction works with any speech-to-text server that supports the standard transcription API format. For setup guides, Docker Compose files, and documentation, see the [GitHub repository](https://github.com/DictionLabs/Diction).
 
 ## Managing Your Subscription
 
@@ -159,6 +159,6 @@ iOS requires Full Access for any keyboard extension that uses the network. Dicti
 Need help? Reach out:
 
 - **Email:** [support@diction.one](mailto:support@diction.one)
-- **GitHub:** [Open an issue](https://github.com/omachala/diction/issues)
+- **GitHub:** [Open an issue](https://github.com/DictionLabs/Diction/issues)
 - **Reddit:** [r/dictionapp](https://www.reddit.com/r/dictionapp)
 - **X:** [@diction_one](https://x.com/diction_one)

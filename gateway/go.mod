@@ -1,4 +1,4 @@
-module github.com/omachala/diction/gateway
+module github.com/DictionLabs/Diction/gateway
 
 go 1.22
 
