@@ -35,6 +35,17 @@ docker compose up -d
 
 Open the Diction app, switch to **Self-Hosted**, paste `http://your-server:8000`. A green dot confirms the endpoint is reachable. Start dictating.
 
+::: warning Path 1 does not work with this image today
+The app talks to your Whisper server directly here and does not name a model in the request, so
+the server has to already know which one to load. Speaches, the engine in
+`dictionlabs/whisper-server`, wants the model per request and answers `422 Field required`
+instead. Every dictation fails, quietly: the app falls back to on-device and still inserts text.
+
+Use **Path 2** below. The gateway names the model for you, and it also gives you streaming.
+Path 1 still works against a server that pins its own model, such as an older
+`faster-whisper-server` image with `WHISPER__MODEL` set.
+:::
+
 **The trade-off:** no streaming. The app waits until you stop speaking, uploads the whole recording to your server, and waits for Whisper to transcribe it. On short phrases that's fine. On longer dictations you'll see a visible pause after you tap stop.
 
 If that's acceptable, you're done. Skip to [Choosing a model](#choosing-a-model).
@@ -101,9 +112,13 @@ Paths 1 and 2 support any Whisper model. Pick based on your hardware and what yo
 
 | Model ID | Params | RAM | Notes |
 |----------|--------|-----|-------|
-| `Systran/faster-whisper-small` | 244M | ~850 MB | Recommended starting point. Fast on CPU, fine for most dictations. |
-| `Systran/faster-whisper-medium` | 769M | ~2.1 GB | Better with accents and background noise. Slow on CPU, good on GPU. |
-| `deepdml/faster-whisper-large-v3-turbo-ct2` | 809M | ~2.3 GB | Highest accuracy. Manageable on modern CPUs, near-instant on GPU. |
+| `DictionLabs/whisper-small-ct2` | 244M | ~850 MB | Recommended starting point. Fast on CPU, fine for most dictations. |
+| `DictionLabs/whisper-medium-ct2` | 769M | ~2.1 GB | Better with accents and background noise. Slow on CPU, good on GPU. |
+| `DictionLabs/whisper-large-v3-turbo-ct2` | 809M | ~2.3 GB | Highest accuracy. Manageable on modern CPUs, near-instant on GPU. |
+
+These are our own CTranslate2 builds of OpenAI's Whisper checkpoints, published at
+[huggingface.co/DictionLabs](https://huggingface.co/DictionLabs). Any other CTranslate2 Whisper
+model works too.
 
 For Path 2 (gateway), update `DEFAULT_MODEL` on the gateway service and make sure the Whisper service is named to match: `whisper-small`, `whisper-medium`, or `whisper-large-turbo`. The gateway injects the correct model ID into each request automatically.
 
@@ -158,6 +173,12 @@ None of the paths lock you to our containers. The Diction app and the gateway bo
 - [whisper.cpp](https://github.com/ggerganov/whisper.cpp) HTTP server
 - OpenAI's own Whisper API
 - Any future model that speaks the same protocol
+
+Point the **gateway** at them rather than the app. The gateway names the model on every request,
+which the OpenAI spec requires and strict servers enforce. The app on its own leaves that field
+out, so a server that does not pin its own model will reject it. Configure a third-party backend
+with `CUSTOM_BACKEND_URL` and `CUSTOM_BACKEND_MODEL`, described in
+[Use Your Own Model](/features/custom-model).
 
 Already running one? See [Use Your Own Model](/features/custom-model).
 

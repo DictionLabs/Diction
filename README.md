@@ -264,16 +264,27 @@ Free tier URLs change on restart - good for a demo, not daily use.
 
 ## Swap the Speech Model
 
-Change two lines in your compose file:
+Pick a compose profile and set `DEFAULT_MODEL` on the gateway to match:
 
-| `DEFAULT_MODEL` | Service name | `WHISPER__MODEL` | RAM | Notes |
-|-----------------|--------------|------------------|-----|-------|
-| `small` | `whisper-small` | `Systran/faster-whisper-small` | ~850 MB | Best for CPU |
-| `medium` | `whisper-medium` | `Systran/faster-whisper-medium` | ~2.1 GB | More accurate, slower on CPU |
-| `large-v3-turbo` | `whisper-large-turbo` | `deepdml/faster-whisper-large-v3-turbo-ct2` | ~2.3 GB | Best with NVIDIA GPU |
-| `parakeet-v3` | `parakeet` | - (baked into image) | ~2 GB | NVIDIA GPU, 25 European languages |
+| `DEFAULT_MODEL` | Compose profile | Service name | Weights served | RAM | Notes |
+|-----------------|-----------------|--------------|----------------|-----|-------|
+| `small` | `small` | `whisper-small` | `DictionLabs/whisper-small-ct2` | ~850 MB | Best for CPU |
+| `medium` | `medium` | `whisper-medium` | `DictionLabs/whisper-medium-ct2` | ~2.1 GB | More accurate, slower on CPU |
+| `large-v3-turbo` | `large` | `whisper-large-turbo` | `DictionLabs/whisper-large-v3-turbo-ct2` | ~2.3 GB | Best with NVIDIA GPU |
+| `parakeet-v3` | `parakeet` | `parakeet` | baked into the image | ~2 GB | NVIDIA GPU, 25 European languages |
 
-Both `DEFAULT_MODEL` and the service name must match the table - the gateway resolves backends by Docker hostname. A mismatch returns 404 on every request.
+```bash
+docker compose --profile small up -d
+```
+
+`DEFAULT_MODEL` and the service name must both match the table: the gateway resolves backends by
+Docker hostname, and a mismatch returns 404 on every request.
+
+The weights column is informational. You do not set it anywhere. The gateway names the model when
+it forwards the request, and the whisper server downloads it on first start. Those are our own
+CTranslate2 builds of OpenAI's checkpoints, published at
+[huggingface.co/DictionLabs](https://huggingface.co/DictionLabs), so the models your server pulls
+come from a namespace we control rather than a third party's conversion.
 
 ```bash
 docker compose up -d   # recreates only the changed container
@@ -386,7 +397,7 @@ services:
       - "8080:8080"
     environment:
       CUSTOM_BACKEND_URL: http://your-existing-server:8000
-      CUSTOM_BACKEND_MODEL: Systran/faster-whisper-small
+      CUSTOM_BACKEND_MODEL: DictionLabs/whisper-small-ct2
 ```
 
 | Variable | Description |
@@ -582,7 +593,7 @@ Works with the Node SDK, LangChain, Flowise, n8n, or any tool that expects OpenA
 ## Privacy
 
 - **On-device**: Everything stays on your phone. No network connection is made.
-- **Self-hosted**: Audio goes to your server only. Neither the gateway nor `faster-whisper-server` persists audio - it's transcribed and discarded.
+- **Self-hosted**: Audio goes to your server only. Neither the gateway nor the whisper server persists audio - it's transcribed and discarded.
 - **AI cleanup enabled**: The transcript (plain text, no audio) goes to your configured LLM. If you use Ollama locally, nothing leaves your machine.
 - **Diction One (cloud)**: Audio is transcribed and immediately discarded. Not stored, not used for training.
 - **Zero third-party SDKs** in the app. No analytics, no tracking, no telemetry.
