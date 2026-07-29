@@ -61,8 +61,13 @@ func DefaultBackends() []Backend {
 		// Whisper models (faster-whisper-server, accepts any audio format)
 		// Tiny is reserved for on-device inference, not exposed via gateway
 		// {Name: "tiny", URL: "http://whisper-tiny:8000", Aliases: []string{"tiny", "Systran/faster-whisper-tiny"}, DisplayName: "Tiny", Description: "fastest, best for quick notes in quiet environments", Provider: "whisper"},
-		{Name: "small", URL: "http://whisper-small:8000", Aliases: []string{"small", "Systran/faster-whisper-small"}, CanonicalID: "Systran/faster-whisper-small", ForwardModel: "Systran/faster-whisper-small", DisplayName: "Small", Description: "fast, good for everyday dictation", Provider: "whisper"},
-		{Name: "medium", URL: "http://whisper-medium:8000", Aliases: []string{"medium", "Systran/faster-whisper-medium"}, CanonicalID: "Systran/faster-whisper-medium", ForwardModel: "Systran/faster-whisper-medium", DisplayName: "Medium", Description: "slower, handles accents and background noise better", Provider: "whisper"},
+		// ForwardModel is what the whisper server downloads, so these two point at our own
+		// fp16 CTranslate2 builds of openai/whisper-* rather than a third party's conversion.
+		// CanonicalID deliberately still advertises the Systran id: it is the string clients
+		// have stored and send, and renaming it is a wire-visible change this does not need.
+		// Both ids are accepted as aliases either way.
+		{Name: "small", URL: "http://whisper-small:8000", Aliases: []string{"small", "Systran/faster-whisper-small", "DictionLabs/whisper-small-ct2"}, CanonicalID: "Systran/faster-whisper-small", ForwardModel: "DictionLabs/whisper-small-ct2", DisplayName: "Small", Description: "fast, good for everyday dictation", Provider: "whisper"},
+		{Name: "medium", URL: "http://whisper-medium:8000", Aliases: []string{"medium", "Systran/faster-whisper-medium", "DictionLabs/whisper-medium-ct2"}, CanonicalID: "Systran/faster-whisper-medium", ForwardModel: "DictionLabs/whisper-medium-ct2", DisplayName: "Medium", Description: "slower, handles accents and background noise better", Provider: "whisper"},
 		{Name: "large-v3-turbo", URL: "http://whisper-large-turbo:8000", Aliases: []string{"large-v3-turbo", "turbo", "deepdml/faster-whisper-large-v3-turbo-ct2"}, CanonicalID: "deepdml/faster-whisper-large-v3-turbo-ct2", ForwardModel: "deepdml/faster-whisper-large-v3-turbo-ct2", DisplayName: "Large", Description: "highest accuracy Whisper model, best for difficult audio", Provider: "whisper"},
 		{Name: "distil-large-v3", URL: "http://whisper-distil-large:8000", Aliases: []string{"distil-large-v3", "Systran/faster-distil-whisper-large-v3"}, CanonicalID: "Systran/faster-distil-whisper-large-v3", DisplayName: "Large", Description: "highest accuracy Whisper model, English only", Provider: "whisper"},
 
