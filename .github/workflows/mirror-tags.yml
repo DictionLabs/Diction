@@ -1,16 +1,24 @@
-name: Mirror Gateway Tags
+name: Mirror Image Tags
 
 on:
   workflow_dispatch:
     inputs:
+      source_image:
+        description: "Source image (no tag)"
+        required: true
+        default: "ghcr.io/omachala/diction-gateway"
+      dest_images:
+        description: "Space-separated destination images (no tag) to copy each tag to"
+        required: true
+        default: "ghcr.io/dictionlabs/gateway dictionlabs/gateway"
       tags:
-        description: "Space-separated git tags to mirror from ghcr.io/omachala/diction-gateway"
+        description: "Space-separated tags to mirror"
         required: true
         default: "v1.2.0 v6.0 v6.1 v6.2 v7.0 v8.0 v9.0 v10.0 v10.1 v11.0 latest"
 
 jobs:
   mirror:
-    name: Copy existing images to dictionlabs namespaces
+    name: Copy existing images between registries/namespaces
     runs-on: ubuntu-latest
     steps:
       - uses: docker/setup-buildx-action@v3
@@ -27,14 +35,15 @@ jobs:
           username: dictionlabs
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Copy each tag to both new namespaces
+      - name: Copy each tag to each destination
         run: |
           set -euo pipefail
-          for tag in ${{ github.event.inputs.tags }}; do
+          for tag in ${{ inputs.tags }}; do
             echo "::group::$tag"
-            docker buildx imagetools create \
-              --tag ghcr.io/dictionlabs/gateway:"$tag" \
-              --tag dictionlabs/gateway:"$tag" \
-              ghcr.io/omachala/diction-gateway:"$tag"
+            tagged_dest_args=()
+            for dest in ${{ inputs.dest_images }}; do
+              tagged_dest_args+=("--tag" "$dest:$tag")
+            done
+            docker buildx imagetools create "${tagged_dest_args[@]}" "${{ inputs.source_image }}:$tag"
             echo "::endgroup::"
           done
