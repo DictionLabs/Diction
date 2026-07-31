@@ -91,53 +91,33 @@ Diction speaks the OpenAI transcription API (`POST /v1/audio/transcriptions`) di
 > **Full walkthrough with screenshots:** [How to Set Up Diction - the self-hosted speech-to-text alternative to Wispr Flow](https://dev.to/omachala/how-to-set-up-diction-the-self-hosted-speech-to-text-alternative-to-wispr-flow-20km)
 
 **Requirements:**
-- Any machine that can run Docker: Mac, Linux box, NUC, home server, VPS. Apple Silicon works (via Rosetta).
+- An NVIDIA GPU gets you the setup below. No GPU? Skip to [No GPU?](#no-gpu-cpu-only-whisper) for the CPU path.
+- Any machine that can run Docker: Linux box, NUC, home server, VPS.
 - iPhone running iOS 17.0 or later.
 
 ### Step 1 - Write the Compose File
 
-Create a folder for the stack and save this as `docker-compose.yml`:
+Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) on the host first. Create a folder for the stack and save this as `docker-compose.yml`:
 
 ```yaml
 services:
-  # The whisper server runs as uid 1000. A volume left behind by the older root-based
-  # images is owned by root, so without this the server cannot write and every model
-  # download fails with a permission error. No-op on a fresh install.
-  whisper-models-init:
-    image: dictionlabs/whisper-server:latest-cpu
-    user: root
-    volumes:
-      - whisper-models:/cache
-    entrypoint: ["sh", "-c", "chown -R 1000:1000 /cache"]
-    restart: "no"
-
-  whisper-small:
-    image: dictionlabs/whisper-server:latest-cpu
-    container_name: diction-whisper-small
+  parakeet:
+    image: dictionlabs/parakeet:latest-int8
+    container_name: diction-parakeet
     restart: unless-stopped
-    depends_on:
-      whisper-models-init:
-        condition: service_completed_successfully
-    volumes:
-      - whisper-models:/home/ubuntu/.cache/huggingface/hub
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/health"]
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/5092"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 120s
-
-  # The whisper server never downloads a model on demand: it answers "not installed
-  # locally" instead of fetching. Without this one-shot pull the stack starts cleanly
-  # and then fails every transcription. Idempotent, exits once the model is on disk.
-  whisper-small-pull:
-    image: dictionlabs/whisper-server:latest-cpu
-    depends_on:
-      whisper-small:
-        condition: service_healthy
-    entrypoint: ["curl", "-fsS", "-X", "POST",
-                 "http://whisper-small:8000/v1/models/DictionLabs/whisper-small-ct2"]
-    restart: "no"
+      start_period: 30s
 
   gateway:
     image: dictionlabs/gateway:latest
@@ -147,28 +127,20 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - whisper-small
+      - parakeet
     environment:
-      DEFAULT_MODEL: small
-
-volumes:
-  whisper-models:
+      DEFAULT_MODEL: parakeet-v3
 ```
 
 > **Existing installs on `ghcr.io/omachala/diction-gateway` continue to work and receive identical images — no action needed.** Images are now published under [Diction Labs](https://github.com/DictionLabs) on both GHCR and Docker Hub.
 
-The `whisper-models` volume persists the model weights (~500 MB for `small`) so they survive container rebuilds. `DEFAULT_MODEL: small` maps to the service named `whisper-small` - see [Swap the Speech Model](#swap-the-speech-model) if you change the model.
-
-The first `up` takes a few minutes longer than later ones while `whisper-small-pull` downloads
-the model. It exits as soon as that finishes, and subsequent starts skip straight past it.
+Model weights are baked into the `parakeet` image, so there's nothing to download on first start. `DEFAULT_MODEL: parakeet-v3` covers 25 European languages - see [Swap the Speech Model](#swap-the-speech-model) for Whisper models and other languages.
 
 ### Step 2 - Start the Stack
 
 ```bash
 docker compose up -d
 ```
-
-First run pulls the images and downloads model weights - give it 2–3 minutes.
 
 ```bash
 docker compose logs -f          # watch progress
@@ -180,15 +152,14 @@ Expected:
 ```
 NAME                     STATUS
 diction-gateway          Up 30 seconds
-diction-whisper-small    Up 2 minutes (healthy)
+diction-parakeet         Up 30 seconds (healthy)
 ```
 
 | Error | Fix |
 |-------|-----|
 | `pull access denied` on gateway image | `docker logout` and retry - a stale login to Docker Hub or `ghcr.io` can shadow the anonymous pull |
-| `exec format error` on Apple Silicon | Enable Rosetta in Docker Desktop → Settings → General |
-| `health: starting` for > 3 minutes | Model still downloading - `docker compose logs -f whisper-small` |
-| Gateway exits immediately | Whisper container failed - check its logs |
+| `could not select device driver "nvidia"` | NVIDIA Container Toolkit isn't installed, or Docker wasn't restarted after installing it |
+| Gateway exits immediately | Parakeet container failed - check its logs |
 
 ### Step 3 - Test the Server
 
@@ -203,7 +174,7 @@ Or record a voice memo on your phone and AirDrop it over.
 ```bash
 curl -X POST http://localhost:8080/v1/audio/transcriptions \
   -F "file=@test.aiff" \
-  -F "model=small"
+  -F "model=parakeet-v3"
 ```
 
 ```json
@@ -214,7 +185,7 @@ curl -X POST http://localhost:8080/v1/audio/transcriptions \
 # Check timing headers
 curl -sS -D - -o /dev/null \
   -X POST http://localhost:8080/v1/audio/transcriptions \
-  -F "file=@test.aiff" -F "model=small" | grep -i diction
+  -F "file=@test.aiff" -F "model=parakeet-v3" | grep -i diction
 ```
 
 That returns three headers, verified against a live gateway:
@@ -232,10 +203,10 @@ confirm a model switch took effect, since an unrecognised model name silently fa
 | Response | Cause |
 |----------|-------|
 | Connection refused | Gateway not running - `docker compose ps` |
-| 502 Bad Gateway | Whisper unreachable, still loading, or `DEFAULT_MODEL` names a service that isn't running |
+| 502 Bad Gateway | Parakeet unreachable, still loading, or `DEFAULT_MODEL` names a service that isn't running |
 | 400 Bad Request | Unsupported `response_format` (only `json` and `text`) |
 | 404 Not Found | URL typo - path must be exactly `/v1/audio/transcriptions` |
-| OOM / container crash | Model too large for available RAM |
+| OOM / container crash | Not enough VRAM - Parakeet INT8 needs about 2 GB |
 
 ### Step 4 - Find Your Server's IP
 
@@ -308,6 +279,83 @@ Free tier URLs change on restart - good for a demo, not daily use.
 
 ---
 
+## No GPU? (CPU-only Whisper)
+
+No NVIDIA GPU on the box you're using? Run Whisper on CPU instead. Slower than Parakeet, but it runs anywhere Docker does.
+
+```yaml
+services:
+  # The whisper server runs as uid 1000. A volume left behind by the older root-based
+  # images is owned by root, so without this the server cannot write and every model
+  # download fails with a permission error. No-op on a fresh install.
+  whisper-models-init:
+    image: dictionlabs/whisper-server:latest-cpu
+    user: root
+    volumes:
+      - whisper-models:/cache
+    entrypoint: ["sh", "-c", "chown -R 1000:1000 /cache"]
+    restart: "no"
+
+  whisper-small:
+    image: dictionlabs/whisper-server:latest-cpu
+    container_name: diction-whisper-small
+    restart: unless-stopped
+    depends_on:
+      whisper-models-init:
+        condition: service_completed_successfully
+    volumes:
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+  # The whisper server never downloads a model on demand: it answers "not installed
+  # locally" instead of fetching. Without this one-shot pull the stack starts cleanly
+  # and then fails every transcription. Idempotent, exits once the model is on disk.
+  whisper-small-pull:
+    image: dictionlabs/whisper-server:latest-cpu
+    depends_on:
+      whisper-small:
+        condition: service_healthy
+    entrypoint: ["curl", "-fsS", "-X", "POST",
+                 "http://whisper-small:8000/v1/models/DictionLabs/whisper-small-ct2"]
+    restart: "no"
+
+  gateway:
+    image: dictionlabs/gateway:latest
+    platform: linux/amd64
+    container_name: diction-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - whisper-small
+    environment:
+      DEFAULT_MODEL: small
+
+volumes:
+  whisper-models:
+```
+
+The `whisper-models` volume persists the model weights (~500 MB for `small`) so they survive container rebuilds. The first `up` takes a few minutes longer than later ones while `whisper-small-pull` downloads the model - it exits as soon as that finishes, and subsequent starts skip straight past it.
+
+```bash
+docker compose up -d
+```
+
+| Error | Fix |
+|-------|-----|
+| `exec format error` on Apple Silicon | Enable Rosetta in Docker Desktop → Settings → General |
+| `health: starting` for > 3 minutes | Model still downloading - `docker compose logs -f whisper-small` |
+| Gateway exits immediately | Whisper container failed - check its logs |
+
+Test it the same way as [Step 3](#step-3---test-the-server), with `-F "model=small"` instead of `parakeet-v3`. See [Swap the Speech Model](#swap-the-speech-model) below for `medium` and `large-v3-turbo`.
+
+---
+
 ## Swap the Speech Model
 
 Pick a compose profile and set `DEFAULT_MODEL` on the gateway to match:
@@ -343,59 +391,16 @@ docker compose up -d   # recreates only the changed container
 
 ---
 
-## NVIDIA GPU
+## NVIDIA GPU: More Languages (large-v3-turbo)
 
-Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) on the host first.
+Already set up Parakeet from [Step 1](#step-1---write-the-compose-file)? That covers 25 European languages. For the other 74, swap in Whisper large-v3-turbo running on GPU instead:
 
-### Option A - Parakeet TDT 0.6B v3 (fastest, 25 European languages)
-
-[Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) transcribes a 5-second clip in well under a second on a consumer GPU.
-
-| | Whisper Large-v3 | Parakeet TDT 0.6B v3 |
+| | Parakeet TDT 0.6B v3 | Whisper Large-v3-turbo |
 |---|---|---|
-| WER (English) | 7.4% | ~6.3% |
-| Latency (GPU) | Under 2s | Sub-second |
-| VRAM (INT8) | ~2.3 GB | ~2 GB |
-| Languages | 99 | 25 European |
-
-**Supported languages:** English, Bulgarian, Croatian, Czech, Danish, Dutch, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, Ukrainian.
-
-For languages outside this list, use Option B.
-
-```yaml
-services:
-  parakeet:
-    image: dictionlabs/parakeet:latest-int8
-    container_name: diction-parakeet
-    restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
-  gateway:
-    image: dictionlabs/gateway:latest
-    platform: linux/amd64
-    container_name: diction-gateway
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    depends_on:
-      - parakeet
-    environment:
-      DEFAULT_MODEL: parakeet-v3
-```
-
-Model weights are baked into the image - no download on first start. Or use the profile from this repo:
-
-```bash
-docker compose --profile parakeet up -d
-```
-
-### Option B - large-v3-turbo (multilingual, 99 languages)
+| WER (English) | ~6.3% | 7.4% |
+| Latency (GPU) | Sub-second | Under 2s |
+| VRAM | ~2 GB | ~2.3 GB |
+| Languages | 25 European | 99 |
 
 ```yaml
 services:

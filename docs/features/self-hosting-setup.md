@@ -1,19 +1,87 @@
 ---
 title: "Self-Hosting Setup Guide"
-description: Run your own speech-to-text server and connect Diction to it. Three setup paths covering Whisper, the Diction streaming gateway, and a faster engine for European languages
+description: Run your own speech-to-text server and connect Diction to it. GPU-first setup with the Diction gateway, plus CPU-only Whisper alternatives
 ---
 
 <img src="/illustration-self-hosting-setup.svg" alt="Controller" class="illustration" style="max-width: 480px; margin: 0 auto 2rem; display: block;" />
 
 # Self-Hosting Setup Guide
 
-Run your own Whisper server, point the Diction app at it, start dictating. Your audio never touches our infrastructure.
+Run your own speech-to-text server, point the Diction app at it, start dictating. Your audio never touches our infrastructure.
 
-Diction speaks the OpenAI transcription API (`POST /v1/audio/transcriptions`). Any server that implements it works. You have three ways to set it up, depending on how much you care about latency and what language you dictate in.
+Diction speaks the OpenAI transcription API (`POST /v1/audio/transcriptions`). Any server that implements it works. Below are three ways to set it up. If you have an NVIDIA GPU around, which most people running a self-hosted gateway do, start with Path 1.
 
-## Path 1: Whisper only (simplest)
+## Path 1: NVIDIA GPU (recommended)
 
-The minimal setup. One container. No gateway, no extra moving parts.
+[Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) transcribes a 5-second clip in well under a second on a consumer GPU. Models are baked into the image, so there's no download on first start. Covers 25 languages: English, Bulgarian, Croatian, Czech, Danish, Dutch, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, and Ukrainian.
+
+Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) on the host first.
+
+```yaml
+# docker-compose.yml
+services:
+  parakeet:
+    image: dictionlabs/parakeet:latest-int8
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  gateway:
+    image: dictionlabs/gateway:latest
+    ports:
+      - "8080:8080"
+    environment:
+      DEFAULT_MODEL: parakeet-v3
+    depends_on:
+      - parakeet
+```
+
+```bash
+docker compose up -d
+```
+
+Paste `http://your-server:8080` into the Diction app's **Self-Hosted** tab. A green dot confirms the endpoint is reachable. Start dictating.
+
+Need a non-European language? Use Path 2 below instead.
+
+## Path 2: Whisper + the Diction gateway (no GPU, streaming)
+
+No GPU, or need a language Parakeet doesn't cover. Runs on any machine that can run Docker, CPU only.
+
+```yaml
+# docker-compose.yml
+services:
+  gateway:
+    image: dictionlabs/gateway:latest
+    ports:
+      - "8080:8080"
+    environment:
+      DEFAULT_MODEL: small
+
+  whisper-small:
+    image: dictionlabs/whisper-server:latest-cpu
+    volumes:
+      - whisper-models:/home/ubuntu/.cache/huggingface/hub
+
+volumes:
+  whisper-models:
+```
+
+```bash
+docker compose up -d
+```
+
+Paste `http://your-server:8080` into the Diction app's **Self-Hosted** tab. Slower than Path 1, but works everywhere.
+
+The Diction gateway is fully open source. It runs as a pure proxy and streaming layer. It does not talk to our servers, does not require a subscription, and does not send any telemetry.
+
+## Path 3: Whisper only, no gateway (simplest, limited)
+
+The absolute minimum: one container, no gateway, no streaming.
 
 ```yaml
 # docker-compose.yml
@@ -33,82 +101,24 @@ volumes:
 docker compose up -d
 ```
 
-Open the Diction app, switch to **Self-Hosted**, paste `http://your-server:8000`. A green dot confirms the endpoint is reachable. Start dictating.
+Open the Diction app, switch to **Self-Hosted**, paste `http://your-server:8000`.
 
-::: warning Path 1 does not work with this image today
+::: warning Path 3 does not work with this image today
 The app talks to your Whisper server directly here and does not name a model in the request, so
 the server has to already know which one to load. Speaches, the engine in
 `dictionlabs/whisper-server`, wants the model per request and answers `422 Field required`
 instead. Every dictation fails, quietly: the app falls back to on-device and still inserts text.
 
-Use **Path 2** below. The gateway names the model for you, and it also gives you streaming.
-Path 1 still works against a server that pins its own model, such as an older
-`faster-whisper-server` image with `WHISPER__MODEL` set.
+Use **Path 1** or **Path 2** above instead. The gateway names the model for you. Path 3 still
+works against a server that pins its own model, such as an older `faster-whisper-server` image
+with `WHISPER__MODEL` set.
 :::
 
-**The trade-off:** no streaming. The app waits until you stop speaking, uploads the whole recording to your server, and waits for Whisper to transcribe it. On short phrases that's fine. On longer dictations you'll see a visible pause after you tap stop.
-
-If that's acceptable, you're done. Skip to [Choosing a model](#choosing-a-model).
-
-## Path 2: Whisper + the Diction gateway (streaming)
-
-Adds our open-source gateway in front of Whisper. The gateway exposes a WebSocket endpoint the Diction app uses to stream audio live as you speak. By the time you stop talking, the transcript is mostly ready.
-
-```yaml
-# docker-compose.yml
-services:
-  gateway:
-    image: dictionlabs/gateway:latest
-    ports:
-      - "8080:8080"
-    environment:
-      DEFAULT_MODEL: small
-
-  whisper-small:
-    image: dictionlabs/whisper-server:latest-cpu
-    volumes:
-      - whisper-models:/home/ubuntu/.cache/huggingface/hub
-```
-
-```bash
-docker compose up -d
-```
-
-Paste `http://your-server:8080` into the Diction app's **Self-Hosted** tab. Short phrases feel about the same as Path 1. Longer dictations are noticeably faster. The longer you talk, the bigger the gap.
-
-The Diction gateway is fully open source. It runs as a pure proxy and streaming layer. It does not talk to our servers, does not require a subscription, and does not send any telemetry.
-
-## Path 3: Faster engine for European languages
-
-If you mostly dictate in a European language, there's a faster alternative to Whisper. NVIDIA's speech engine is more accurate, roughly 10x faster on CPU, and uses about half the RAM. It supports 25 languages: English, Bulgarian, Croatian, Czech, Danish, Dutch, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, and Ukrainian.
-
-The trade-off: if you need Asian, Arabic, or other non-European languages, use Whisper instead (Path 1 or 2).
-
-```yaml
-# docker-compose.yml
-services:
-  gateway:
-    image: dictionlabs/gateway:latest
-    ports:
-      - "8080:8080"
-    environment:
-      DEFAULT_MODEL: parakeet-v3
-
-  parakeet:
-    image: dictionlabs/parakeet:latest-int8
-```
-
-```bash
-docker compose up -d
-```
-
-Models are baked into the image. No download on first start.
-
-Paste `http://your-server:8080` into the Diction app's **Self-Hosted** tab. Same [Connecting the app](#connecting-the-app) flow as the other paths.
+**The trade-off even when it works:** no streaming. The app waits until you stop speaking, uploads the whole recording to your server, and waits for Whisper to transcribe it. On short phrases that's fine. On longer dictations you'll see a visible pause after you tap stop.
 
 ## Choosing a model
 
-Paths 1 and 2 support any Whisper model. Pick based on your hardware and what you're dictating.
+Paths 2 and 3 support any Whisper model. Pick based on your hardware and what you're dictating.
 
 | Model ID | Params | RAM | Notes |
 |----------|--------|-----|-------|
@@ -122,7 +132,7 @@ model works too.
 
 For Path 2 (gateway), update `DEFAULT_MODEL` on the gateway service and make sure the Whisper service is named to match: `whisper-small`, `whisper-medium`, or `whisper-large-turbo`. The gateway injects the correct model ID into each request automatically.
 
-Path 3 uses a different engine with models baked into the image. No model selection needed.
+Path 1 (Parakeet) uses a different engine with models baked into the image. No model selection needed.
 
 The full compose file in the [GitHub repository](https://github.com/DictionLabs/Diction) puts each engine behind a profile. Pick one and start:
 
@@ -184,7 +194,7 @@ Already running one? See [Use Your Own Model](/features/custom-model).
 
 ## Requirements
 
-- Any machine that runs Docker (home server, NAS, cloud VM, Raspberry Pi for tiny models)
+- Any machine that runs Docker (home server, NAS, cloud VM, Raspberry Pi for tiny models). An NVIDIA GPU gets you Path 1; without one, Paths 2 and 3 run fine on CPU.
 - iPhone on the same network, or reachable via tunnel or VPN
 
 ## Full configuration
