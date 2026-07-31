@@ -11,9 +11,27 @@
 </p>
 
 <table align="center"><tr>
-  <td><img src="assets/1.png" width="220"></td>
-  <td><img src="assets/2.png" width="220"></td>
-  <td><img src="assets/3.png" width="220"></td>
+  <td>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/hero-welcome-dark.gif">
+      <source media="(prefers-color-scheme: light)" srcset="assets/hero-welcome-light.gif">
+      <img src="assets/hero-welcome-dark.gif" width="220" alt="Type 5x faster with your voice">
+    </picture>
+  </td>
+  <td>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/switch-keyboard-loop-dark.gif">
+      <source media="(prefers-color-scheme: light)" srcset="assets/switch-keyboard-loop-light.gif">
+      <img src="assets/switch-keyboard-loop-dark.gif" width="220" alt="Switch keyboard and record">
+    </picture>
+  </td>
+  <td>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/sandbox-edit-loop-dark.gif">
+      <source media="(prefers-color-scheme: light)" srcset="assets/sandbox-edit-loop-light.gif">
+      <img src="assets/sandbox-edit-loop-dark.gif" width="220" alt="Hold for edit mode">
+    </picture>
+  </td>
 </tr></table>
 
 <p align="center">
