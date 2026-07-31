@@ -10,29 +10,28 @@
   Dictate, compose, and edit - by voice, in any app.<br>On-device, cloud, or self-hosted. Open-source gateway.
 </p>
 
-<table align="center"><tr>
-  <td>
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/hero-welcome-dark.gif">
-      <source media="(prefers-color-scheme: light)" srcset="assets/hero-welcome-light.gif">
-      <img src="assets/hero-welcome-dark.gif" width="220" alt="Type 5x faster with your voice">
-    </picture>
-  </td>
-  <td>
+<table align="center">
+<tr>
+  <td align="center"><sub><b>Select keyboard, press to transcribe</b></sub></td>
+  <td align="center"><sub><b>Hold to edit</b></sub></td>
+</tr>
+<tr>
+  <td align="center" valign="bottom">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/switch-keyboard-loop-dark.gif">
       <source media="(prefers-color-scheme: light)" srcset="assets/switch-keyboard-loop-light.gif">
-      <img src="assets/switch-keyboard-loop-dark.gif" width="220" alt="Switch keyboard and record">
+      <img src="assets/switch-keyboard-loop-dark.gif" width="220" alt="Select keyboard, press to transcribe">
     </picture>
   </td>
-  <td>
+  <td align="center" valign="bottom">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/sandbox-edit-loop-dark.gif">
       <source media="(prefers-color-scheme: light)" srcset="assets/sandbox-edit-loop-light.gif">
-      <img src="assets/sandbox-edit-loop-dark.gif" width="220" alt="Hold for edit mode">
+      <img src="assets/sandbox-edit-loop-dark.gif" width="220" alt="Hold to edit">
     </picture>
   </td>
-</tr></table>
+</tr>
+</table>
 
 <p align="center">
   <a href="https://apps.apple.com/app/id6759807364"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" height="40"></a>
