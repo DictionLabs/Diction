@@ -13,7 +13,7 @@ Diction speaks the OpenAI transcription API (`POST /v1/audio/transcriptions`). A
 
 ## Path 1: NVIDIA GPU (recommended)
 
-[Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) transcribes a 5-second clip in well under a second on a consumer GPU. Models are baked into the image, so there's no download on first start. Covers 25 languages: English, Bulgarian, Croatian, Czech, Danish, Dutch, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, and Ukrainian.
+[Parakeet](https://hub.docker.com/r/dictionlabs/parakeet) transcribes a 5-second clip in well under a second on a consumer GPU. Models are baked into the image, so there's no download on first start. Covers 25 languages: English, Bulgarian, Croatian, Czech, Danish, Dutch, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, and Ukrainian.
 
 Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) on the host first.
 
