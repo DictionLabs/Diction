@@ -140,7 +140,7 @@ services:
     restart: "no"
 
   gateway:
-    image: ghcr.io/dictionlabs/gateway:latest
+    image: dictionlabs/gateway:latest
     platform: linux/amd64
     container_name: diction-gateway
     restart: unless-stopped
@@ -185,7 +185,7 @@ diction-whisper-small    Up 2 minutes (healthy)
 
 | Error | Fix |
 |-------|-----|
-| `pull access denied` on gateway image | `docker logout ghcr.io` and retry |
+| `pull access denied` on gateway image | `docker logout` and retry - a stale login to Docker Hub or `ghcr.io` can shadow the anonymous pull |
 | `exec format error` on Apple Silicon | Enable Rosetta in Docker Desktop → Settings → General |
 | `health: starting` for > 3 minutes | Model still downloading - `docker compose logs -f whisper-small` |
 | Gateway exits immediately | Whisper container failed - check its logs |
@@ -377,7 +377,7 @@ services:
               capabilities: [gpu]
 
   gateway:
-    image: ghcr.io/dictionlabs/gateway:latest
+    image: dictionlabs/gateway:latest
     platform: linux/amd64
     container_name: diction-gateway
     restart: unless-stopped
@@ -414,7 +414,7 @@ services:
               capabilities: [gpu]
 
   gateway:
-    image: ghcr.io/dictionlabs/gateway:latest
+    image: dictionlabs/gateway:latest
     platform: linux/amd64
     container_name: diction-gateway
     restart: unless-stopped
@@ -440,7 +440,7 @@ Keep it. Use `CUSTOM_BACKEND_URL` to put the Diction Gateway in front of your ex
 ```yaml
 services:
   gateway:
-    image: ghcr.io/dictionlabs/gateway:latest
+    image: dictionlabs/gateway:latest
     platform: linux/amd64
     container_name: diction-gateway
     restart: unless-stopped

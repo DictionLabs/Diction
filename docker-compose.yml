@@ -34,7 +34,7 @@
 services:
 
   gateway:
-    image: ghcr.io/dictionlabs/gateway:latest
+    image: dictionlabs/gateway:latest
     container_name: diction-gateway
     restart: unless-stopped
     ports:

@@ -48,9 +48,9 @@ jobs:
         id: meta
         with:
           images: |
-            ghcr.io/omachala/diction-gateway
-            ghcr.io/dictionlabs/gateway
             docker.io/dictionlabs/gateway
+            ghcr.io/dictionlabs/gateway
+            ghcr.io/omachala/diction-gateway
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -84,6 +84,6 @@ jobs:
             ## Docker
 
             ```bash
-            docker pull ghcr.io/dictionlabs/gateway:${{ github.ref_name }}
-            # also available at ghcr.io/omachala/diction-gateway (identical image)
+            docker pull dictionlabs/gateway:${{ github.ref_name }}
+            # also available at ghcr.io/dictionlabs/gateway and ghcr.io/omachala/diction-gateway (identical images)
             ```

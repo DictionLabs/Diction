@@ -30,9 +30,9 @@ jobs:
         id: meta
         with:
           images: |
-            ghcr.io/omachala/diction-gateway
-            ghcr.io/dictionlabs/gateway
             docker.io/dictionlabs/gateway
+            ghcr.io/dictionlabs/gateway
+            ghcr.io/omachala/diction-gateway
           tags: |
             type=sha
             type=raw,value=latest
