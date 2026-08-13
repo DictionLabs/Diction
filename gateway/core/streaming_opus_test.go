@@ -366,9 +366,9 @@ func TestOpus_DecodedSizeCapEnforced(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
-	conn.Write(ctx, websocket.MessageBinary, ogg)                 //nolint:errcheck
+	conn.Write(ctx, websocket.MessageBinary, ogg) //nolint:errcheck
 	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done)                   //nolint:errcheck
+	conn.Write(ctx, websocket.MessageText, done) //nolint:errcheck
 	assertCloseCode(t, conn, websocket.StatusCode(wsCloseTooLarge))
 }
 
@@ -392,9 +392,9 @@ func TestOpus_GarbageBytesUnknownContainer(t *testing.T) {
 	defer conn.CloseNow()
 
 	garbage := []byte("not an ogg or webm stream, just random bytes here")
-	conn.Write(ctx, websocket.MessageBinary, garbage)             //nolint:errcheck
+	conn.Write(ctx, websocket.MessageBinary, garbage) //nolint:errcheck
 	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done)                   //nolint:errcheck
+	conn.Write(ctx, websocket.MessageText, done) //nolint:errcheck
 	assertCloseCode(t, conn, websocket.StatusCode(wsCloseUnknown))
 }
 

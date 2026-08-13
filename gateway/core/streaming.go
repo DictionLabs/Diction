@@ -475,13 +475,13 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 
 		// --- State for the read loop ---
 		var (
-			pcmBuf          bytes.Buffer
-			opusInputBuf    bytes.Buffer // accumulates Ogg/WebM bytes for passthrough
-			contextJSON     string
-			maxPCM          = g.maxBodySize
-			contextRead     bool
-			audioBytesRx    int64
-			containerFile   string // "audio.ogg" or "audio.webm" — set on first sniff
+			pcmBuf           bytes.Buffer
+			opusInputBuf     bytes.Buffer // accumulates Ogg/WebM bytes for passthrough
+			contextJSON      string
+			maxPCM           = g.maxBodySize
+			contextRead      bool
+			audioBytesRx     int64
+			containerFile    string // "audio.ogg" or "audio.webm" — set on first sniff
 			containerSniffed bool
 
 			// ffmpeg decode state — populated on first Opus binary frame
