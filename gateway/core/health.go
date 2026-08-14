@@ -68,7 +68,7 @@ func (g *Gateway) startHealthChecker() {
 	}
 	check()
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(120 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			check()
