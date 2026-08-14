@@ -7,6 +7,20 @@ description: What's new in each Diction release. Full changelog for every App St
 
 # Release Notes
 
+## Diction 12.0
+
+- The typing keyboard now matches your language. QWERTZ for German, AZERTY for French, and Spanish gets its ñ where it belongs. Each layout is named by the language it's for, sitting right next to the language picker.
+- Autocorrect got a lot more careful. It looks at where your finger actually landed before deciding you slipped, so genuine typos get fixed while your names, brands, and jargon are left alone. If you'd rather it stayed out of the way, autocorrection and word suggestions each have their own switch now.
+- Every letter key shows its number or symbol, and a long press types it, so there's no need to switch layouts for a single digit. Turn the hints off if you prefer a cleaner keyboard.
+- Bigger keys with tighter gaps, and the suggestion strip now respects the capitalisation you actually typed.
+- Setting Diction up is simpler. Two screens instead of three, you can skip ahead whenever you like, and anything you skipped stays one tap away from Home. If a permission gets switched off later, Home tells you.
+- Diction now tells you when it can't reach the server, instead of quietly acting as though you weren't entitled. The keyboard says so directly, a long press explains what's wrong, and there's separate advice for when a VPN or work profile is intercepting the connection rather than the network simply being down.
+- The keyboard is much harder to kill. We fixed a leak that made it pile up dead views as you switched apps, stopped it dying mid-typing, and made it recover in about a second when the app has been closed, instead of hanging for six.
+- Tapping "Tap to allow Full Access" opens Diction again. It was doing nothing at all, which left anyone who landed there with no way out.
+- Live mode holds its connection properly on cellular, and now transcribes in the language you picked instead of guessing, so non-English dictation no longer loses its opening words.
+- Self-hosted setups: the "Add server" banner finally goes away once you've added one, and the server screen shows real connection health.
+- Various polish across the keyboard, settings, and onboarding.
+
 ## Diction 11.0
 
 - Everything that cleans up and reshapes your words now lives in one place: Writing Tools. Turn each cleanup on or off individually, and choose whether it runs in the cloud or right on your iPhone.
