@@ -47,6 +47,7 @@ Full walkthrough: [Self-Hosting Setup Guide](/features/self-hosting-setup). Alre
 - **Audio stays on your network.** From your phone to your server and back. No third party in the middle.
 - **Free, unlimited, no restrictions.** No Diction subscription needed. No word limits. No daily caps. No trial that expires.
 - **Works with any Whisper-compatible server.** The app speaks the OpenAI transcription API directly. Use our default stack, use someone else's, roll your own.
+- **AI parity.** Add a BYO LLM (`LLM_BASE_URL` + `LLM_MODEL`) and set `TEXT_ROUTES_OPEN=true`. Voice editing and suggestions work the same as on Diction One. Weak local models may not follow instructions well -- 7B or larger recommended.
 - **Optional streaming.** Run our gateway in front of whisper and the app streams audio as you speak. Longer dictations are noticeably faster.
 - **On-device fallback.** If your server is unreachable, Diction automatically retries using a local model on your iPhone. Your dictation is never lost to a network issue.
 - **Run it anywhere.** Home server, NAS, Raspberry Pi for tiny models, cloud VM, behind a reverse proxy, over a VPN. If Docker runs there, Diction connects to it.

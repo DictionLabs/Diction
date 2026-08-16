@@ -42,13 +42,18 @@ services:
     environment:
       DEFAULT_MODEL: small
       # --- AI Enhancement (BYO LLM) ---
-      # Uncomment and configure to enable AI transcript cleanup.
+      # Uncomment and configure to enable AI transcript cleanup and voice editing.
       # Works with OpenAI, Groq, Ollama, or any OpenAI-compatible provider.
       # See README for setup guide and model recommendations.
       # LLM_BASE_URL: https://api.openai.com/v1
       # LLM_API_KEY: sk-...
       # LLM_MODEL: gpt-4o-mini
       # LLM_PROMPT: "You are a transcript cleaner. Fix grammar, remove filler words (um, uh, er), and correct STT errors. Return only the cleaned text."
+      # LLM_PROMPT_EDIT: "You are a text editor. Apply the user's spoken instruction to the text. Return only the edited result, nothing else."
+      # LLM_PROMPT_EDIT_SELECTED: "You are a text editor. Apply the user's spoken instruction to the selected portion of text. Return only the edited selection, nothing else."
+      # LLM_PROMPT_SUGGEST: "Suggest 2-3 concise alternative phrasings or corrections for the selected text. Return a JSON array of strings only, no explanation."
+      # --- Text routes (required when LLM is configured and AUTH_ENABLED=false) ---
+      # TEXT_ROUTES_OPEN: "true"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
       interval: 30s

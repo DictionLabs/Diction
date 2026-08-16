@@ -114,8 +114,10 @@ func TestLLM_ConfigFromEnv_PromptFileMissing(t *testing.T) {
 	}()
 
 	cfg := llmConfigFromEnv()
-	if cfg.Prompt != "" {
-		t.Errorf("expected empty prompt on file read failure, got %q", cfg.Prompt)
+	// On file read failure the gateway falls back to the default cleanup prompt
+	// rather than leaving the LLM with no system instructions.
+	if cfg.Prompt != DefaultPromptCleanup {
+		t.Errorf("expected DefaultPromptCleanup on file read failure, got %q", cfg.Prompt)
 	}
 }
 
@@ -325,5 +327,173 @@ func TestLLM_Process_MaxTokensBounds(t *testing.T) {
 	cfg.process(context.Background(), strings.Repeat("x", 20000))
 	if receivedMaxTokens != 8192 {
 		t.Errorf("long text: expected 8192 max_tokens, got %d", receivedMaxTokens)
+	}
+}
+
+// --- New tests for extended llmConfig ---
+
+func TestLLM_DefaultPrompts(t *testing.T) {
+	os.Setenv("LLM_BASE_URL", "http://localhost:11434/v1")
+	os.Setenv("LLM_MODEL", "test")
+	os.Unsetenv("LLM_PROMPT")
+	os.Unsetenv("LLM_PROMPT_EDIT")
+	os.Unsetenv("LLM_PROMPT_EDIT_SELECTED")
+	os.Unsetenv("LLM_PROMPT_SUGGEST")
+	defer func() {
+		os.Unsetenv("LLM_BASE_URL")
+		os.Unsetenv("LLM_MODEL")
+	}()
+
+	cfg := llmConfigFromEnv()
+
+	if cfg.Prompt != DefaultPromptCleanup {
+		t.Errorf("Prompt: want DefaultPromptCleanup, got %q", cfg.Prompt)
+	}
+	if cfg.PromptEdit != DefaultPromptEdit {
+		t.Errorf("PromptEdit: want DefaultPromptEdit, got %q", cfg.PromptEdit)
+	}
+	if cfg.PromptEditSelected != DefaultPromptEditSelected {
+		t.Errorf("PromptEditSelected: want DefaultPromptEditSelected, got %q", cfg.PromptEditSelected)
+	}
+	if cfg.PromptSuggest != DefaultPromptSuggest {
+		t.Errorf("PromptSuggest: want DefaultPromptSuggest, got %q", cfg.PromptSuggest)
+	}
+}
+
+func TestLLM_ProcessWithIntent_PicksPrompt(t *testing.T) {
+	var receivedPrompt string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		if len(req.Messages) > 0 && req.Messages[0].Role == "system" {
+			receivedPrompt = req.Messages[0].Content
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": "result"}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := llmConfig{
+		Enabled:            true,
+		BaseURL:            srv.URL,
+		Model:              "test",
+		Prompt:             "CLEANUP_PROMPT",
+		PromptEdit:         "EDIT_PROMPT",
+		PromptEditSelected: "EDIT_SEL_PROMPT",
+		PromptSuggest:      "SUGGEST_PROMPT",
+	}
+
+	tests := []struct {
+		intent string
+		want   string
+	}{
+		{"", "CLEANUP_PROMPT"},
+		{"transcribe", "CLEANUP_PROMPT"},
+		{"edit", "EDIT_PROMPT"},
+		{"edit-selected", "EDIT_SEL_PROMPT"},
+	}
+
+	for _, tc := range tests {
+		receivedPrompt = ""
+		_, err := cfg.processWithIntent(context.Background(), "hello", "", tc.intent)
+		if err != nil {
+			t.Errorf("intent=%q: unexpected error: %v", tc.intent, err)
+			continue
+		}
+		if receivedPrompt != tc.want {
+			t.Errorf("intent=%q: prompt: want %q, got %q", tc.intent, tc.want, receivedPrompt)
+		}
+	}
+}
+
+func TestLLM_SuggestFixes_SoftFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"boom"}`))
+	}))
+	defer srv.Close()
+
+	cfg := llmConfig{
+		Enabled:       true,
+		BaseURL:       srv.URL,
+		Model:         "test",
+		PromptSuggest: DefaultPromptSuggest,
+	}
+
+	suggestions, err := cfg.suggestFixes(context.Background(), "hello", "", "", nil)
+	if err != nil {
+		t.Errorf("expected soft-fail (no error), got: %v", err)
+	}
+	if len(suggestions) != 0 {
+		t.Errorf("expected empty slice on LLM error, got: %v", suggestions)
+	}
+}
+
+func TestLLM_SuggestFixes_JSONArray(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": `["option one","option two","option three"]`}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := llmConfig{
+		Enabled:       true,
+		BaseURL:       srv.URL,
+		Model:         "test",
+		PromptSuggest: DefaultPromptSuggest,
+	}
+
+	suggestions, err := cfg.suggestFixes(context.Background(), "hello", "", "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(suggestions) != 3 {
+		t.Errorf("expected 3 suggestions, got %d: %v", len(suggestions), suggestions)
+	}
+	if suggestions[0] != "option one" {
+		t.Errorf("first suggestion: want 'option one', got %q", suggestions[0])
+	}
+}
+
+func TestLLM_SuggestFixes_NewlineSeparated(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": "first option\nsecond option\nthird option"}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := llmConfig{
+		Enabled:       true,
+		BaseURL:       srv.URL,
+		Model:         "test",
+		PromptSuggest: DefaultPromptSuggest,
+	}
+
+	suggestions, err := cfg.suggestFixes(context.Background(), "hello", "", "", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(suggestions) != 3 {
+		t.Errorf("expected 3 suggestions, got %d: %v", len(suggestions), suggestions)
+	}
+	if suggestions[1] != "second option" {
+		t.Errorf("second suggestion: want 'second option', got %q", suggestions[1])
 	}
 }

@@ -482,21 +482,39 @@ services:
 
 ---
 
-## AI Cleanup (BYO LLM)
+## AI Cleanup and Voice Editing (BYO LLM)
 
 The gateway passes transcripts through any OpenAI-compatible LLM before returning them. You say "so um basically the meeting went well and uh they agreed to the timeline." The LLM returns "The meeting went well. They agreed to the timeline."
 
-Enable the **AI Companion** toggle in the app. The gateway forwards the transcript to `{LLM_BASE_URL}/chat/completions` with your prompt, then returns the cleaned text. If the LLM fails, the raw transcript is returned - dictation never breaks.
+Enable the **AI Companion** toggle in the app. The gateway forwards the transcript to `{LLM_BASE_URL}/chat/completions` with your prompt, then returns the cleaned text. If the LLM fails, the raw transcript is returned -- dictation never breaks.
+
+When LLM is configured, two additional text routes become available (requires `TEXT_ROUTES_OPEN=true`):
+
+- `POST /v1/text/process?intent=edit` -- apply a spoken voice instruction to text
+- `POST /v1/text/process?intent=edit-selected` -- apply an instruction to a selected text range
+- `POST /v1/text/suggest` -- return 2-3 alternative phrasings (always soft-fails)
+
+These routes enable AI parity with Diction One on self-hosted gateways: voice-edit and suggestions
+work the same way, though results depend on the quality of your chosen model. Smaller models (under
+7B) often do not follow edit instructions reliably -- 7B or larger is recommended for editing.
+
+See `AGENTS.md` for the full wire format.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `LLM_BASE_URL` | Yes | OpenAI-compatible endpoint, e.g. `https://api.openai.com/v1` |
 | `LLM_MODEL` | Yes | Model identifier, e.g. `gpt-4o-mini` |
 | `LLM_API_KEY` | No | Bearer token. Not needed for local Ollama. |
-| `LLM_PROMPT` | No | System prompt string, or a file path starting with `/` (mount via volume) |
+| `LLM_PROMPT` | No | System prompt for transcript cleanup. String or a file path starting with `/` (mount via volume). Defaults to the built-in cleanup prompt when empty. |
+| `LLM_PROMPT_EDIT` | No | System prompt for voice-edit intent (`?intent=edit`). Defaults to the built-in edit prompt. |
+| `LLM_PROMPT_EDIT_SELECTED` | No | System prompt for edit-selected intent. Defaults to the built-in edit-selected prompt. |
+| `LLM_PROMPT_SUGGEST` | No | System prompt for the suggest endpoint. Defaults to the built-in suggest prompt. |
 | `LLM_REASONING_EFFORT` | No | OpenAI-compatible reasoning effort such as `none`, `low`, `medium`, or `high`. Omitted by default. |
+| `TEXT_ROUTES_OPEN` | No | Set to `true` to open `/v1/text/process` and `/v1/text/suggest` when `AUTH_ENABLED=false`. Default `false` (routes return 403 until explicitly opened). |
 
 Both `LLM_BASE_URL` and `LLM_MODEL` must be set or the feature stays off.
+
+> **Behavior change from earlier releases:** operators who set `LLM_BASE_URL` and `LLM_MODEL` without `LLM_PROMPT` now receive the built-in cleanup prompt automatically. Previously the gateway logged a warning and sent no system instructions. The default prompt is: *"You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. Return only the corrected text, nothing else."*
 
 ### Option A - Cloud LLM (OpenAI, Groq, etc.)
 

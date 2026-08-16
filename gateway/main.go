@@ -493,6 +493,30 @@ func authMiddleware(next http.HandlerFunc, enabled bool, bundleID string, trialS
 	}
 }
 
+// textRoutesMiddleware returns a middleware that enforces the fail-closed guard
+// for /v1/text/* routes (R12):
+//   - AUTH_ENABLED=false AND TEXT_ROUTES_OPEN=false => 403 {"error":"text_routes_closed"}
+//   - AUTH_ENABLED=false AND TEXT_ROUTES_OPEN=true  => open (no auth)
+//   - AUTH_ENABLED=true                             => standard authMiddleware
+//
+// The guard is a deliberate speed bump that forces one informed decision rather
+// than a security control. It becomes a real control the moment GH #14 lands.
+func textRoutesMiddleware(authEnabled, routesOpen bool, bundleID string, trialSecret []byte) func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		if authEnabled {
+			return authMiddleware(next, true, bundleID, trialSecret)
+		}
+		if !routesOpen {
+			return func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"error":"text_routes_closed","hint":"Set TEXT_ROUTES_OPEN=true or AUTH_ENABLED=true to enable /v1/text/* routes. See AGENTS.md."}`)) //nolint:errcheck
+			}
+		}
+		return next
+	}
+}
+
 // --- Main ---
 
 // buildMux reads configuration from environment variables, wires up all
@@ -529,17 +553,18 @@ func buildMux() (http.Handler, string, error) {
 
 	// LLM post-processing (BYO LLM for self-hosters)
 	llm := llmConfigFromEnv()
+	textRoutesOpen := core.EnvBoolOrDefault("TEXT_ROUTES_OPEN", false)
 	var postProcess func(context.Context, string, string, string) (string, string, error)
 	if llm.Enabled {
 		postProcess = func(ctx context.Context, transcript, contextJSON, intent string) (string, string, error) {
-			result, err := llm.process(ctx, transcript)
+			result, err := llm.processWithIntent(ctx, transcript, contextJSON, intent)
 			return result, "", err
 		}
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", gw.HealthHandler())
-	mux.HandleFunc("/v1/models", gw.ModelsHandler())
+	mux.HandleFunc("/v1/models", withCapabilities(gw.ModelsHandler(), llm.Enabled, textRoutesOpen))
 	mux.HandleFunc("/v1/trial", func(w http.ResponseWriter, r *http.Request) {
 		handleTrial(w, r, trials, trialSecret, trialDuration)
 	})
@@ -549,9 +574,12 @@ func buildMux() (http.Handler, string, error) {
 	mux.HandleFunc("/v1/audio/stream", authMiddleware(
 		gw.StreamingHandlerWithPostProcess(postProcess), authEnabled, bundleID, trialSecret,
 	))
+	textMW := textRoutesMiddleware(authEnabled, textRoutesOpen, bundleID, trialSecret)
+	mux.HandleFunc("/v1/text/process", textMW(handleTextProcess(llm)))
+	mux.HandleFunc("/v1/text/suggest", textMW(handleTextSuggest(llm)))
 	mux.HandleFunc("/", gw.CatchAllHandler())
 
-	log.Printf("Diction Gateway starting on :%s (default_model=%s, auth=%v, trial=%v, llm=%v)", port, defaultModel, authEnabled, len(trialSecret) > 0, llm.Enabled)
+	log.Printf("Diction Gateway starting on :%s (default_model=%s, auth=%v, trial=%v, llm=%v, text_routes=%v)", port, defaultModel, authEnabled, len(trialSecret) > 0, llm.Enabled, textRoutesOpen)
 	return mux, port, nil
 }
 

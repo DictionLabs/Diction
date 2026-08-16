@@ -1,0 +1,21 @@
+# Diction Gateway -- Machine Index
+
+This file is a short index for LLM agents and automated tools.
+
+Full API reference: AGENTS.md (project root)
+
+## Quick facts
+
+- Gateway language: Go
+- Routes: GET /health, GET /v1/models, POST /v1/trial, POST /v1/audio/transcriptions, WS /v1/audio/stream, POST /v1/text/process, POST /v1/text/suggest
+- Wire format: JSON (no E2E on text routes)
+- Auth: off by default (AUTH_ENABLED=false); when on, accepts Apple JWS or HMAC trial tokens
+- LLM: optional BYO LLM via LLM_BASE_URL + LLM_MODEL; text routes require TEXT_ROUTES_OPEN=true
+
+## Key env vars
+
+LLM_BASE_URL, LLM_MODEL, LLM_API_KEY, LLM_PROMPT, LLM_PROMPT_EDIT,
+LLM_PROMPT_EDIT_SELECTED, LLM_PROMPT_SUGGEST, TEXT_ROUTES_OPEN,
+AUTH_ENABLED, DEFAULT_MODEL, GATEWAY_PORT
+
+See AGENTS.md for the full reference.

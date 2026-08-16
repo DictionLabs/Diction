@@ -200,3 +200,13 @@ Already running one? See [Use Your Own Model](/features/custom-model).
 ## Full configuration
 
 The complete compose file with multiple model profiles, and all gateway environment variables, is in the [public GitHub repository](https://github.com/DictionLabs/Diction).
+
+## AI features on self-hosted
+
+When you configure `LLM_BASE_URL` and `LLM_MODEL`, your gateway gets full AI parity with Diction One:
+
+- **Transcript cleanup** -- remove filler words, fix punctuation (existing, via `?enhance=true`)
+- **Edit by voice** -- dictate an instruction; the gateway applies it to your text
+- **Suggestions** -- tap a word and get 2-3 alternatives from the LLM
+
+Set `TEXT_ROUTES_OPEN=true` on the gateway to enable the edit and suggest routes. Results depend on model quality -- 7B or larger is recommended for editing. Smaller models often do not follow instructions reliably.
