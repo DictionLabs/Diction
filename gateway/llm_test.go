@@ -497,3 +497,88 @@ func TestLLM_SuggestFixes_NewlineSeparated(t *testing.T) {
 		t.Errorf("second suggestion: want 'second option', got %q", suggestions[1])
 	}
 }
+
+// ── Formatting flag ───────────────────────────────────────────────────────────
+
+// captureSystemPrompt runs processWithIntent against a stub LLM and returns the
+// system prompt the gateway actually sent.
+func captureSystemPrompt(t *testing.T, cfg llmConfig, contextJSON, intent string) string {
+	t.Helper()
+	var systemPrompt string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		json.NewDecoder(r.Body).Decode(&req) //nolint:errcheck
+		for _, m := range req.Messages {
+			if m.Role == "system" {
+				systemPrompt = m.Content
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+			"choices": []map[string]any{{"message": map[string]string{"content": "ok"}}},
+		})
+	}))
+	defer srv.Close()
+
+	cfg.Enabled = true
+	cfg.BaseURL = srv.URL
+	cfg.Model = "test"
+	if _, err := cfg.processWithIntent(context.Background(), "some text", contextJSON, intent); err != nil {
+		t.Fatalf("processWithIntent: %v", err)
+	}
+	return systemPrompt
+}
+
+// Opt-out contract: absent formatting key means ON, matching older clients that
+// never send it.
+func TestFormatting_absentKey_appendsRules(t *testing.T) {
+	cfg := llmConfig{Prompt: "CLEANUP", PromptFormatting: "|FORMATTING|"}
+	got := captureSystemPrompt(t, cfg, `{"before":"x"}`, "")
+	if !strings.Contains(got, "|FORMATTING|") {
+		t.Errorf("formatting rules must be appended when the key is absent; got %q", got)
+	}
+}
+
+func TestFormatting_true_appendsRules(t *testing.T) {
+	cfg := llmConfig{Prompt: "CLEANUP", PromptFormatting: "|FORMATTING|"}
+	got := captureSystemPrompt(t, cfg, `{"formatting":true}`, "")
+	if !strings.Contains(got, "|FORMATTING|") {
+		t.Errorf("formatting rules must be appended when formatting=true; got %q", got)
+	}
+}
+
+// The only way a user with the toggle off avoids formatting, and the reason the
+// rules live in a separate const: the base prompt must be byte-identical here.
+func TestFormatting_false_omitsRules(t *testing.T) {
+	cfg := llmConfig{Prompt: "CLEANUP", PromptFormatting: "|FORMATTING|"}
+	got := captureSystemPrompt(t, cfg, `{"formatting":false}`, "")
+	if strings.Contains(got, "|FORMATTING|") {
+		t.Errorf("formatting=false must omit the rules; got %q", got)
+	}
+	if got != "CLEANUP" {
+		t.Errorf("base prompt must be unchanged when formatting is off; got %q", got)
+	}
+}
+
+// An edit instruction already states the shape of the result, so layout rules
+// there would fight the user's own instruction.
+func TestFormatting_editIntent_neverAppendsRules(t *testing.T) {
+	cfg := llmConfig{PromptEdit: "EDIT", PromptFormatting: "|FORMATTING|"}
+	got := captureSystemPrompt(t, cfg, `{"formatting":true}`, "edit")
+	if strings.Contains(got, "|FORMATTING|") {
+		t.Errorf("edit intent must not carry formatting rules; got %q", got)
+	}
+}
+
+func TestFormatting_emptyContext_appendsRules(t *testing.T) {
+	cfg := llmConfig{Prompt: "CLEANUP", PromptFormatting: "|FORMATTING|"}
+	got := captureSystemPrompt(t, cfg, "", "")
+	if !strings.Contains(got, "|FORMATTING|") {
+		t.Errorf("empty context must default to formatting ON; got %q", got)
+	}
+}

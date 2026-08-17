@@ -50,9 +50,14 @@ func withCapabilities(base http.HandlerFunc, llmEnabled, routesOpen bool) http.H
 		// Inject capabilities.
 		textRoutes := llmEnabled && routesOpen
 		caps, _ := json.Marshal(map[string]bool{
-			"llm":          llmEnabled,
-			"text_process": textRoutes,
-			"text_suggest": textRoutes,
+			"llm":            llmEnabled,
+			"text_process":   textRoutes,
+			"text_suggest":   textRoutes,
+			"text_summarize": textRoutes,
+			// Formatting rides inside /v1/text/process as a context flag rather
+			// than on its own route, so it is advertised separately: a client can
+			// then offer the Formatting toggle only where the key is honoured.
+			"formatting": llmEnabled,
 		})
 		baseResp["capabilities"] = caps
 
@@ -74,6 +79,9 @@ type responseRecorder struct {
 	body   []byte
 }
 
-func (r *responseRecorder) Header() http.Header         { return r.header }
-func (r *responseRecorder) WriteHeader(code int)        { r.code = code }
-func (r *responseRecorder) Write(b []byte) (int, error) { r.body = append(r.body, b...); return len(b), nil }
+func (r *responseRecorder) Header() http.Header  { return r.header }
+func (r *responseRecorder) WriteHeader(code int) { r.code = code }
+func (r *responseRecorder) Write(b []byte) (int, error) {
+	r.body = append(r.body, b...)
+	return len(b), nil
+}

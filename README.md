@@ -493,6 +493,11 @@ When LLM is configured, two additional text routes become available (requires `T
 - `POST /v1/text/process?intent=edit` -- apply a spoken voice instruction to text
 - `POST /v1/text/process?intent=edit-selected` -- apply an instruction to a selected text range
 - `POST /v1/text/suggest` -- return 2-3 alternative phrasings (always soft-fails)
+- `POST /v1/text/summarize` -- one-line summary of a saved note (always soft-fails)
+
+Transcript cleanup also honours a `"formatting"` flag in the request context: when set
+(or omitted, which means on), `LLM_PROMPT_FORMATTING` is appended to the cleanup prompt so
+spoken lists and topic changes come back as line breaks and plain-text bullets.
 
 These routes enable AI parity with Diction One on self-hosted gateways: voice-edit and suggestions
 work the same way, though results depend on the quality of your chosen model. Smaller models (under
@@ -510,6 +515,8 @@ See `AGENTS.md` for the full wire format.
 | `LLM_PROMPT_EDIT_SELECTED` | No | System prompt for edit-selected intent. Defaults to the built-in edit-selected prompt. |
 | `LLM_PROMPT_SUGGEST` | No | System prompt for the suggest endpoint. Defaults to the built-in suggest prompt. |
 | `LLM_REASONING_EFFORT` | No | OpenAI-compatible reasoning effort such as `none`, `low`, `medium`, or `high`. Omitted by default. |
+| `LLM_PROMPT_FORMATTING` | No | Appended to `LLM_PROMPT` when the client requests formatting. Defaults to the built-in formatting rules. |
+| `LLM_PROMPT_SUMMARY` | No | System prompt for `/v1/text/summarize`. Defaults to the built-in summary prompt. |
 | `TEXT_ROUTES_OPEN` | No | Set to `true` to open `/v1/text/process` and `/v1/text/suggest` when `AUTH_ENABLED=false`. Default `false` (routes return 403 until explicitly opened). |
 
 Both `LLM_BASE_URL` and `LLM_MODEL` must be set or the feature stays off.

@@ -65,10 +65,10 @@ func TestTextProcess_EmptyTextRejected(t *testing.T) {
 func TestTextProcess_PlaintextAccepted(t *testing.T) {
 	srv := makeLLMServer(t, "Cleaned transcript.")
 	llm := llmConfig{
-		Enabled:  true,
-		BaseURL:  srv.URL,
-		Model:    "test",
-		Prompt:   DefaultPromptCleanup,
+		Enabled:            true,
+		BaseURL:            srv.URL,
+		Model:              "test",
+		Prompt:             DefaultPromptCleanup,
 		PromptEdit:         DefaultPromptEdit,
 		PromptEditSelected: DefaultPromptEditSelected,
 		PromptSuggest:      DefaultPromptSuggest,
@@ -306,4 +306,111 @@ func makeLLMServer(t *testing.T, responseText string) *httptest.Server {
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// ── /v1/text/summarize ────────────────────────────────────────────────────────
+
+func TestWordCount(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int
+	}{
+		{"", 0},
+		{"one", 1},
+		{"one two three", 3},
+		{"  leading and trailing  ", 3},
+		{"tabs\tand\nnewlines count", 4},
+	}
+	for _, c := range cases {
+		if got := wordCount(c.in); got != c.want {
+			t.Errorf("wordCount(%q) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}
+
+// A short note is its own summary, so the LLM must not be called at all. Proved
+// with a BaseURL that would fail if it were ever dialled.
+func TestSummarize_shortText_returnsTooShortWithoutCallingLLM(t *testing.T) {
+	llm := llmConfig{Enabled: true, BaseURL: "http://127.0.0.1:1", Model: "m", PromptSummary: "p"}
+	rec := httptest.NewRecorder()
+	body := `{"text":"Just a couple of words here.","language":"en"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/text/summarize", strings.NewReader(body))
+	handleTextSummarize(llm)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["summary_status"] != "too_short" {
+		t.Errorf("summary_status = %v, want too_short", resp["summary_status"])
+	}
+	if resp["summary"] != nil {
+		t.Errorf("summary = %v, want nil", resp["summary"])
+	}
+}
+
+// An unreachable LLM must soft-fail: 200 with status "failed", never a 5xx. A
+// missing summary costs a nicer History row and nothing else.
+func TestSummarize_llmDown_softFails(t *testing.T) {
+	llm := llmConfig{Enabled: true, BaseURL: "http://127.0.0.1:1", Model: "m", PromptSummary: "p"}
+	long := strings.TrimSpace(strings.Repeat("word ", 60))
+	rec := httptest.NewRecorder()
+	body := `{"text":"` + long + `","language":"en"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/text/summarize", strings.NewReader(body))
+	handleTextSummarize(llm)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (soft failure)", rec.Code)
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["summary_status"] != "failed" {
+		t.Errorf("summary_status = %v, want failed", resp["summary_status"])
+	}
+}
+
+func TestSummarize_noLLM_returns503(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/text/summarize", strings.NewReader(`{"text":"x"}`))
+	handleTextSummarize(llmConfig{Enabled: false})(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want 503", rec.Code)
+	}
+}
+
+func TestSummarize_emptyText_returns400(t *testing.T) {
+	llm := llmConfig{Enabled: true, BaseURL: "http://127.0.0.1:1", Model: "m"}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/text/summarize", strings.NewReader(`{"text":"   "}`))
+	handleTextSummarize(llm)(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestSummarize_oversizedBody_returns413(t *testing.T) {
+	llm := llmConfig{Enabled: true, BaseURL: "http://127.0.0.1:1", Model: "m"}
+	huge := strings.Repeat("a", summarizeMaxBytes+100)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/text/summarize", strings.NewReader(`{"text":"`+huge+`"}`))
+	handleTextSummarize(llm)(rec, req)
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status = %d, want 413", rec.Code)
+	}
+}
+
+func TestSummarize_e2eHeaderRejected(t *testing.T) {
+	llm := llmConfig{Enabled: true, BaseURL: "http://127.0.0.1:1", Model: "m"}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/text/summarize", strings.NewReader(`{"text":"x"}`))
+	req.Header.Set("X-Diction-E2E", "1")
+	handleTextSummarize(llm)(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400 for an E2E request (R11)", rec.Code)
+	}
 }

@@ -577,6 +577,7 @@ func buildMux() (http.Handler, string, error) {
 	textMW := textRoutesMiddleware(authEnabled, textRoutesOpen, bundleID, trialSecret)
 	mux.HandleFunc("/v1/text/process", textMW(handleTextProcess(llm)))
 	mux.HandleFunc("/v1/text/suggest", textMW(handleTextSuggest(llm)))
+	mux.HandleFunc("/v1/text/summarize", textMW(handleTextSummarize(llm)))
 	mux.HandleFunc("/", gw.CatchAllHandler())
 
 	log.Printf("Diction Gateway starting on :%s (default_model=%s, auth=%v, trial=%v, llm=%v, text_routes=%v)", port, defaultModel, authEnabled, len(trialSecret) > 0, llm.Enabled, textRoutesOpen)

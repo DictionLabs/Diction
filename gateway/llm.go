@@ -25,6 +25,8 @@ type llmConfig struct {
 	PromptEdit         string
 	PromptEditSelected string
 	PromptSuggest      string
+	PromptFormatting   string
+	PromptSummary      string
 }
 
 // Default system prompts used when the corresponding env var is empty.
@@ -33,6 +35,22 @@ const (
 	DefaultPromptEdit         = "You are a text editor. Apply the user's spoken instruction to the text. Return only the edited result, nothing else."
 	DefaultPromptEditSelected = "You are a text editor. Apply the user's spoken instruction to the selected portion of text. Return only the edited selection, nothing else."
 	DefaultPromptSuggest      = "Suggest 2-3 concise alternative phrasings or corrections for the selected text. Return a JSON array of strings only, no explanation."
+
+	// DefaultPromptFormatting is appended to the cleanup prompt when the client
+	// asks for formatting. Kept separate so the cleanup prompt stays byte-identical
+	// when formatting is off, and so an operator can replace just this half.
+	DefaultPromptFormatting = "\n\nAlso render the structure the speech carries, using line breaks and plain text only. " +
+		"A spoken list becomes one item per line (\"- item\", or \"1. item\" when the speaker counts). " +
+		"A clear change of topic becomes a paragraph break. " +
+		"Keep short or casual dictation inline, with no list. " +
+		"Never use markdown syntax (#, *, _), and never reword: the words stay exactly as spoken."
+
+	// DefaultPromptSummary backs POST /v1/text/summarize.
+	DefaultPromptSummary = "Summarise a voice note in ONE short line, so the user can recognise it later in a list. " +
+		"Output exactly one line: no bullets, no preamble, no markdown. Target 120 characters or fewer. " +
+		"Reply in the same language as the note. Lead with the topic, keep proper nouns, numbers and decisions, " +
+		"and drop filler. Never invent details, and never write phrases like \"the user\" or \"this note\". " +
+		"If the note is meaningless, output a single dash: -"
 )
 
 // loadPromptEnv reads a prompt from an env var. If the value starts with /,
@@ -64,6 +82,8 @@ func llmConfigFromEnv() llmConfig {
 	promptEdit := loadPromptEnv("LLM_PROMPT_EDIT", DefaultPromptEdit)
 	promptEditSelected := loadPromptEnv("LLM_PROMPT_EDIT_SELECTED", DefaultPromptEditSelected)
 	promptSuggest := loadPromptEnv("LLM_PROMPT_SUGGEST", DefaultPromptSuggest)
+	promptFormatting := loadPromptEnv("LLM_PROMPT_FORMATTING", DefaultPromptFormatting)
+	promptSummary := loadPromptEnv("LLM_PROMPT_SUMMARY", DefaultPromptSummary)
 
 	return llmConfig{
 		Enabled:            enabled,
@@ -75,6 +95,8 @@ func llmConfigFromEnv() llmConfig {
 		PromptEdit:         promptEdit,
 		PromptEditSelected: promptEditSelected,
 		PromptSuggest:      promptSuggest,
+		PromptFormatting:   promptFormatting,
+		PromptSummary:      promptSummary,
 	}
 }
 
@@ -176,10 +198,14 @@ func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, int
 		After       string   `json:"after"`
 		Selected    string   `json:"selected"`
 		CustomWords []string `json:"customWords"`
+		// Opt-out, matching the app's wire contract: absent (older clients) or
+		// true means formatting is ON; only an explicit false disables it.
+		Formatting *bool `json:"formatting,omitempty"`
 	}
 	if contextJSON != "" {
 		json.Unmarshal([]byte(contextJSON), &tc) //nolint:errcheck
 	}
+	formattingEnabled := tc.Formatting == nil || *tc.Formatting
 
 	// Pick prompt by intent.
 	var prompt string
@@ -189,7 +215,13 @@ func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, int
 	case "edit-selected":
 		prompt = c.PromptEditSelected
 	default: // "" or "transcribe"
+		// Formatting only applies to cleanup. An edit instruction already says
+		// what shape the result should take, so appending layout rules there
+		// would fight the user's own instruction.
 		prompt = c.Prompt
+		if formattingEnabled {
+			prompt += c.PromptFormatting
+		}
 	}
 
 	// Build user message based on intent.
@@ -209,6 +241,20 @@ func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, int
 	}
 
 	return c.processWithPrompt(ctx, prompt, userMsg)
+}
+
+// summarise returns a one-line summary of a whole voice note.
+//
+// Whole-note operation: unlike cleanup and edit there is no cursor, selection or
+// surrounding context, because a saved note has none. The language tag is a hint
+// only; the prompt already says to reply in the note's own language, so "auto"
+// and empty are both fine and are simply not passed on.
+func (c llmConfig) summarise(ctx context.Context, text, language string) (string, error) {
+	userMsg := text
+	if language != "" && language != "auto" {
+		userMsg += "\n\n(Language: " + language + ")"
+	}
+	return c.processWithPrompt(ctx, c.PromptSummary, userMsg)
 }
 
 // suggestFixes calls the LLM with the suggest prompt and returns up to 3 alternatives.

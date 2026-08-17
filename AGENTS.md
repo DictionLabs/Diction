@@ -65,6 +65,8 @@ Content-Type: application/json
 | `llm` | bool | LLM_BASE_URL + LLM_MODEL are set and LLM is active |
 | `text_process` | bool | /v1/text/process is open (llm=true AND TEXT_ROUTES_OPEN=true, or auth=true) |
 | `text_suggest` | bool | /v1/text/suggest is open (same condition as text_process) |
+| `text_summarize` | bool | /v1/text/summarize is open (same condition as text_process) |
+| `formatting` | bool | the `formatting` context key is honoured on cleanup (llm=true) |
 
 ### POST /v1/trial
 
@@ -176,6 +178,60 @@ Response 503:
   {"error": "llm_not_configured"}
 ```
 
+### POST /v1/text/summarize
+
+**Plaintext JSON -- no E2E encryption. Bearer token optional.**
+
+Produces a one-line summary of a whole saved note, for a History list preview.
+Whole-note operation: no cursor, selection or surrounding context.
+
+Notes shorter than 50 words are skipped without calling the LLM and return
+`summary_status: "too_short"` -- a short note is already its own summary.
+
+Always soft-fails: any LLM error returns 200 with `summary_status: "failed"`,
+never a 5xx. A missing summary costs a nicer History row and nothing else.
+
+Request bodies are capped at 8 KB.
+
+Same auth requirements as /v1/text/process.
+
+```
+Request:
+  POST /v1/text/summarize
+  Content-Type: application/json
+
+  {
+    "text": "<cleaned note text>",
+    "language": "en"
+  }
+
+Response 200:
+  {"summary": "Move Tuesday meeting; follow up on pricing", "summary_status": "succeeded"}
+  {"summary": null, "summary_status": "too_short"}
+  {"summary": null, "summary_status": "failed"}
+
+Response 400:
+  {"error": "text field required"}
+
+Response 413:
+  {"error": "request body too large"}
+
+Response 503:
+  {"error": "llm_not_configured"}
+```
+
+### Formatting flag (cleanup only)
+
+`POST /v1/text/process` accepts a `formatting` boolean inside the `context` JSON.
+It is opt-out: absent or `true` appends `LLM_PROMPT_FORMATTING` to the cleanup
+prompt, so spoken lists and topic changes come back as line breaks and plain-text
+bullets. Only an explicit `false` disables it. Ignored for edit intents, where the
+user's own instruction already states the shape of the result.
+
+```
+  {"text": "...", "context": "{\"formatting\":false}"}
+```
+
 ## Environment Variables
 
 ### Core
@@ -215,6 +271,8 @@ Both LLM_BASE_URL and LLM_MODEL must be set or the LLM feature stays off.
 | `LLM_PROMPT_EDIT` | (see default) | System prompt for voice-edit intent |
 | `LLM_PROMPT_EDIT_SELECTED` | (see default) | System prompt for edit-selected intent |
 | `LLM_PROMPT_SUGGEST` | (see default) | System prompt for suggest intent |
+| `LLM_PROMPT_FORMATTING` | built-in | Appended to `LLM_PROMPT` when the client requests formatting |
+| `LLM_PROMPT_SUMMARY` | built-in | System prompt for /v1/text/summarize |
 | `TEXT_ROUTES_OPEN` | `false` | Set to `true` to open /v1/text/* when AUTH_ENABLED=false |
 
 ## Default Prompts
