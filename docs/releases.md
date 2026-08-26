@@ -7,6 +7,12 @@ description: What's new in each Diction release. Full changelog for every App St
 
 # Release Notes
 
+## Diction 12.1
+
+- Pro subscribers are no longer told "Subscription required" by mistake. Existing lockouts heal themselves.
+- Live mode no longer drops the first words you speak.
+- Fixes to the keyboard hints, including Edit by voice, which now explains where it lives instead of doing nothing.
+
 ## Diction 12.0
 
 - The typing keyboard now matches your language. QWERTZ for German, AZERTY for French, and Spanish gets its ñ where it belongs. Each layout is named by the language it's for, sitting right next to the language picker.
