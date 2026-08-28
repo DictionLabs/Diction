@@ -612,13 +612,26 @@ func buildMux() (http.Handler, string, error) {
 
 	caps := capabilityFlags{
 		llmEnabled: llm.Enabled,
-		// A paired key opens the text routes (see withGatewayKey), so when a
-		// keystore exists the routes are genuinely usable and must be
-		// advertised — otherwise a paired app with a working key would see
-		// text_process:false and disable Writing Tools.
-		textRoutes:  llm.Enabled && (textRoutesOpen || keyStore != nil),
+		// Only advertise the text routes when EVERY caller that can reach them
+		// gets through. In required mode a request without a valid key never
+		// arrives, so pairing alone is enough; in optional mode a keyless
+		// caller still hits the text_routes_closed 403, and claiming otherwise
+		// would light up Writing Tools in the app for someone whose every call
+		// then fails. A caller that does present a valid key is upgraded
+		// per-request below.
+		textRoutes:  llm.Enabled && (textRoutesOpen || pairingMode == core.PairingRequired),
 		pairing:     keyStore != nil,
 		keyRotation: keyStore != nil && !keyStore.Pinned(),
+	}
+	// Per-request upgrade: a caller holding a valid pairing key does get the
+	// text routes (withGatewayKey lets it past the guard), so tell it so.
+	capsForRequest := func(r *http.Request) capabilityFlags {
+		if llm.Enabled && !caps.textRoutes && keyStore.VerifyRequest(r) {
+			upgraded := caps
+			upgraded.textRoutes = true
+			return upgraded
+		}
+		return caps
 	}
 
 	audioMW := withGatewayKey(keyStore, pairingMode, func(next http.HandlerFunc) http.HandlerFunc {
@@ -629,7 +642,7 @@ func buildMux() (http.Handler, string, error) {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", gw.HealthHandler())
-	mux.HandleFunc("/v1/models", withCapabilities(gw.ModelsHandler(), caps))
+	mux.HandleFunc("/v1/models", withCapabilities(gw.ModelsHandler(), capsForRequest))
 	mux.HandleFunc("/v1/trial", func(w http.ResponseWriter, r *http.Request) {
 		handleTrial(w, r, trials, trialSecret, trialDuration)
 	})

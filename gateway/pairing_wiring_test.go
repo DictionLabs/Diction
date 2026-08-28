@@ -159,3 +159,91 @@ func TestPairing_TextRoutesOpenWithPairedKey(t *testing.T) {
 		t.Fatalf("keyless /v1/text/process should stay 403, got %d", rec.Code)
 	}
 }
+
+// An upgrading self-hoster with an LLM configured, TEXT_ROUTES_OPEN unset and
+// no key must NOT be told the text routes are available: the app would light
+// up Writing Tools and every call would 403. Regression guard — the first cut
+// advertised text_process purely on "a keystore exists".
+func TestPairing_TextRoutesNotOverAdvertisedToKeylessCallers(t *testing.T) {
+	t.Setenv("LLM_MODEL", "some-model")
+	t.Setenv("LLM_BASE_URL", "http://127.0.0.1:1")
+	t.Setenv("LLM_API_KEY", "k")
+	mux := pairingMux(t, "optional")
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	var resp struct {
+		Capabilities struct {
+			LLM         bool `json:"llm"`
+			TextProcess bool `json:"text_process"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Capabilities.LLM {
+		t.Fatalf("llm should be advertised, got %+v", resp.Capabilities)
+	}
+	if resp.Capabilities.TextProcess {
+		t.Fatal("text_process must be false for a keyless caller that would get 403")
+	}
+	// A keyless call really does 403, which is what the flag now reflects.
+	req = httptest.NewRequest(http.MethodPost, "/v1/text/process", nil)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("keyless /v1/text/process = %d, want 403", rec.Code)
+	}
+}
+
+// The same gateway tells a caller holding a valid pairing key that the text
+// routes ARE available, because for that caller they are.
+func TestPairing_TextRoutesAdvertisedToKeyedCaller(t *testing.T) {
+	const key = "dk_pinned_via_env_pinned_via_env_pinned_1"
+	t.Setenv("DICTION_GATEWAY_KEY", key)
+	t.Setenv("LLM_MODEL", "some-model")
+	t.Setenv("LLM_BASE_URL", "http://127.0.0.1:1")
+	t.Setenv("LLM_API_KEY", "k")
+	mux := pairingMux(t, "optional")
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+key)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	var resp struct {
+		Capabilities struct {
+			TextProcess bool `json:"text_process"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Capabilities.TextProcess {
+		t.Fatal("a caller with a valid pairing key must see text_process:true")
+	}
+}
+
+// In required mode nothing keyless can reach the routes at all, so the flat
+// advertisement is honest for every caller.
+func TestPairing_RequiredModeAdvertisesTextRoutes(t *testing.T) {
+	t.Setenv("LLM_MODEL", "some-model")
+	t.Setenv("LLM_BASE_URL", "http://127.0.0.1:1")
+	t.Setenv("LLM_API_KEY", "k")
+	mux := pairingMux(t, "required")
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	var resp struct {
+		Capabilities struct {
+			TextProcess bool `json:"text_process"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if !resp.Capabilities.TextProcess {
+		t.Fatal("required mode: every reachable caller is keyed, so text_process must be true")
+	}
+}

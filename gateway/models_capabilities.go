@@ -22,8 +22,9 @@ type capabilityFlags struct {
 	keyRotation bool
 }
 
-func withCapabilities(base http.HandlerFunc, flags capabilityFlags) http.HandlerFunc {
+func withCapabilities(base http.HandlerFunc, flagsFor func(*http.Request) capabilityFlags) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		flags := flagsFor(r)
 		// Capture the base handler's output.
 		rec := &responseRecorder{header: make(http.Header), code: http.StatusOK}
 		base(rec, r)
