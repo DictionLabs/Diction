@@ -46,6 +46,18 @@ type Config struct {
 	// ProfileStore enables per-device language history for auto-detect routing.
 	// Nil in community builds without MariaDB — auto-detect always falls back to whisper_safe.
 	ProfileStore *ProfileStore
+
+	// LLMEnabled advertises LLM capability in /v1/models capabilities block.
+	// Set to true when an LLM API key is configured.
+	LLMEnabled bool
+
+	// PairingEnabled advertises gateway-key pairing in /v1/models capabilities.
+	// Community builds set it when DICTION_GATEWAY_AUTH != off; cloud leaves it false.
+	PairingEnabled bool
+
+	// KeyRotationEnabled advertises POST /v1/auth/rotate. False when the key is
+	// env-pinned via DICTION_GATEWAY_KEY.
+	KeyRotationEnabled bool
 }
 
 // Gateway holds runtime state: backends, health, config.
@@ -59,6 +71,10 @@ type Gateway struct {
 	cohereModel   string
 	maxBodySize   int64
 	profileStore  *ProfileStore
+	llmEnabled    bool
+
+	pairingEnabled     bool
+	keyRotationEnabled bool
 
 	// streamIdleTimeout bounds inter-frame gap on /v1/audio/stream. See Config.
 	// Tests override the field directly after construction.
@@ -101,16 +117,19 @@ func NewGateway(cfg Config) *Gateway {
 		idle = defaultStreamIdleTimeout
 	}
 	g := &Gateway{
-		backends:          backends,
-		health:            newHealthState(),
-		defaultModel:      defaultModel,
-		fallbackModel:     cfg.FallbackModel,
-		englishModel:      cfg.EnglishModel,
-		parakeetModel:     cfg.ParakeetModel,
-		cohereModel:       cfg.CohereModel,
-		maxBodySize:       cfg.MaxBodySize,
-		streamIdleTimeout: idle,
-		profileStore:      cfg.ProfileStore,
+		backends:           backends,
+		health:             newHealthState(),
+		defaultModel:       defaultModel,
+		fallbackModel:      cfg.FallbackModel,
+		englishModel:       cfg.EnglishModel,
+		parakeetModel:      cfg.ParakeetModel,
+		cohereModel:        cfg.CohereModel,
+		maxBodySize:        cfg.MaxBodySize,
+		streamIdleTimeout:  idle,
+		profileStore:       cfg.ProfileStore,
+		llmEnabled:         cfg.LLMEnabled,
+		pairingEnabled:     cfg.PairingEnabled,
+		keyRotationEnabled: cfg.KeyRotationEnabled,
 	}
 	g.startHealthChecker()
 	return g

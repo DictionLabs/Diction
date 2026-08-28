@@ -14,7 +14,15 @@ import (
 //
 // core/ is not modified -- the decorator lives in main, so the two byte-identical
 // hand-maintained copies of core/ across both git roots stay untouched (R18).
-func withCapabilities(base http.HandlerFunc, llmEnabled, routesOpen bool) http.HandlerFunc {
+// capabilityFlags carries the advertised feature set into withCapabilities.
+type capabilityFlags struct {
+	llmEnabled  bool
+	textRoutes  bool
+	pairing     bool
+	keyRotation bool
+}
+
+func withCapabilities(base http.HandlerFunc, flags capabilityFlags) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Capture the base handler's output.
 		rec := &responseRecorder{header: make(http.Header), code: http.StatusOK}
@@ -48,16 +56,19 @@ func withCapabilities(base http.HandlerFunc, llmEnabled, routesOpen bool) http.H
 		}
 
 		// Inject capabilities.
-		textRoutes := llmEnabled && routesOpen
 		caps, _ := json.Marshal(map[string]bool{
-			"llm":            llmEnabled,
-			"text_process":   textRoutes,
-			"text_suggest":   textRoutes,
-			"text_summarize": textRoutes,
+			"llm":            flags.llmEnabled,
+			"text_process":   flags.textRoutes,
+			"text_suggest":   flags.textRoutes,
+			"text_summarize": flags.textRoutes,
 			// Formatting rides inside /v1/text/process as a context flag rather
 			// than on its own route, so it is advertised separately: a client can
 			// then offer the Formatting toggle only where the key is honoured.
-			"formatting": llmEnabled,
+			"formatting": flags.llmEnabled,
+			// Gateway pairing (QR key + rotation). key_rotation is false when
+			// the key is pinned via DICTION_GATEWAY_KEY.
+			"pairing":      flags.pairing,
+			"key_rotation": flags.keyRotation,
 		})
 		baseResp["capabilities"] = caps
 

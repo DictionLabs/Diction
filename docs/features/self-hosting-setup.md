@@ -153,6 +153,16 @@ nothing to download.
 
 ## Connecting the app
 
+The fast way: scan the QR code. When the gateway starts, it prints a QR code in its logs:
+
+```bash
+docker compose logs gateway
+```
+
+Open the Diction app, go to **Self-Hosted**, tap **Scan to pair**, and point the camera at your terminal. The URL and key land in the app in one step. Nothing to type, nothing to copy. Set `PUBLIC_URL` on the gateway (for example `https://your-host:8080`) so the QR carries the address your phone should use; without it the QR carries only the key and the app asks for the URL.
+
+Requires Diction 13 or later and a current gateway image. On older versions, or if you'd rather type:
+
 1. Open the Diction app
 2. Switch to the **Self-Hosted** tab
 3. Paste your server URL into **Endpoint URL**:
@@ -171,9 +181,25 @@ You don't need to open ports on your router. Several free options connect your p
 - **[Tailscale](https://tailscale.com/)**. Free WireGuard mesh VPN. Install on server and phone, connect from anywhere.
 - **[ngrok](https://ngrok.com/)**. Instant public URL. Great for quick testing.
 
+## Locking your gateway down
+
+You put your gateway on a tunnel so you can dictate from anywhere. That means anyone who finds the URL can transcribe on your hardware. The gateway fixes this itself: it generates its own key on first start, prints it inside the pairing QR, and accepts it as a `Bearer` token on every request.
+
+By default the key is advisory. Paired devices send it, but requests without it still pass, so upgrading the image never locks anyone out. Once your devices are paired, flip enforcement on:
+
+```yaml
+  gateway:
+    environment:
+      DICTION_GATEWAY_AUTH: required
+```
+
+From that moment, requests without a valid key get a 401. Keep the `gateway-data` volume from the compose file mounted at `/data`; that's where the key lives. Without it a fresh key is generated on every container recreate and your devices must re-scan.
+
+The key also rotates itself. A paired Diction app swaps in a fresh key on a regular schedule, old keys stay valid for a generous grace window so a phone that was off for a week catches up silently, and none of it needs you. If you'd rather manage the key by hand, set `DICTION_GATEWAY_KEY` to your own value; rotation turns off and the app treats it like any manual API key.
+
 ## Optional: API key
 
-If your server is behind an API key (common with reverse proxies or hosted endpoints), enter it in the **API Key** field in the app's Self-Hosted settings. It's sent as a `Bearer` token with every request.
+If your server sits behind its own auth (common with reverse proxies or hosted endpoints), enter the key in the **API Key** field in the app's Self-Hosted settings. It's sent as a `Bearer` token with every request. Keys you type by hand are yours: the app never rotates or changes them.
 
 ## Any Whisper endpoint works
 

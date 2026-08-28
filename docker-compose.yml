@@ -54,6 +54,18 @@ services:
       # LLM_PROMPT_SUGGEST: "Suggest 2-3 concise alternative phrasings or corrections for the selected text. Return a JSON array of strings only, no explanation."
       # --- Text routes (required when LLM is configured and AUTH_ENABLED=false) ---
       # TEXT_ROUTES_OPEN: "true"
+      # --- Pairing (QR code + auto-generated key) ---
+      # On startup the gateway prints a QR code in the logs. Scan it in the
+      # Diction app (Self-Hosted > Scan to pair) to set the URL and key in one
+      # step. Set PUBLIC_URL so the QR includes your gateway address:
+      # PUBLIC_URL: https://your-host:8080
+      # By default the key is accepted but not enforced. To require it:
+      # DICTION_GATEWAY_AUTH: required
+    volumes:
+      # Persists the pairing keyring (and trial records). Without this a new
+      # key is generated on every container recreate and paired devices must
+      # re-scan.
+      - gateway-data:/data
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
       interval: 30s
@@ -188,6 +200,8 @@ services:
       - ollama-data:/root/.ollama
 
 volumes:
+  gateway-data:
+    name: diction-gateway-data
   whisper-models:
     name: diction-whisper-models
   ollama-data:

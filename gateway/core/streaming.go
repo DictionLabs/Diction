@@ -808,22 +808,28 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 		}
 		if err != nil {
 			log.Printf("ws proxy: %v", err)
-			kind := "stt_backend_error"
-			hint := "backend transcription failed"
-			if errors.Is(err, errSTTHallucination) {
-				kind = "stt_hallucination"
-				hint = "backend returned repeated-token hallucination"
+			kind, hint, status := classifyBackendFailure(err)
+			if kind == kindSTTBackend5xx {
+				// Parity with /v1/audio/transcriptions: a 5xx means the backend
+				// itself is sick, so take it out of rotation instead of sending
+				// the next dictation into the same fault. Transient by design —
+				// startHealthChecker re-probes every 120 s and restores it.
+				g.health.set(backend.Name, false)
 			}
 			if OnError != nil {
 				OnError(ctx, ErrorEvent{
-					Source:   "stt",
-					Kind:     kind,
-					Endpoint: "/v1/audio/stream",
-					Provider: backend.Name,
-					Hint:     hint,
+					Source:     "stt",
+					Kind:       kind,
+					Endpoint:   "/v1/audio/stream",
+					Provider:   backend.Name,
+					HTTPStatus: status,
+					Hint:       hint,
 				})
 			}
-			if OnRequestFailed != nil {
+			// A client that walked away is not a backend fault and must not
+			// inflate the failure rate — the HTTP path already excludes it via
+			// statusClientClosed; this is the same rule for the socket path.
+			if OnRequestFailed != nil && kind != kindSTTUpstreamCanceled {
 				OnRequestFailed(ctx, errTypeSTTError)
 			}
 			CloseWSWithTimeout(conn, wsCloseFailed, "transcription failed", 2*time.Second)
@@ -878,6 +884,75 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 // The caller is responsible for preparing p.data (WAV-wrapped PCM for backends
 // that need WAV, or raw Ogg/WebM for passthrough backends) so this function
 // never needs to sniff magic bytes.
+// STT failure kinds shared with the /v1/audio/transcriptions path. Named
+// constants because the socket path previously spelled only one of them and
+// collapsed the other two into it — 389 of 416 stt_backend_error events in a
+// 60-day window were this endpoint, unsplittable, while the HTTP path recorded
+// the same failures as three distinct kinds.
+const (
+	kindSTTBackendError     = "stt_backend_error"
+	kindSTTBackend5xx       = "stt_backend_5xx"
+	kindSTTUpstreamCanceled = "stt_upstream_canceled"
+	kindSTTHallucination    = "stt_hallucination"
+)
+
+// classifyBackendFailure maps a proxyToBackend error onto the kind vocabulary
+// the HTTP path already uses, so the two transcription routes are readable
+// against each other instead of one being a single opaque bucket.
+//
+// The returned hint is curated and the status is a bare number: the underlying
+// error text embeds up to 1 KiB of the backend's response body, which is the
+// transcription payload and therefore the user's own words. It must never reach
+// telemetry — only the digits of the status are ever copied out.
+func classifyBackendFailure(err error) (kind, hint string, status int) {
+	switch {
+	case errors.Is(err, errSTTHallucination):
+		return kindSTTHallucination, "backend returned repeated-token hallucination", 0
+	case errors.Is(err, context.Canceled):
+		return kindSTTUpstreamCanceled, "upstream canceled (client disconnect or new request)", 0
+	case errors.Is(err, context.DeadlineExceeded):
+		// streamTimeout is 3 h, so this is the backend stalling, not a long dictation.
+		return kindSTTBackendError, "backend timed out", 0
+	}
+	if code := backendStatusFromErr(err.Error()); code > 0 {
+		if code >= 500 {
+			return kindSTTBackend5xx, fmt.Sprintf("backend returned %d", code), code
+		}
+		// 4xx is a request we built wrong (bad model, unsupported audio), not a
+		// sick backend — same kind as a transport fault, but the status says why.
+		return kindSTTBackendError, fmt.Sprintf("backend returned %d", code), code
+	}
+	if strings.HasPrefix(err.Error(), "decode response:") {
+		return kindSTTBackendError, "backend response decode failed", 0
+	}
+	return kindSTTBackendError, "backend transport failed", 0
+}
+
+// backendStatusFromErr recovers the status from proxyToBackend's
+// `backend returned <code>: <body>` error. Returns 0 when absent. Exactly three
+// digits are accepted, which matches every HTTP status and bounds how much of a
+// malformed message can be read.
+func backendStatusFromErr(s string) int {
+	const marker = "backend returned "
+	i := strings.Index(s, marker)
+	if i < 0 {
+		return 0
+	}
+	rest := s[i+len(marker):]
+	n := 0
+	for n < len(rest) && rest[n] >= '0' && rest[n] <= '9' {
+		n++
+	}
+	if n != 3 {
+		return 0
+	}
+	code, err := strconv.Atoi(rest[:3])
+	if err != nil {
+		return 0
+	}
+	return code
+}
+
 func (g *Gateway) proxyToBackend(ctx context.Context, target *url.URL, p audioPayload, backend *Backend, language string) (string, error) {
 	// Build multipart body
 	var body bytes.Buffer

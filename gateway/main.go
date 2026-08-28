@@ -15,6 +15,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -517,6 +518,35 @@ func textRoutesMiddleware(authEnabled, routesOpen bool, bundleID string, trialSe
 	}
 }
 
+// withGatewayKey layers the pairing key (see core/pairing.go) around another
+// auth middleware: a valid paired key (current or grace) bypasses it entirely;
+// without one the request falls through unchanged, except in required mode
+// where keyless requests are rejected with 401 invalid_key. This is what makes
+// the paired key a real access control while keeping AUTH_ENABLED (JWS/trial)
+// and TEXT_ROUTES_OPEN semantics intact for everyone else.
+func withGatewayKey(
+	ks *core.KeyStore, mode core.PairingMode,
+	fallthroughMW func(http.HandlerFunc) http.HandlerFunc,
+) func(http.HandlerFunc) http.HandlerFunc {
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		fallback := fallthroughMW(next)
+		if ks == nil {
+			return fallback
+		}
+		return func(w http.ResponseWriter, r *http.Request) {
+			if ks.VerifyRequest(r) {
+				next(w, r)
+				return
+			}
+			if mode == core.PairingRequired {
+				core.WritePairingRequired(w)
+				return
+			}
+			fallback(w, r)
+		}
+	}
+}
+
 // --- Main ---
 
 // buildMux reads configuration from environment variables, wires up all
@@ -528,6 +558,24 @@ func buildMux() (http.Handler, string, error) {
 	maxBodySize := int64(core.EnvIntOrDefault("MAX_BODY_SIZE", 209715200))
 	authEnabled := core.EnvBoolOrDefault("AUTH_ENABLED", false)
 	bundleID := core.EnvOrDefault("BUNDLE_ID", "one.diction")
+
+	// Gateway pairing key (QR pairing + rotation). Default mode is optional:
+	// the key is generated, printed, and accepted, but keyless requests still
+	// pass — an image upgrade can never lock an existing deploy out.
+	pairingMode := core.PairingModeFromEnv()
+	keyStore, err := core.KeyStoreFromEnv(pairingMode)
+	if err != nil {
+		// In the default optional mode a keystore failure (unwritable
+		// DICTION_KEY_PATH, read-only rootfs) must not take the gateway down —
+		// an image upgrade may never break an existing deploy. Only an explicit
+		// required mode fails loudly, because silently running open would
+		// contradict the operator's stated intent.
+		if pairingMode == core.PairingRequired {
+			return nil, "", fmt.Errorf("gateway pairing (DICTION_GATEWAY_AUTH=required): %w", err)
+		}
+		log.Printf("warning: gateway pairing disabled: %v (set DICTION_KEY_PATH to a writable path)", err)
+		keyStore = nil
+	}
 
 	// Trial token config
 	var trialSecret []byte
@@ -562,25 +610,52 @@ func buildMux() (http.Handler, string, error) {
 		}
 	}
 
+	caps := capabilityFlags{
+		llmEnabled: llm.Enabled,
+		// A paired key opens the text routes (see withGatewayKey), so when a
+		// keystore exists the routes are genuinely usable and must be
+		// advertised — otherwise a paired app with a working key would see
+		// text_process:false and disable Writing Tools.
+		textRoutes:  llm.Enabled && (textRoutesOpen || keyStore != nil),
+		pairing:     keyStore != nil,
+		keyRotation: keyStore != nil && !keyStore.Pinned(),
+	}
+
+	audioMW := withGatewayKey(keyStore, pairingMode, func(next http.HandlerFunc) http.HandlerFunc {
+		return authMiddleware(next, authEnabled, bundleID, trialSecret)
+	})
+	textMW := withGatewayKey(keyStore, pairingMode,
+		textRoutesMiddleware(authEnabled, textRoutesOpen, bundleID, trialSecret))
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", gw.HealthHandler())
-	mux.HandleFunc("/v1/models", withCapabilities(gw.ModelsHandler(), llm.Enabled, textRoutesOpen))
+	mux.HandleFunc("/v1/models", withCapabilities(gw.ModelsHandler(), caps))
 	mux.HandleFunc("/v1/trial", func(w http.ResponseWriter, r *http.Request) {
 		handleTrial(w, r, trials, trialSecret, trialDuration)
 	})
-	mux.HandleFunc("/v1/audio/transcriptions", authMiddleware(
-		gw.TranscriptionHandlerWithPostProcess(postProcess), authEnabled, bundleID, trialSecret,
+	mux.HandleFunc("/v1/audio/transcriptions", audioMW(
+		gw.TranscriptionHandlerWithPostProcess(postProcess),
 	))
-	mux.HandleFunc("/v1/audio/stream", authMiddleware(
-		gw.StreamingHandlerWithPostProcess(postProcess), authEnabled, bundleID, trialSecret,
+	mux.HandleFunc("/v1/audio/stream", audioMW(
+		gw.StreamingHandlerWithPostProcess(postProcess),
 	))
-	textMW := textRoutesMiddleware(authEnabled, textRoutesOpen, bundleID, trialSecret)
 	mux.HandleFunc("/v1/text/process", textMW(handleTextProcess(llm)))
 	mux.HandleFunc("/v1/text/suggest", textMW(handleTextSuggest(llm)))
 	mux.HandleFunc("/v1/text/summarize", textMW(handleTextSummarize(llm)))
+	if keyStore != nil {
+		core.RegisterPairingRoutes(mux, keyStore)
+	}
 	mux.HandleFunc("/", gw.CatchAllHandler())
 
-	log.Printf("Diction Gateway starting on :%s (default_model=%s, auth=%v, trial=%v, llm=%v, text_routes=%v)", port, defaultModel, authEnabled, len(trialSecret) > 0, llm.Enabled, textRoutesOpen)
+	log.Printf("Diction Gateway starting on :%s (default_model=%s, auth=%v, trial=%v, llm=%v, text_routes=%v, pairing=%s)", port, defaultModel, authEnabled, len(trialSecret) > 0, llm.Enabled, textRoutesOpen, pairingMode)
+	if keyStore != nil {
+		log.Printf("gateway pairing key active (fingerprint %s, rotation=%v)", keyStore.Fingerprint(), !keyStore.Pinned())
+		publicURL := core.EnvOrDefault("PUBLIC_URL", "")
+		if u, err := url.Parse(publicURL); err == nil && u != nil && (u.Path != "" || u.RawQuery != "") {
+			log.Printf("warning: PUBLIC_URL should be scheme://host[:port] only; the app drops paths and query strings")
+		}
+		core.PrintPairingQR(publicURL, keyStore.CurrentKey())
+	}
 	return mux, port, nil
 }
 

@@ -45,6 +45,9 @@ type ErrorEvent struct {
 	QwertyVisible         int64  // kbkill_heartbeat_stale: 1=visible, 2=hidden, 0=unknown
 	AppearFpMB            int64  // kbkill_heartbeat_stale: phys_footprint at viewWillAppear-end
 	CrashStack            string // kbkill_metrickit_crash: leaf-first binary+offset frames, ≤200 chars, empty when stack unavailable
+	ErrorDesc             string // coreml_ane_inference_failed[_after_recovery]: redacted underlying CoreML message, ≤200 chars
+	OSVersion             string // ANE kinds: OS version string, e.g. "Version 26.0 (Build 23A340)", ≤64 chars
+	AppBuild              string // ANE kinds: CFBundleVersion, e.g. "531", ≤16 chars
 }
 
 // OnError is called with a structured error event. Nil by default —

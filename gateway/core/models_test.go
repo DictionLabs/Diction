@@ -317,3 +317,38 @@ func TestModelsHandler_EmptyProvider_DefaultsToWhisper(t *testing.T) {
 		t.Errorf("empty provider should default to 'whisper', got %s", resp.Providers[0].ID)
 	}
 }
+
+func TestModelsHandler_PairingCapabilities(t *testing.T) {
+	cases := []struct {
+		name                 string
+		pairing, keyRotation bool
+	}{
+		{"cloud-defaults-false", false, false},
+		{"pairing-only", true, false},
+		{"pairing-and-rotation", true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := testGateway()
+			g.pairingEnabled = tc.pairing
+			g.keyRotationEnabled = tc.keyRotation
+			req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+			rr := httptest.NewRecorder()
+			g.ModelsHandler()(rr, req)
+
+			var resp struct {
+				Capabilities struct {
+					Pairing     bool `json:"pairing"`
+					KeyRotation bool `json:"key_rotation"`
+				} `json:"capabilities"`
+			}
+			if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if resp.Capabilities.Pairing != tc.pairing || resp.Capabilities.KeyRotation != tc.keyRotation {
+				t.Fatalf("capabilities = %+v, want pairing=%v key_rotation=%v",
+					resp.Capabilities, tc.pairing, tc.keyRotation)
+			}
+		})
+	}
+}

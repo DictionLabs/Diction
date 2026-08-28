@@ -1286,3 +1286,187 @@ func TestStreamingHandler_AutoDetect_WithDeviceHash(t *testing.T) {
 		t.Errorf("text: want 'auto-detect result', got %q", result.Text)
 	}
 }
+
+// The socket path used to file every proxyToBackend failure as a bare
+// stt_backend_error with no status: 389 of 416 events in a 60-day window, against
+// three providers, unsplittable. The HTTP path recorded the same failures as
+// stt_backend_5xx / stt_upstream_canceled / stt_backend_error all along. This
+// pins the socket path to that same vocabulary.
+func TestClassifyBackendFailure_MatchesHTTPPathVocabulary(t *testing.T) {
+	cases := []struct {
+		name       string
+		err        error
+		wantKind   string
+		wantStatus int
+	}{
+		{"hallucination", errSTTHallucination, kindSTTHallucination, 0},
+		{
+			"client cancel is not a backend fault",
+			fmt.Errorf("backend request: %w", context.Canceled),
+			kindSTTUpstreamCanceled, 0,
+		},
+		{
+			"deadline is the backend stalling, not a long dictation",
+			fmt.Errorf("backend request: %w", context.DeadlineExceeded),
+			kindSTTBackendError, 0,
+		},
+		{"500 demotes", errors.New("backend returned 500: internal error"), kindSTTBackend5xx, 500},
+		{"503 demotes", errors.New("backend returned 503: unavailable"), kindSTTBackend5xx, 503},
+		// 4xx is our request being wrong, not a sick backend — must NOT demote,
+		// but the status still has to survive so we can see which 4xx it was.
+		{"422 does not demote", errors.New("backend returned 422: bad audio"), kindSTTBackendError, 422},
+		{"400 does not demote", errors.New("backend returned 400: no model"), kindSTTBackendError, 400},
+		{"decode", errors.New("decode response: invalid character"), kindSTTBackendError, 0},
+		{"transport", errors.New("backend request: dial tcp: refused"), kindSTTBackendError, 0},
+		{"unknown", errors.New("something else entirely"), kindSTTBackendError, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, hint, status := classifyBackendFailure(tc.err)
+			if kind != tc.wantKind {
+				t.Errorf("kind: want %s, got %s", tc.wantKind, kind)
+			}
+			if status != tc.wantStatus {
+				t.Errorf("status: want %d, got %d", tc.wantStatus, status)
+			}
+			if hint == "" {
+				t.Error("hint must never be empty — it is the only human-readable field")
+			}
+		})
+	}
+}
+
+// proxyToBackend embeds up to 1 KiB of the backend's response body in its error,
+// and for a transcription backend that body IS the user's speech. Only the status
+// digits may ever be copied into telemetry.
+func TestClassifyBackendFailure_NeverLeaksTheResponseBody(t *testing.T) {
+	err := errors.New("backend returned 500: {\"text\":\"Ondrej said hello world\"}")
+	kind, hint, status := classifyBackendFailure(err)
+	if kind != kindSTTBackend5xx || status != 500 {
+		t.Fatalf("want stt_backend_5xx/500, got %s/%d", kind, status)
+	}
+	for _, needle := range []string{"Ondrej", "hello world", "text"} {
+		if strings.Contains(hint, needle) {
+			t.Errorf("hint leaked transcript content %q: %q", needle, hint)
+		}
+	}
+}
+
+func TestBackendStatusFromErr(t *testing.T) {
+	cases := map[string]int{
+		"backend returned 500: boom":        500,
+		"backend returned 404: nope":        404,
+		"wrapped: backend returned 502: hi": 502,
+		// Malformed — must yield 0 rather than a partial or over-long read.
+		"backend returned 5: truncated":   0,
+		"backend returned 50000: too big": 0,
+		"backend returned abc: letters":   0,
+		"backend returned ":               0,
+		"no marker here":                  0,
+		"":                                0,
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			if got := backendStatusFromErr(in); got != want {
+				t.Errorf("backendStatusFromErr(%q): want %d, got %d", in, want, got)
+			}
+		})
+	}
+}
+
+// End-to-end over a real socket: a 5xx from the backend must now surface as
+// stt_backend_5xx carrying the status, and must take the backend out of
+// rotation the way the HTTP path always has. Before this, the socket path
+// emitted a bare stt_backend_error with no status and left a sick backend
+// serving the next dictation.
+func TestStreamingHandler_Backend5xx_EmitsStatusAndDemotes(t *testing.T) {
+	// Not parallel-safe: mutates core.OnError.
+	events, restore := withCapturedOnError(t)
+	defer restore()
+
+	srv, g := startStreamingServer(t, "", http.StatusInternalServerError)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
+	done, _ := json.Marshal(map[string]string{"action": "done"})
+	conn.Write(ctx, websocket.MessageText, done)
+
+	if _, _, err = conn.Read(ctx); err == nil {
+		t.Fatal("expected connection closed after backend 5xx")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(*events) == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(*events) == 0 {
+		t.Fatal("no OnError event captured")
+	}
+	got := (*events)[0]
+	if got.Kind != kindSTTBackend5xx {
+		t.Errorf("kind: want %s, got %q", kindSTTBackend5xx, got.Kind)
+	}
+	if got.HTTPStatus != http.StatusInternalServerError {
+		t.Errorf("http_status: want 500, got %d — the status is the whole point", got.HTTPStatus)
+	}
+	if got.Endpoint != "/v1/audio/stream" {
+		t.Errorf("endpoint: want /v1/audio/stream, got %q", got.Endpoint)
+	}
+	if g.health.get("small") {
+		t.Error("backend still healthy after a 5xx — it must be demoted so the next dictation routes elsewhere")
+	}
+}
+
+// The mirror image: a 4xx is our request being wrong, not a sick backend. It
+// must keep the status but leave the backend in rotation — demoting on a 422
+// would take a healthy backend down for every user over one bad request.
+func TestStreamingHandler_Backend4xx_KeepsBackendHealthy(t *testing.T) {
+	// Not parallel-safe: mutates core.OnError.
+	events, restore := withCapturedOnError(t)
+	defer restore()
+
+	srv, g := startStreamingServer(t, "", http.StatusUnprocessableEntity)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
+	done, _ := json.Marshal(map[string]string{"action": "done"})
+	conn.Write(ctx, websocket.MessageText, done)
+
+	if _, _, err = conn.Read(ctx); err == nil {
+		t.Fatal("expected connection closed after backend 4xx")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(*events) == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(*events) == 0 {
+		t.Fatal("no OnError event captured")
+	}
+	got := (*events)[0]
+	if got.Kind != kindSTTBackendError {
+		t.Errorf("kind: want %s, got %q", kindSTTBackendError, got.Kind)
+	}
+	if got.HTTPStatus != http.StatusUnprocessableEntity {
+		t.Errorf("http_status: want 422, got %d", got.HTTPStatus)
+	}
+	if !g.health.get("small") {
+		t.Error("backend demoted on a 4xx — a bad request must not take the backend down for everyone")
+	}
+}

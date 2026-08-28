@@ -27,10 +27,19 @@ type openaiModel struct {
 	OwnedBy string `json:"owned_by"` // HuggingFace org prefix (e.g. "Systran", "nvidia") or "custom"
 }
 
+type capabilities struct {
+	LLM         bool `json:"llm"`
+	TextProcess bool `json:"text_process"`
+	TextSuggest bool `json:"text_suggest"`
+	Pairing     bool `json:"pairing"`      // /v1/auth/key exists and gateway keys are accepted
+	KeyRotation bool `json:"key_rotation"` // /v1/auth/rotate usable (false when key is env-pinned)
+}
+
 type modelsResponse struct {
-	Object    string         `json:"object"`    // "list" — OpenAI list envelope
-	Data      []openaiModel  `json:"data"`      // OpenAI-compatible model list
-	Providers []providerInfo `json:"providers"` // Diction legacy grouping (consumed by iOS app)
+	Object       string         `json:"object"`       // "list" — OpenAI list envelope
+	Data         []openaiModel  `json:"data"`         // OpenAI-compatible model list
+	Providers    []providerInfo `json:"providers"`    // Diction legacy grouping (consumed by iOS app)
+	Capabilities capabilities   `json:"capabilities"` // Advertises optional backend features
 }
 
 // provider display names
@@ -109,6 +118,13 @@ func (g *Gateway) ModelsHandler() http.HandlerFunc {
 			Object:    "list",
 			Data:      data,
 			Providers: providers,
+			Capabilities: capabilities{
+				LLM:         g.llmEnabled,
+				TextProcess: g.llmEnabled,
+				TextSuggest: g.llmEnabled,
+				Pairing:     g.pairingEnabled,
+				KeyRotation: g.keyRotationEnabled,
+			},
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
