@@ -832,16 +832,28 @@ func TestStreamingHandler_FirstTextFrameAsContext(t *testing.T) {
 	}
 }
 
-func TestStreamingHandler_ForwardsCustomWordsAsPrompt(t *testing.T) {
-	receivedPrompt := make(chan string, 1)
+type capturedPrompt struct {
+	value   string
+	present bool
+}
+
+func captureStreamingPrompt(t *testing.T, contextJSON string) capturedPrompt {
+	t.Helper()
+
+	receivedPrompt := make(chan capturedPrompt, 1)
 	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := r.ParseMultipartForm(10 << 20); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		receivedPrompt <- r.FormValue("prompt")
+		values, present := r.MultipartForm.Value["prompt"]
+		var value string
+		if len(values) > 0 {
+			value = values[0]
+		}
+		receivedPrompt <- capturedPrompt{value: value, present: present}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"text":"raw audio"}`)
+		_, _ = fmt.Fprint(w, `{"text":"raw audio"}`)
 	}))
 	t.Cleanup(whisper.Close)
 
@@ -864,9 +876,8 @@ func TestStreamingHandler_ForwardsCustomWordsAsPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.CloseNow()
+	defer func() { _ = conn.CloseNow() }()
 
-	contextJSON := `{"customWords":[{"word":"Kubernetes"},{"word":"PostgreSQL"}]}`
 	if err := conn.Write(ctx, websocket.MessageText, []byte(contextJSON)); err != nil {
 		t.Fatalf("write context: %v", err)
 	}
@@ -883,11 +894,27 @@ func TestStreamingHandler_ForwardsCustomWordsAsPrompt(t *testing.T) {
 
 	select {
 	case prompt := <-receivedPrompt:
-		if prompt != "Kubernetes, PostgreSQL" {
-			t.Errorf("prompt: want %q, got %q", "Kubernetes, PostgreSQL", prompt)
-		}
+		return prompt
 	case <-ctx.Done():
 		t.Fatal("timed out waiting for backend prompt")
+		return capturedPrompt{}
+	}
+}
+
+func TestStreamingHandler_ForwardsCustomWordsAsPrompt(t *testing.T) {
+	prompt := captureStreamingPrompt(t, `{"customWords":[{"word":"Kubernetes"},{"word":"PostgreSQL"}]}`)
+	if !prompt.present {
+		t.Fatal("prompt field omitted")
+	}
+	if prompt.value != "Kubernetes, PostgreSQL" {
+		t.Errorf("prompt: want %q, got %q", "Kubernetes, PostgreSQL", prompt.value)
+	}
+}
+
+func TestStreamingHandler_OmitsPromptWithoutCustomWords(t *testing.T) {
+	prompt := captureStreamingPrompt(t, `{"customWords":[]}`)
+	if prompt.present {
+		t.Errorf("prompt field present with empty custom words: %q", prompt.value)
 	}
 }
 
