@@ -35,7 +35,7 @@ func TestProxyToBackend_Success(t *testing.T) {
 	target, _ := url.Parse(backend.URL)
 	pcm := make([]byte, 3200) // 0.1s of silence at 16kHz 16-bit mono
 
-	text, err := g.proxyToBackend(context.Background(), target, audioPayload{data: pcm, filename: "audio.wav"}, &Backend{Name: "small"}, "en")
+	text, err := g.proxyToBackend(context.Background(), target, audioPayload{data: pcm, filename: "audio.wav"}, &Backend{Name: "small"}, "en", "")
 	if err != nil {
 		t.Fatalf("proxyToBackend: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestProxyToBackend_NoLanguage(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	text, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "")
+	text, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "", "")
 	if err != nil {
 		t.Fatalf("proxyToBackend with empty language: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestProxyToBackend_BackendError(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "", "")
 	if err == nil {
 		t.Fatal("expected error for backend 500")
 	}
@@ -88,7 +88,7 @@ func TestProxyToBackend_InvalidJSON(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "", "")
 	if err == nil {
 		t.Fatal("expected error for invalid JSON response")
 	}
@@ -98,7 +98,7 @@ func TestProxyToBackend_UnreachableHost(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse("http://127.0.0.1:1") // nothing listening there
 
-	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "", "")
 	if err == nil {
 		t.Fatal("expected error for unreachable host")
 	}
@@ -122,7 +122,7 @@ func TestProxyToBackend_NoModelFieldWhenForwardModelEmpty(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "large-v3-turbo", ForwardModel: ""}, "ko")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "large-v3-turbo", ForwardModel: ""}, "ko", "")
 	if err != nil {
 		t.Fatalf("proxyToBackend: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestProxyToBackend_InjectsForwardModelWhenSet(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "large-v3-turbo", ForwardModel: "deepdml/faster-whisper-large-v3-turbo-ct2"}, "ko")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "large-v3-turbo", ForwardModel: "deepdml/faster-whisper-large-v3-turbo-ct2"}, "ko", "")
 	if err != nil {
 		t.Fatalf("proxyToBackend: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestProxyToBackend_UsesTargetPath(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "canary", TargetPath: "/inference"}, "en")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "canary", TargetPath: "/inference"}, "en", "")
 	if err != nil {
 		t.Fatalf("proxyToBackend: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestProxyToBackend_SendsAuthHeader(t *testing.T) {
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
 
-	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "custom", AuthHeader: "Bearer secret-token"}, "en")
+	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 3200), filename: "audio.wav"}, &Backend{Name: "custom", AuthHeader: "Bearer secret-token"}, "en", "")
 	if err != nil {
 		t.Fatalf("proxyToBackend: %v", err)
 	}
@@ -829,6 +829,92 @@ func TestStreamingHandler_FirstTextFrameAsContext(t *testing.T) {
 	}
 	if receivedContext != contextJSON {
 		t.Errorf("context: want %q, got %q", contextJSON, receivedContext)
+	}
+}
+
+type capturedPrompt struct {
+	value   string
+	present bool
+}
+
+func captureStreamingPrompt(t *testing.T, contextJSON string) capturedPrompt {
+	t.Helper()
+
+	receivedPrompt := make(chan capturedPrompt, 1)
+	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		values, present := r.MultipartForm.Value["prompt"]
+		var value string
+		if len(values) > 0 {
+			value = values[0]
+		}
+		receivedPrompt <- capturedPrompt{value: value, present: present}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"text":"raw audio"}`)
+	}))
+	t.Cleanup(whisper.Close)
+
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", URL: whisper.URL, Aliases: []string{"small"}},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+	g.health.set("small", true)
+	srv := httptest.NewServer(g.StreamingHandler())
+	t.Cleanup(srv.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, wsURL(srv, "language=en"), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = conn.CloseNow() }()
+
+	if err := conn.Write(ctx, websocket.MessageText, []byte(contextJSON)); err != nil {
+		t.Fatalf("write context: %v", err)
+	}
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200)); err != nil {
+		t.Fatalf("write audio: %v", err)
+	}
+	done, _ := json.Marshal(map[string]string{"action": "done"})
+	if err := conn.Write(ctx, websocket.MessageText, done); err != nil {
+		t.Fatalf("write done: %v", err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+
+	select {
+	case prompt := <-receivedPrompt:
+		return prompt
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for backend prompt")
+		return capturedPrompt{}
+	}
+}
+
+func TestStreamingHandler_ForwardsCustomWordsAsPrompt(t *testing.T) {
+	prompt := captureStreamingPrompt(t, `{"customWords":[{"word":"Kubernetes"},{"word":"PostgreSQL"}]}`)
+	if !prompt.present {
+		t.Fatal("prompt field omitted")
+	}
+	if prompt.value != "Kubernetes, PostgreSQL" {
+		t.Errorf("prompt: want %q, got %q", "Kubernetes, PostgreSQL", prompt.value)
+	}
+}
+
+func TestStreamingHandler_OmitsPromptWithoutCustomWords(t *testing.T) {
+	prompt := captureStreamingPrompt(t, `{"customWords":[]}`)
+	if prompt.present {
+		t.Errorf("prompt field present with empty custom words: %q", prompt.value)
 	}
 }
 

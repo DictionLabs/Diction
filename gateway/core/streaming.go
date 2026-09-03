@@ -800,8 +800,9 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 			audioDurationMs = int64(pcmBuf.Len()) * 1000 / pcmBytesPerSecond
 		}
 
+		whisperPrompt := buildWhisperPrompt(contextJSON)
 		sttStart := time.Now()
-		text, err := g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage)
+		text, err := g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt)
 		sttMs := time.Since(sttStart).Milliseconds()
 		if err == nil && hasDegenerateRepetition(text) {
 			err = errSTTHallucination
@@ -953,7 +954,7 @@ func backendStatusFromErr(s string) int {
 	return code
 }
 
-func (g *Gateway) proxyToBackend(ctx context.Context, target *url.URL, p audioPayload, backend *Backend, language string) (string, error) {
+func (g *Gateway) proxyToBackend(ctx context.Context, target *url.URL, p audioPayload, backend *Backend, language, whisperPrompt string) (string, error) {
 	// Build multipart body
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -971,6 +972,9 @@ func (g *Gateway) proxyToBackend(ctx context.Context, target *url.URL, p audioPa
 	}
 	if language != "" {
 		writer.WriteField("language", language) //nolint:errcheck
+	}
+	if whisperPrompt != "" {
+		writer.WriteField("prompt", whisperPrompt) //nolint:errcheck
 	}
 	writer.Close()
 
