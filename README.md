@@ -85,6 +85,12 @@
       <sub><b>DXCanas</b></sub>
     </a>
   </td>
+  <td align="center">
+    <a href="https://github.com/basnijholt">
+      <img src="https://github.com/basnijholt.png?size=80" width="60" alt="basnijholt"><br>
+      <sub><b>basnijholt</b></sub>
+    </a>
+  </td>
 </tr></table>
 
 ---
