@@ -1,4 +1,4 @@
-package core
+package pairing
 
 import (
 	"encoding/json"
@@ -6,32 +6,34 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/DictionLabs/Diction/gateway/core"
 )
 
-// PairingMode is the value of DICTION_GATEWAY_AUTH.
-type PairingMode string
+// Mode is the value of DICTION_GATEWAY_AUTH.
+type Mode string
 
 const (
-	// PairingOff disables the gateway key entirely: no key generated, no QR,
+	// ModeOff disables the gateway key entirely: no key generated, no QR,
 	// /v1/auth/* not registered.
-	PairingOff PairingMode = "off"
-	// PairingOptional generates the key, prints the QR and accepts the key,
+	ModeOff Mode = "off"
+	// ModeOptional generates the key, prints the QR and accepts the key,
 	// but keyless requests still pass. The upgrade-safe default.
-	PairingOptional PairingMode = "optional"
-	// PairingRequired rejects requests that do not carry a valid gateway key.
-	PairingRequired PairingMode = "required"
+	ModeOptional Mode = "optional"
+	// ModeRequired rejects requests that do not carry a valid gateway key.
+	ModeRequired Mode = "required"
 )
 
-// PairingModeFromEnv parses DICTION_GATEWAY_AUTH, defaulting to optional so
-// image upgrades never lock out existing deploys.
-func PairingModeFromEnv() PairingMode {
-	switch strings.ToLower(EnvOrDefault("DICTION_GATEWAY_AUTH", "optional")) {
+// ModeFromEnv parses DICTION_GATEWAY_AUTH, defaulting to optional so image
+// upgrades never lock out existing deploys.
+func ModeFromEnv() Mode {
+	switch strings.ToLower(core.EnvOrDefault("DICTION_GATEWAY_AUTH", "optional")) {
 	case "off", "false", "0", "disabled":
-		return PairingOff
+		return ModeOff
 	case "required", "require", "enforce":
-		return PairingRequired
+		return ModeRequired
 	default:
-		return PairingOptional
+		return ModeOptional
 	}
 }
 
@@ -53,14 +55,17 @@ func writePairingError(w http.ResponseWriter, status int, reason, message string
 	})
 }
 
-// GatewayKeyMiddleware guards data routes with the gateway pairing key.
-// A matching key (current or grace) always passes. Without one, requests pass
-// in optional mode and get 401 reason "invalid_key" in required mode.
+// KeyMiddleware guards data routes with the gateway pairing key. A matching
+// key (current or grace, unexpired) always passes. Without one, requests
+// pass in optional mode and get 401 reason "invalid_key" in required mode
+// — the same response for an expired token, a garbage token, or no token
+// at all (Expiry policy rule 1: no refresh-token semantics means there is
+// nothing a client should do differently, only re-pair).
 //
 // Community builds compose this FIRST; when the key does not match and
 // AUTH_ENABLED=true, the request falls through to the standard auth middleware,
 // so manually configured keys, trial tokens and JWS all keep working.
-func GatewayKeyMiddleware(ks *KeyStore, required bool, next http.HandlerFunc) http.HandlerFunc {
+func KeyMiddleware(ks *KeyStore, required bool, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if ks != nil && ks.Verify(bearerToken(r)) {
 			next(w, r)
@@ -71,21 +76,22 @@ func GatewayKeyMiddleware(ks *KeyStore, required bool, next http.HandlerFunc) ht
 			return
 		}
 		writePairingError(w, http.StatusUnauthorized, "invalid_key",
-			"This gateway requires pairing. Scan the QR code shown in the gateway logs.")
+			"This gateway requires pairing. Run 'docker exec <container> gateway auth' on your server to see the QR code again.")
 	}
 }
 
-// RegisterPairingRoutes registers /v1/auth/key and /v1/auth/rotate. Both are
-// authenticated with any still-valid gateway key (current or grace) — that is
-// how a device holding a retired key silently catches up after a rotation.
-// Call only when mode != off; cloud builds never call it, so the routes 404.
-func RegisterPairingRoutes(mux *http.ServeMux, ks *KeyStore) {
+// RegisterRoutes registers /v1/auth/key and /v1/auth/rotate. Both are
+// authenticated with any still-valid gateway key (current or grace,
+// unexpired) — that is how a device holding a retired key silently
+// catches up after a rotation. Call only when mode != off; cloud builds
+// never call it, so the routes 404.
+func RegisterRoutes(mux *http.ServeMux, ks *KeyStore) {
 	requireKey := func(w http.ResponseWriter, r *http.Request) bool {
 		if ks.Verify(bearerToken(r)) {
 			return true
 		}
 		writePairingError(w, http.StatusUnauthorized, "invalid_key",
-			"Pairing key not recognized. Re-scan the QR code shown in the gateway logs.")
+			"Pairing key not recognized. Run 'docker exec <container> gateway auth' on your server to see the current QR code.")
 		return false
 	}
 
@@ -97,9 +103,14 @@ func RegisterPairingRoutes(mux *http.ServeMux, ks *KeyStore) {
 		if !requireKey(w, r) {
 			return
 		}
+		token, err := ks.IssueToken()
+		if err != nil {
+			http.Error(w, `{"error":"could not mint pairing token"}`, http.StatusInternalServerError)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"key":      ks.CurrentKey(),
+			"key":      token,
 			"rotation": !ks.Pinned(),
 		})
 	})
@@ -112,7 +123,7 @@ func RegisterPairingRoutes(mux *http.ServeMux, ks *KeyStore) {
 		if !requireKey(w, r) {
 			return
 		}
-		newKey, validUntil, err := ks.Rotate()
+		_, validUntil, coalesced, err := ks.Rotate()
 		if err == ErrKeyPinned {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusConflict)
@@ -127,20 +138,29 @@ func RegisterPairingRoutes(mux *http.ServeMux, ks *KeyStore) {
 			http.Error(w, `{"error":"rotation failed"}`, http.StatusInternalServerError)
 			return
 		}
-		log.Printf("gateway key rotated (new fingerprint %s, previous valid until %s)",
-			ks.Fingerprint(), validUntil.UTC().Format(time.RFC3339))
+		token, err := ks.IssueToken()
+		if err != nil {
+			http.Error(w, `{"error":"could not mint pairing token"}`, http.StatusInternalServerError)
+			return
+		}
+		resp := map[string]any{"key": token}
+		if coalesced {
+			resp["coalesced"] = true
+			log.Printf("gateway key rotation coalesced (fingerprint %s unchanged)", ks.Fingerprint())
+		} else {
+			resp["previous_valid_until"] = validUntil.UTC().Format(time.RFC3339)
+			log.Printf("gateway key rotated (new fingerprint %s, previous valid until %s)",
+				ks.Fingerprint(), validUntil.UTC().Format(time.RFC3339))
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{
-			"key":                  newKey,
-			"previous_valid_until": validUntil.UTC().Format(time.RFC3339),
-		})
+		json.NewEncoder(w).Encode(resp)
 	})
 }
 
 // VerifyRequest reports whether the request carries a valid gateway key as its
 // Bearer token. Nil-safe so callers can compose it unconditionally. Exported
 // for community main builds that must layer the key check around their own
-// auth middleware (a matching key bypasses it; see GatewayKeyMiddleware).
+// auth middleware (a matching key bypasses it; see KeyMiddleware).
 func (ks *KeyStore) VerifyRequest(r *http.Request) bool {
 	if ks == nil {
 		return false
@@ -148,9 +168,9 @@ func (ks *KeyStore) VerifyRequest(r *http.Request) bool {
 	return ks.Verify(bearerToken(r))
 }
 
-// WritePairingRequired writes the 401 invalid_key rejection used when
+// WriteRequired writes the 401 invalid_key rejection used when
 // DICTION_GATEWAY_AUTH=required refuses a keyless request.
-func WritePairingRequired(w http.ResponseWriter) {
+func WriteRequired(w http.ResponseWriter) {
 	writePairingError(w, http.StatusUnauthorized, "invalid_key",
-		"This gateway requires pairing. Scan the QR code shown in the gateway logs.")
+		"This gateway requires pairing. Run 'docker exec <container> gateway auth' on your server to see the QR code again.")
 }

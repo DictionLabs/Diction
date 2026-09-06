@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/DictionLabs/Diction/gateway/core"
+	"github.com/DictionLabs/Diction/gateway/pairing"
 )
 
 // --- Trial store (JSON-backed) ---
@@ -518,14 +519,14 @@ func textRoutesMiddleware(authEnabled, routesOpen bool, bundleID string, trialSe
 	}
 }
 
-// withGatewayKey layers the pairing key (see core/pairing.go) around another
+// withGatewayKey layers the pairing key (see gateway/pairing) around another
 // auth middleware: a valid paired key (current or grace) bypasses it entirely;
 // without one the request falls through unchanged, except in required mode
 // where keyless requests are rejected with 401 invalid_key. This is what makes
 // the paired key a real access control while keeping AUTH_ENABLED (JWS/trial)
 // and TEXT_ROUTES_OPEN semantics intact for everyone else.
 func withGatewayKey(
-	ks *core.KeyStore, mode core.PairingMode,
+	ks *pairing.KeyStore, mode pairing.Mode,
 	fallthroughMW func(http.HandlerFunc) http.HandlerFunc,
 ) func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
@@ -538,8 +539,8 @@ func withGatewayKey(
 				next(w, r)
 				return
 			}
-			if mode == core.PairingRequired {
-				core.WritePairingRequired(w)
+			if mode == pairing.ModeRequired {
+				pairing.WriteRequired(w)
 				return
 			}
 			fallback(w, r)
@@ -562,15 +563,16 @@ func buildMux() (http.Handler, string, error) {
 	// Gateway pairing key (QR pairing + rotation). Default mode is optional:
 	// the key is generated, printed, and accepted, but keyless requests still
 	// pass — an image upgrade can never lock an existing deploy out.
-	pairingMode := core.PairingModeFromEnv()
-	keyStore, err := core.KeyStoreFromEnv(pairingMode)
+	pairingMode := pairing.ModeFromEnv()
+	pairing.WarnDeprecatedEnv()
+	keyStore, err := pairing.KeyStoreFromEnv(pairingMode)
 	if err != nil {
 		// In the default optional mode a keystore failure (unwritable
 		// DICTION_KEY_PATH, read-only rootfs) must not take the gateway down —
 		// an image upgrade may never break an existing deploy. Only an explicit
 		// required mode fails loudly, because silently running open would
 		// contradict the operator's stated intent.
-		if pairingMode == core.PairingRequired {
+		if pairingMode == pairing.ModeRequired {
 			return nil, "", fmt.Errorf("gateway pairing (DICTION_GATEWAY_AUTH=required): %w", err)
 		}
 		log.Printf("warning: gateway pairing disabled: %v (set DICTION_KEY_PATH to a writable path)", err)
@@ -619,7 +621,7 @@ func buildMux() (http.Handler, string, error) {
 		// would light up Writing Tools in the app for someone whose every call
 		// then fails. A caller that does present a valid key is upgraded
 		// per-request below.
-		textRoutes:  llm.Enabled && (textRoutesOpen || pairingMode == core.PairingRequired),
+		textRoutes:  llm.Enabled && (textRoutesOpen || pairingMode == pairing.ModeRequired),
 		pairing:     keyStore != nil,
 		keyRotation: keyStore != nil && !keyStore.Pinned(),
 	}
@@ -656,7 +658,7 @@ func buildMux() (http.Handler, string, error) {
 	mux.HandleFunc("/v1/text/suggest", textMW(handleTextSuggest(llm)))
 	mux.HandleFunc("/v1/text/summarize", textMW(handleTextSummarize(llm)))
 	if keyStore != nil {
-		core.RegisterPairingRoutes(mux, keyStore)
+		pairing.RegisterRoutes(mux, keyStore)
 	}
 	mux.HandleFunc("/", gw.CatchAllHandler())
 
@@ -667,12 +669,20 @@ func buildMux() (http.Handler, string, error) {
 		if u, err := url.Parse(publicURL); err == nil && u != nil && (u.Path != "" || u.RawQuery != "") {
 			log.Printf("warning: PUBLIC_URL should be scheme://host[:port] only; the app drops paths and query strings")
 		}
-		core.PrintPairingQR(publicURL, keyStore.CurrentKey())
+		if token, err := keyStore.IssueToken(); err != nil {
+			log.Printf("warning: could not mint pairing token: %v", err)
+		} else {
+			pairing.PrintQR(publicURL, token)
+		}
 	}
 	return mux, port, nil
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "auth" {
+		runAuthCommand()
+		return
+	}
 	mux, port, err := buildMux()
 	if err != nil {
 		log.Fatalf("%v", err)
@@ -680,4 +690,27 @@ func main() {
 	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// runAuthCommand reprints the pairing QR on demand — `docker exec <container>
+// gateway auth` — for an operator who missed it in the one-shot boot log.
+// Reads the same env vars and key file the running server already uses, so it
+// always reflects the live key without a restart.
+func runAuthCommand() {
+	mode := pairing.ModeFromEnv()
+	if mode == pairing.ModeOff {
+		fmt.Println("Pairing is disabled (DICTION_GATEWAY_AUTH=off) — no key to show.")
+		os.Exit(1)
+	}
+	keyStore, err := pairing.KeyStoreFromEnv(mode)
+	if err != nil {
+		fmt.Printf("gateway pairing unavailable: %v\n", err)
+		os.Exit(1)
+	}
+	token, err := keyStore.IssueToken()
+	if err != nil {
+		fmt.Printf("could not mint pairing token: %v\n", err)
+		os.Exit(1)
+	}
+	pairing.PrintQR(core.EnvOrDefault("PUBLIC_URL", ""), token)
 }

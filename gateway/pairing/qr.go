@@ -1,4 +1,4 @@
-package core
+package pairing
 
 import (
 	"fmt"
@@ -8,10 +8,10 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 )
 
-// PairingLink builds the diction://pair deep link encoded in the startup QR.
+// Link builds the diction://pair deep link encoded in the startup QR.
 // publicURL is the self-hoster's PUBLIC_URL (scheme+host+port); when empty the
 // link carries only the key and the app prompts for the URL after scanning.
-func PairingLink(publicURL, key string) string {
+func Link(publicURL, key string) string {
 	q := url.Values{}
 	if publicURL != "" {
 		q.Set("url", publicURL)
@@ -20,12 +20,12 @@ func PairingLink(publicURL, key string) string {
 	return "diction://pair?" + q.Encode()
 }
 
-// PrintPairingQR renders the pairing deep link as a terminal QR code plus a
+// PrintQR renders the pairing deep link as a terminal QR code plus a
 // copyable plain-text fallback. Printed with fmt (not log): log prefixes on
 // each line would sit left of the quiet zone in `docker compose logs`, which
 // is fine, but prefixes inside a wrapped matrix would break scanning.
-func PrintPairingQR(publicURL, key string) {
-	link := PairingLink(publicURL, key)
+func PrintQR(publicURL, key string) {
+	link := Link(publicURL, key)
 	fmt.Println()
 	fmt.Println("Pair the Diction app with this gateway. Scan in Diction > Self-Hosted > Scan to pair:")
 	fmt.Println()

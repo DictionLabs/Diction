@@ -1,4 +1,4 @@
-package core
+package pairing
 
 import (
 	"net/url"
@@ -7,7 +7,7 @@ import (
 )
 
 func TestPairingLink(t *testing.T) {
-	link := PairingLink("https://gw.example.com:8443", "dk_abc123")
+	link := Link("https://gw.example.com:8443", "dk_abc123")
 	u, err := url.Parse(link)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -25,7 +25,7 @@ func TestPairingLink(t *testing.T) {
 }
 
 func TestPairingLinkKeyOnly(t *testing.T) {
-	link := PairingLink("", "dk_abc123")
+	link := Link("", "dk_abc123")
 	u, _ := url.Parse(link)
 	if u.Query().Has("url") {
 		t.Fatalf("key-only link must omit url param: %q", link)
@@ -36,8 +36,7 @@ func TestPairingLinkKeyOnly(t *testing.T) {
 }
 
 func TestPairingLinkEscapesURL(t *testing.T) {
-	link := PairingLink("http://192.168.0.220:8080", "dk_k")
-	// The embedded URL's :// must be percent-encoded inside the query.
+	link := Link("http://192.168.0.220:8080", "dk_k")
 	if strings.Count(link, "://") != 1 {
 		t.Fatalf("embedded URL not escaped: %q", link)
 	}
@@ -56,7 +55,6 @@ func TestQRTerminalArt(t *testing.T) {
 	if len(lines) < 10 {
 		t.Fatalf("suspiciously small QR: %d lines", len(lines))
 	}
-	// All lines equal width, and narrow enough for an 80-column terminal.
 	width := len([]rune(lines[0]))
 	if width > 80 {
 		t.Fatalf("QR too wide for a terminal: %d cols", width)

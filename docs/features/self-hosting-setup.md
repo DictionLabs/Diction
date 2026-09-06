@@ -153,11 +153,13 @@ nothing to download.
 
 ## Connecting the app
 
-The fast way: scan the QR code. When the gateway starts, it prints a QR code in its logs:
+The fast way: scan the QR code. Print it any time with:
 
 ```bash
-docker compose logs gateway
+docker compose exec gateway gateway auth
 ```
+
+That works whether the gateway just started or has been running for weeks. If you'd rather catch it at boot, `docker compose logs gateway` shows the same code, but only if you look before the logs scroll past it.
 
 Open the Diction app, go to **Self-Hosted**, tap **Scan to pair**, and point the camera at your terminal. The URL and key land in the app in one step. Nothing to type, nothing to copy. Set `PUBLIC_URL` on the gateway (for example `https://your-host:8080`) so the QR carries the address your phone should use; without it the QR carries only the key and the app asks for the URL.
 
@@ -165,7 +167,7 @@ Requires Diction 13 or later and a current gateway image. On older versions, or 
 
 1. Open the Diction app
 2. Switch to the **Self-Hosted** tab
-3. Paste your server URL into **Endpoint URL**:
+3. Paste your server URL into **Gateway URL**:
 
 ```
 http://192.168.1.100:8080
@@ -196,6 +198,22 @@ By default the key is advisory. Paired devices send it, but requests without it 
 From that moment, requests without a valid key get a 401. Keep the `gateway-data` volume from the compose file mounted at `/data`; that's where the key lives. Without it a fresh key is generated on every container recreate and your devices must re-scan.
 
 The key also rotates itself. A paired Diction app swaps in a fresh key on a regular schedule, old keys stay valid for a generous grace window so a phone that was off for a week catches up silently, and none of it needs you. If you'd rather manage the key by hand, set `DICTION_GATEWAY_KEY` to your own value; rotation turns off and the app treats it like any manual API key.
+
+### Make a leaked key expire
+
+By default, a pairing key works forever once it's issued. That's fine for a home network, but if you ever tunnel your gateway to the internet, a key that leaked once (an old backup, a screenshot, a log you forwarded somewhere) stays valid indefinitely. Set an expiry and it doesn't:
+
+```yaml
+  gateway:
+    environment:
+      DICTION_TOKEN_TTL: 2160h # 90 days
+```
+
+Your paired app refreshes its key on its own well before that window closes, so nothing breaks for a device you're actually using. Turning this on for the first time invalidates every key issued before it, so every paired device needs one re-scan. Let a device sit unused past its key's expiry and it'll ask you to re-scan too. That's the point: an expired key just means "prove you still have physical access to the gateway."
+
+This only matters if you've also set `DICTION_GATEWAY_AUTH: required` above. Otherwise the gateway accepts requests without a key at all, so expiring the key protects nothing.
+
+Want to see it work without waiting three months? Set `DICTION_TOKEN_TTL: 2m` temporarily and watch your app silently refresh its key roughly every minute in the container logs.
 
 ## Optional: API key
 

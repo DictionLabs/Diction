@@ -61,6 +61,12 @@ services:
       # PUBLIC_URL: https://your-host:8080
       # By default the key is accepted but not enforced. To require it:
       # DICTION_GATEWAY_AUTH: required
+      # By default a paired key never expires. Set a lifespan (only takes
+      # effect together with DICTION_GATEWAY_AUTH: required above) — your
+      # app refreshes its key on its own well before this window closes:
+      # DICTION_TOKEN_TTL: 2160h
+      # DICTION_GATEWAY_KEY is deprecated (still honored): pinning a manual
+      # key disables both rotation and DICTION_TOKEN_TTL above.
     volumes:
       # Persists the pairing keyring (and trial records). Without this a new
       # key is generated on every container recreate and paired devices must
