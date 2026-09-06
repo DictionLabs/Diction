@@ -5,6 +5,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY *.go ./
 COPY core/ core/
+COPY pairing/ pairing/
 
 ARG IMAGE_REF=unknown
 RUN CGO_ENABLED=0 go build -ldflags="-s -w -X 'github.com/DictionLabs/Diction/gateway/core.ImageRef=${IMAGE_REF}'" -o gateway .
