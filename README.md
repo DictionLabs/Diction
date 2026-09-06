@@ -36,13 +36,6 @@
 
 <p align="center">
   <a href="https://apps.apple.com/app/id6759807364"><img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="Download on the App Store" height="40"></a>
-  <a href="https://www.producthunt.com/products/diction?launch=diction">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204373&amp;theme=dark">
-      <source media="(prefers-color-scheme: light)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204373&amp;theme=light">
-      <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1204373&amp;theme=neutral" alt="Diction on Product Hunt" height="40">
-    </picture>
-  </a>
 </p>
 
 <p align="center">
@@ -54,9 +47,8 @@
 <p align="center">
   <a href="https://github.com/DictionLabs/Diction/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://codecov.io/gh/DictionLabs/Diction"><img src="https://img.shields.io/codecov/c/github/DictionLabs/Diction?style=for-the-badge&label=coverage" alt="Coverage"></a>
+  <a href="https://huggingface.co/DictionLabs"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-DictionLabs-ffcc4d?style=for-the-badge" alt="Hugging Face"></a>
 </p>
-
-<p align="center"><sub>A <a href="https://github.com/DictionLabs">Diction Labs</a> project.</sub></p>
 
 <p align="center"><strong>Contributors</strong></p>
 
