@@ -31,7 +31,7 @@ type llmConfig struct {
 
 // Default system prompts used when the corresponding env var is empty.
 const (
-	DefaultPromptCleanup      = "You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. Return only the corrected text, nothing else."
+	DefaultPromptCleanup      = "You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. If a language is given, write in that language and correct wrong or missing accents or diacritics for it. Never translate. Return only the corrected text, nothing else."
 	DefaultPromptEdit         = "You are a text editor. Apply the user's spoken instruction to the text. Return only the edited result, nothing else."
 	DefaultPromptEditSelected = "You are a text editor. Apply the user's spoken instruction to the selected portion of text. Return only the edited selection, nothing else."
 	DefaultPromptSuggest      = "Suggest 2-3 concise alternative phrasings or corrections for the selected text. Return a JSON array of strings only, no explanation."
@@ -201,6 +201,10 @@ func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, int
 		// Opt-out, matching the app's wire contract: absent (older clients) or
 		// true means formatting is ON; only an explicit false disables it.
 		Formatting *bool `json:"formatting,omitempty"`
+		// Language is a hint for the cleanup prompt (see the default branch below): write in
+		// this language, fix wrong/missing diacritics for it, never translate. "auto"/empty
+		// mean "infer" — see `core.IsConcreteLanguage`.
+		Language string `json:"language,omitempty"`
 	}
 	if contextJSON != "" {
 		json.Unmarshal([]byte(contextJSON), &tc) //nolint:errcheck
@@ -238,6 +242,9 @@ func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, int
 		}
 	default:
 		userMsg = text
+		if core.IsConcreteLanguage(tc.Language) {
+			userMsg += "\n\n(Language: " + tc.Language + ")"
+		}
 	}
 
 	return c.processWithPrompt(ctx, prompt, userMsg)

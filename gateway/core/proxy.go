@@ -581,7 +581,8 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 					if postProcess != nil && enhanceEnabled {
 						intent := r.URL.Query().Get("intent")
 						llmStart := time.Now()
-						resultText, resultMode, err := postProcess(resp.Request.Context(), transcript, contextJSON, intent)
+						resultText, resultMode, err := postProcess(
+							resp.Request.Context(), transcript, WithContextLanguage(contextJSON, effectiveLang), intent)
 						llmMs := time.Since(llmStart).Milliseconds()
 						resp.Header.Set("X-Diction-LLM-Ms", fmt.Sprintf("%d", llmMs))
 						if err != nil {

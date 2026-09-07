@@ -415,6 +415,74 @@ func TestLLM_ProcessWithIntent_PicksPrompt(t *testing.T) {
 	}
 }
 
+// TestLLM_ProcessWithIntent_LanguageHint pins the language hint added by
+// .claude/plans/on-device-language-fix-plan.md: a concrete context.language appends
+// "(Language: xx)" to the cleanup user message; "auto"/empty/absent don't; edit intents
+// never get it (the transcript there is a spoken instruction, not the text to clean).
+func TestLLM_ProcessWithIntent_LanguageHint(t *testing.T) {
+	var receivedUserMsg string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		for _, m := range req.Messages {
+			if m.Role == "user" {
+				receivedUserMsg = m.Content
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": "result"}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := llmConfig{
+		Enabled:            true,
+		BaseURL:            srv.URL,
+		Model:              "test",
+		Prompt:             "CLEANUP_PROMPT",
+		PromptEdit:         "EDIT_PROMPT",
+		PromptEditSelected: "EDIT_SEL_PROMPT",
+	}
+
+	tests := []struct {
+		name        string
+		intent      string
+		contextJSON string
+		wantHint    bool
+	}{
+		{"concrete language, cleanup intent", "", `{"language":"cs"}`, true},
+		{"concrete language, transcribe intent", "transcribe", `{"language":"cs"}`, true},
+		{"auto sentinel", "", `{"language":"auto"}`, false},
+		{"empty string", "", `{"language":""}`, false},
+		{"absent field", "", `{}`, false},
+		{"no context at all", "", "", false},
+		{"concrete language, edit intent", "edit", `{"language":"cs"}`, false},
+		{"concrete language, edit-selected intent", "edit-selected", `{"language":"cs"}`, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			receivedUserMsg = ""
+			_, err := cfg.processWithIntent(context.Background(), "some text", tc.contextJSON, tc.intent)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			hasHint := strings.Contains(receivedUserMsg, "(Language: cs)")
+			if hasHint != tc.wantHint {
+				t.Errorf("(Language: cs) present = %v, want %v (user message: %q)", hasHint, tc.wantHint, receivedUserMsg)
+			}
+		})
+	}
+}
+
 func TestLLM_SuggestFixes_SoftFail(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

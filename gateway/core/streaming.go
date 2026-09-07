@@ -875,11 +875,17 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// so emitting it as a text frame would type the instruction into their document.
 		intentParam := r.URL.Query().Get("intent")
 		isEdit := intentParam == "edit" || intentParam == "edit-selected"
+		// The gateway-resolved `language` is more authoritative than whatever the client put
+		// in the context blob: it's the value routing actually used, and it repairs older
+		// clients that injected a stale picker value under auto-detect. Under auto-detect
+		// `language` is the literal "auto" sentinel, so this is a no-op there — this path
+		// (unlike the HTTP proxy's `effectiveLang`) has no STT-detected language to prefer.
+		enhanceContextJSON := WithContextLanguage(contextJSON, language)
 		if r.URL.Query().Get("split_enhance") == "true" && postProcess != nil &&
 			enhanceEnabled && text != "" && !isEdit {
 			g.writeSplitEnhanceFrames(ctx, conn, splitEnhanceInput{
 				raw:         text,
-				contextJSON: contextJSON,
+				contextJSON: enhanceContextJSON,
 				intent:      intentParam,
 				enhance:     postDeliveryOrInline(inline, postDelivery),
 			})
@@ -890,7 +896,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		var mode string
 		if postProcess != nil && enhanceEnabled && text != "" {
 			intent := intentParam
-			if resultText, resultMode, err := postProcess(ctx, text, contextJSON, intent); err == nil {
+			if resultText, resultMode, err := postProcess(ctx, text, enhanceContextJSON, intent); err == nil {
 				text = resultText
 				mode = resultMode
 			} else {

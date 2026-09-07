@@ -521,12 +521,19 @@ See `AGENTS.md` for the full wire format.
 
 Both `LLM_BASE_URL` and `LLM_MODEL` must be set or the feature stays off.
 
+**Language hint:** when the client's context carries a concrete `language` (not empty, not the
+auto-detect sentinel `"auto"`), the cleanup call gets a `(Language: xx)` hint appended to the
+user message — the built-in `LLM_PROMPT` tells the model to write in that language and correct
+wrong or missing accents/diacritics for it, never to translate. A custom `LLM_PROMPT` should say
+what to do with the hint if it matters to you; it is plain text appended after the transcript,
+not a template variable.
+
 **If cleanup keeps returning raw text**, check the startup log line — it prints
 `enhance_ms=` and `live_enhance_ms=` — and time your model directly against
 `LLM_BASE_URL`. A local model slower than the budget is the usual cause; raise
 `DICTION_ENHANCE_TIMEOUT_MS` rather than switching cleanup off.
 
-> **Behavior change from earlier releases:** operators who set `LLM_BASE_URL` and `LLM_MODEL` without `LLM_PROMPT` now receive the built-in cleanup prompt automatically. Previously the gateway logged a warning and sent no system instructions. The default prompt is: *"You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. Return only the corrected text, nothing else."*
+> **Behavior change from earlier releases:** operators who set `LLM_BASE_URL` and `LLM_MODEL` without `LLM_PROMPT` now receive the built-in cleanup prompt automatically. Previously the gateway logged a warning and sent no system instructions. The default prompt is: *"You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. If a language is given, write in that language and correct wrong or missing accents or diacritics for it. Never translate. Return only the corrected text, nothing else."*
 
 ### Option A - Cloud LLM (OpenAI, Groq, etc.)
 

@@ -87,6 +87,49 @@ func echoEnhance(text string) func(context.Context, string, string, string) (str
 	}
 }
 
+// The context handed to the enhance function must carry the gateway-resolved `language`
+// from the query — not whatever (or nothing) the client's context blob carried. See
+// `.claude/plans/on-device-language-fix-plan.md`: the Writing Tools cleanup prompt reads
+// this to write in the transcript's language and fix diacritics.
+func TestSplitEnhance_ContextCarriesLanguageFromQuery(t *testing.T) {
+	var gotContext string
+	capture := func(_ context.Context, _, contextJSON, _ string) (string, string, error) {
+		gotContext = contextJSON
+		return "enhanced", "transcribe", nil
+	}
+	srv := startSplitServer(t, "ahoj svete", capture, nil)
+
+	dialAndFinish(t, srv, "model=small&language=cs&enhance=true&split_enhance=true")
+
+	var ctx map[string]string
+	if err := json.Unmarshal([]byte(gotContext), &ctx); err != nil {
+		t.Fatalf("enhance context not valid JSON: %v (%q)", err, gotContext)
+	}
+	if ctx["language"] != "cs" {
+		t.Errorf("enhance context language = %q, want cs (from ?language= query)", ctx["language"])
+	}
+}
+
+// Same override on the non-split inline `?enhance=true` path.
+func TestInlinePostProcess_ContextCarriesLanguageFromQuery(t *testing.T) {
+	var gotContext string
+	capture := func(_ context.Context, _, contextJSON, _ string) (string, string, error) {
+		gotContext = contextJSON
+		return "enhanced", "transcribe", nil
+	}
+	srv := startSplitServer(t, "ahoj svete", capture, nil)
+
+	dialAndFinish(t, srv, "model=small&language=cs&enhance=true")
+
+	var ctx map[string]string
+	if err := json.Unmarshal([]byte(gotContext), &ctx); err != nil {
+		t.Fatalf("enhance context not valid JSON: %v (%q)", err, gotContext)
+	}
+	if ctx["language"] != "cs" {
+		t.Errorf("enhance context language = %q, want cs (from ?language= query)", ctx["language"])
+	}
+}
+
 func TestSplitEnhance_RawThenEnhanced(t *testing.T) {
 	srv := startSplitServer(t, "hello there world friend",
 		echoEnhance("unused inline"), echoEnhance("Hello there, world friend."))
