@@ -528,12 +528,42 @@ wrong or missing accents/diacritics for it, never to translate. A custom `LLM_PR
 what to do with the hint if it matters to you; it is plain text appended after the transcript,
 not a template variable.
 
+**What the cleanup call sends.** The transcript comes first, unlabelled, exactly as before.
+Whatever context the user configured in the app then follows, one labelled line per item, and
+each is omitted entirely when the user has not set it — a user with none of them configured
+sends byte-for-byte the request earlier releases sent:
+
+| Line | Source | Cap |
+|------|--------|-----|
+| `Custom words: a, b (also heard as: c)` | the user's My Words list | 50 entries |
+| `Tone: ...` | the user's Tone preset and About You description, merged | 500 characters |
+| `Recent:` followed by one transcript per line | earlier dictations in the same session | 5 most recent |
+| `Clipboard: ...` | the user's clipboard, when they enabled clipboard context | 1000 characters |
+| `(Language: xx)` | the transcript's language, when concrete | — |
+
+Caps are counted in characters, not bytes, so non-Latin scripts are never cut mid-character.
+They exist so a long session cannot crowd the transcript out of a small model's context window.
+
+A custom `LLM_PROMPT` should tell the model that these lines are context and must not appear in
+its reply — the built-in prompt says so. Everything here is the user's own data; no Diction
+prompt engineering is hidden in it.
+
+**What the voice-edit call sends.** For `intent=edit` (the user's cursor, nothing selected) the
+gateway sends `Text: <before>‸<after>` followed by `Instruction: <what the user said>`. The `‸`
+marks the cursor. The model is expected to return the **full modified text** with the marker
+removed; the gateway strips any `‸` the model leaves behind, because the app inserts the result
+verbatim. For `intent=edit-selected` the selection is the text and the surrounding context
+follows as `Context before:` / `Context after:` lines. An edit request with nothing to edit (no
+cursor context, or no selection) fails rather than guessing, so the app shows "Couldn't apply
+edit" instead of typing the user's spoken instruction into their document. A custom
+`LLM_PROMPT_EDIT` should account for the marker.
+
 **If cleanup keeps returning raw text**, check the startup log line — it prints
 `enhance_ms=` and `live_enhance_ms=` — and time your model directly against
 `LLM_BASE_URL`. A local model slower than the budget is the usual cause; raise
 `DICTION_ENHANCE_TIMEOUT_MS` rather than switching cleanup off.
 
-> **Behavior change from earlier releases:** operators who set `LLM_BASE_URL` and `LLM_MODEL` without `LLM_PROMPT` now receive the built-in cleanup prompt automatically. Previously the gateway logged a warning and sent no system instructions. The default prompt is: *"You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. If a language is given, write in that language and correct wrong or missing accents or diacritics for it. Never translate. Return only the corrected text, nothing else."*
+> **Behavior change from earlier releases:** operators who set `LLM_BASE_URL` and `LLM_MODEL` without `LLM_PROMPT` now receive the built-in cleanup prompt automatically. Previously the gateway logged a warning and sent no system instructions. The default prompt is: *"You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. If a language is given, write in that language and correct wrong or missing accents or diacritics for it. Never translate. Lines labelled “Custom words”, “Tone”, “Recent” or “Clipboard” may follow the transcript: they are context about the speaker, never part of what you return. Return only the corrected transcript, nothing else."*
 
 ### Option A - Cloud LLM (OpenAI, Groq, etc.)
 

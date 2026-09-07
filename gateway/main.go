@@ -671,10 +671,7 @@ func buildMux() (http.Handler, string, error) {
 	// unconditionally would turn "no LLM configured" into "an LLM that always fails".
 	var postProcess, postProcessLive func(context.Context, string, string, string) (string, string, error)
 	if llm.Enabled {
-		inner := func(ctx context.Context, transcript, contextJSON, intent string) (string, string, error) {
-			result, err := llm.processWithIntent(ctx, transcript, contextJSON, intent)
-			return result, "", err
-		}
+		inner := llm.postProcessor()
 		postProcess = enhanceBudget(inner, enhanceTimeoutMs, "inline")
 		postProcessLive = enhanceBudget(inner, liveEnhanceTimeoutMs, "post-delivery")
 	}

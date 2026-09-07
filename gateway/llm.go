@@ -31,8 +31,12 @@ type llmConfig struct {
 
 // Default system prompts used when the corresponding env var is empty.
 const (
-	DefaultPromptCleanup      = "You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. If a language is given, write in that language and correct wrong or missing accents or diacritics for it. Never translate. Return only the corrected text, nothing else."
-	DefaultPromptEdit         = "You are a text editor. Apply the user's spoken instruction to the text. Return only the edited result, nothing else."
+	DefaultPromptCleanup = "You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. " +
+		"If a language is given, write in that language and correct wrong or missing accents or diacritics for it. Never translate. " +
+		"Lines labelled \"Custom words\", \"Tone\", \"Recent\" or \"Clipboard\" may follow the transcript: they are context about the speaker, " +
+		"never part of what you return. Return only the corrected transcript, nothing else."
+	DefaultPromptEdit = "You are a text editor. The text contains " + cursorMarker + " marking where the user's cursor is. " +
+		"Apply the user's spoken instruction to that text. Return only the full modified text, without the " + cursorMarker + " marker, and nothing else."
 	DefaultPromptEditSelected = "You are a text editor. Apply the user's spoken instruction to the selected portion of text. Return only the edited selection, nothing else."
 	DefaultPromptSuggest      = "Suggest 2-3 concise alternative phrasings or corrections for the selected text. Return a JSON array of strings only, no explanation."
 
@@ -201,64 +205,267 @@ func (c llmConfig) process(ctx context.Context, transcript string) (string, erro
 	return c.processWithPrompt(ctx, c.Prompt, transcript)
 }
 
+// postProcessor returns the Writing Tools closure the audio paths call: the WebSocket
+// (core/streaming.go, inline and split answer) and the HTTP transcriptions proxy
+// (core/proxy.go). It reports the mode it ran alongside the text, which is what lets the app
+// tell an applied edit from a dictation.
+//
+// A named constructor rather than a closure literal inside buildMux for one reason: the
+// closure IS the thing that broke — it returned a hardcoded "" mode — and a local inside
+// buildMux cannot be called from a test. See TestPostProcessor_ReturnsModeForIntent.
+//
+// The mode is returned on the error path too, even though every caller currently derives its
+// own failure shape from the intent it already holds (core/streaming.go:918,
+// core/proxy.go:600). Returning it here means a future caller that trusts this value gets a
+// correct one rather than an empty string.
+func (c llmConfig) postProcessor() func(ctx context.Context, transcript, contextJSON, intent string) (string, string, error) {
+	return func(ctx context.Context, transcript, contextJSON, intent string) (string, string, error) {
+		result, err := c.processWithIntent(ctx, transcript, contextJSON, intent)
+		return result, modeForIntent(intent), err
+	}
+}
+
+// cursorMarker sits where the user's cursor is, in the text sent for a cursor edit. The app
+// uses the same character when it caches the context it will later replace
+// (KeyboardCommands.swift), and the cloud build has sent it in production for a long time.
+const cursorMarker = "‸"
+
+// Context caps. All measured in runes, never bytes: slicing a byte count through a multibyte
+// character produces mojibake, and this data is routinely Czech, Polish, Japanese or emoji.
+// The counts match the cloud's (gateway/llm.go) so a self-hoster sees the same volume of
+// context, and they exist so a long session cannot crowd the transcript out of a community
+// gateway's 8192-token ceiling.
+const (
+	maxClipboardRunes  = 1000
+	maxToneRunes       = 500
+	maxCustomWords     = 50
+	maxSessionMessages = 5
+)
+
+// customWord is one My Words entry.
+//
+// Wire-tolerant by necessity: the app sends objects (`[{"word":"Diction"}]`), while the public
+// wire contract in AGENTS.md documents `customWords` as an untyped array, so a third-party
+// client may reasonably send bare strings. Accepting only one shape is precisely the bug this
+// type exists to fix — the gateway used to declare []string, the app sent objects, the decode
+// failed on that one field, and My Words silently never reached any self-hosted LLM.
+type customWord struct {
+	Word     string
+	Variants []string
+}
+
+// UnmarshalJSON never fails. An entry it cannot read decodes to an empty word, which
+// formatCustomWords skips.
+//
+// This is not laziness, it is the whole lesson of the bug: an error here aborts the enclosing
+// json.Unmarshal, so one unreadable vocabulary entry would silently take the user's tone,
+// clipboard and session context down with it — a bigger version of the failure this type was
+// written to end. One bad entry costs one word.
+func (w *customWord) UnmarshalJSON(data []byte) error {
+	var plain string
+	if err := json.Unmarshal(data, &plain); err == nil {
+		w.Word = plain
+		return nil
+	}
+	var obj struct {
+		Word     string   `json:"word"`
+		Variants []string `json:"variants"`
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		log.Printf("LLM custom words: skipping unreadable entry: %v", err)
+		return nil
+	}
+	w.Word, w.Variants = obj.Word, obj.Variants
+	return nil
+}
+
+// transcriptionContext is the structured context blob the client sends alongside a transcript.
+// Every field is optional; a client that sends none of it gets exactly the request it did
+// before any of these fields existed.
+type transcriptionContext struct {
+	Before   string `json:"before"`
+	After    string `json:"after"`
+	Selected string `json:"selected"`
+	// The user's own configured data. Forwarding it is what makes My Words, Tone, About You,
+	// session context and clipboard context work on a self-hosted gateway at all.
+	CustomWords    []customWord `json:"customWords"`
+	Tone           string       `json:"tone"`
+	Profile        string       `json:"profile"`
+	SessionContext []string     `json:"sessionContext"`
+	Clipboard      string       `json:"clipboard"`
+	// Opt-out, matching the app's wire contract: absent (older clients) or
+	// true means formatting is ON; only an explicit false disables it.
+	Formatting *bool `json:"formatting,omitempty"`
+	// Language is a hint for the cleanup prompt: write in this language, fix wrong/missing
+	// diacritics for it, never translate. "auto"/empty mean "infer" — see
+	// `core.IsConcreteLanguage`.
+	Language string `json:"language,omitempty"`
+}
+
+func (tc transcriptionContext) formattingEnabled() bool {
+	return tc.Formatting == nil || *tc.Formatting
+}
+
 // processWithIntent picks the right prompt and builds the user message based on intent,
 // then calls processWithPrompt.
 func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, intent string) (string, error) {
-	var tc struct {
-		Before      string   `json:"before"`
-		After       string   `json:"after"`
-		Selected    string   `json:"selected"`
-		CustomWords []string `json:"customWords"`
-		// Opt-out, matching the app's wire contract: absent (older clients) or
-		// true means formatting is ON; only an explicit false disables it.
-		Formatting *bool `json:"formatting,omitempty"`
-		// Language is a hint for the cleanup prompt (see the default branch below): write in
-		// this language, fix wrong/missing diacritics for it, never translate. "auto"/empty
-		// mean "infer" — see `core.IsConcreteLanguage`.
-		Language string `json:"language,omitempty"`
-	}
+	var tc transcriptionContext
 	if contextJSON != "" {
+		// Best-effort by design: an older or third-party client may send a partial blob, and a
+		// missing field should cost that one feature, not the whole request.
 		json.Unmarshal([]byte(contextJSON), &tc) //nolint:errcheck
 	}
-	formattingEnabled := tc.Formatting == nil || *tc.Formatting
 
-	// Pick prompt by intent.
-	var prompt string
+	var prompt, userMsg string
+	var err error
 	switch intent {
 	case "edit":
 		prompt = c.PromptEdit
+		userMsg, err = cursorEditUserMsg(tc, text)
 	case "edit-selected":
 		prompt = c.PromptEditSelected
+		userMsg, err = selectionEditUserMsg(tc, text)
 	default: // "" or "transcribe"
 		// Formatting only applies to cleanup. An edit instruction already says
 		// what shape the result should take, so appending layout rules there
 		// would fight the user's own instruction.
 		prompt = c.Prompt
-		if formattingEnabled {
+		if tc.formattingEnabled() {
 			prompt += c.PromptFormatting
 		}
+		userMsg = cleanupUserMsg(tc, text)
+	}
+	if err != nil {
+		return "", err
 	}
 
-	// Build user message based on intent.
-	var userMsg string
-	switch intent {
-	case "edit", "edit-selected":
-		if tc.Selected != "" {
-			userMsg = fmt.Sprintf("Text: %s\nInstruction: %s", tc.Selected, text)
-		} else {
-			userMsg = fmt.Sprintf("Text: %s\nInstruction: %s", text, text)
+	result, err := c.processWithPrompt(ctx, prompt, userMsg)
+	if err != nil {
+		return "", err
+	}
+	// The marker is a gateway artefact the user never typed, and the app inserts results
+	// verbatim (KeyboardSessionBridge.applyEditResult), so a model that echoes it would type it
+	// into the document. Strip on every intent: it can only appear if we or the model put it
+	// there. Same guard as the cloud's context-edit path.
+	return strings.ReplaceAll(result, cursorMarker, ""), nil
+}
+
+// cursorEditUserMsg builds the message for a cursor edit: the text around the cursor is the
+// subject, the transcript is the instruction to apply to it.
+//
+// Erroring on a target-less edit is deliberate. The caller turns an edit-intent error into
+// {text:"", mode:<intent>, status:"failed"} (core/streaming.go, core/proxy.go), which the app
+// surfaces as "Couldn't apply edit". The alternative is what this build used to do — send the
+// instruction as its own subject and insert whatever came back, which typed the user's own
+// words into their document.
+func cursorEditUserMsg(tc transcriptionContext, instruction string) (string, error) {
+	if tc.Before == "" && tc.After == "" {
+		return "", fmt.Errorf("edit: no text around the cursor to edit")
+	}
+	return fmt.Sprintf("Text: %s%s%s\nInstruction: %s",
+		tc.Before, cursorMarker, tc.After, instruction), nil
+}
+
+// selectionEditUserMsg builds the message for an edit applied to a selection.
+//
+// Note this deliberately diverges from the cloud, which falls back to mode="transcribe" and
+// returns the raw transcript when the selection is missing — that inserts the instruction.
+// Failing visibly is the better trade; do not "align" it. In practice the branch is close to
+// unreachable from the app: the keyboard only arms edit-selected with a non-empty selection
+// of at most 3000 characters (KeyboardCommands.swift).
+func selectionEditUserMsg(tc transcriptionContext, instruction string) (string, error) {
+	if tc.Selected == "" {
+		return "", fmt.Errorf("edit-selected: no selected text to edit")
+	}
+	msg := fmt.Sprintf("Text: %s\nInstruction: %s", tc.Selected, instruction)
+	if tc.Before != "" || tc.After != "" {
+		msg += fmt.Sprintf("\nContext before: %s\nContext after: %s", tc.Before, tc.After)
+	}
+	return msg, nil
+}
+
+// cleanupUserMsg builds the cleanup message: the transcript first and unlabelled, then one
+// labelled block per piece of context the user actually configured, then the language hint.
+//
+// Two rules hold this together. Every block is omitted when empty, so a self-hoster who has
+// configured none of these sends byte-for-byte the request they sent before this existed
+// (pinned by TestProcessWithIntent_CleanupUnconfiguredIsByteIdentical). And the cursor context
+// is deliberately absent: unlike the rest it is not the user's own data but a prompt-quality
+// feature that only pays off with a prompt written for it, and sending it to a one-line
+// default prompt is the likeliest way to get the surrounding document echoed back and inserted
+// twice. The edit intents, where the cursor IS the subject, are where it belongs.
+func cleanupUserMsg(tc transcriptionContext, text string) string {
+	var blocks []string
+	if words := formatCustomWords(tc.CustomWords); words != "" {
+		blocks = append(blocks, "Custom words: "+words)
+	}
+	// Tone says how to write, Profile says who the user is. One block: two overlapping
+	// concepts are harder for a small model to juggle than one.
+	if tone := joinNonEmpty("\n", tc.Tone, tc.Profile); tone != "" {
+		blocks = append(blocks, "Tone: "+truncateRunes(tone, maxToneRunes))
+	}
+	if len(tc.SessionContext) > 0 {
+		recent := tc.SessionContext
+		if len(recent) > maxSessionMessages {
+			recent = recent[len(recent)-maxSessionMessages:]
 		}
-		if tc.Before != "" || tc.After != "" {
-			userMsg += fmt.Sprintf("\nContext before: %s\nContext after: %s", tc.Before, tc.After)
-		}
-	default:
-		userMsg = text
-		if core.IsConcreteLanguage(tc.Language) {
-			userMsg += "\n\n(Language: " + tc.Language + ")"
-		}
+		blocks = append(blocks, "Recent:\n"+strings.Join(recent, "\n"))
+	}
+	if tc.Clipboard != "" {
+		blocks = append(blocks, "Clipboard: "+truncateRunes(tc.Clipboard, maxClipboardRunes))
 	}
 
-	return c.processWithPrompt(ctx, prompt, userMsg)
+	userMsg := text
+	if len(blocks) > 0 {
+		userMsg += "\n\n" + strings.Join(blocks, "\n")
+	}
+	if core.IsConcreteLanguage(tc.Language) {
+		userMsg += "\n\n(Language: " + tc.Language + ")"
+	}
+	return userMsg
+}
+
+// formatCustomWords renders My Words as "word, other (also heard as: variant)". Variants are
+// legacy — the app stopped sending them — but old rows and other clients may still carry them.
+func formatCustomWords(words []customWord) string {
+	if len(words) > maxCustomWords {
+		log.Printf("LLM custom words: truncating %d → %d", len(words), maxCustomWords)
+		words = words[:maxCustomWords]
+	}
+	rendered := make([]string, 0, len(words))
+	for _, w := range words {
+		if w.Word == "" {
+			continue
+		}
+		if len(w.Variants) > 0 {
+			rendered = append(rendered, w.Word+" (also heard as: "+strings.Join(w.Variants, ", ")+")")
+			continue
+		}
+		rendered = append(rendered, w.Word)
+	}
+	return strings.Join(rendered, ", ")
+}
+
+// truncateRunes caps a string by rune count. Byte slicing would split a multibyte character
+// and hand the model mojibake.
+func truncateRunes(s string, max int) string {
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max])
+}
+
+// joinNonEmpty joins only the parts that carry something, so an absent half never leaves a
+// stray separator behind.
+func joinNonEmpty(sep string, parts ...string) string {
+	present := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p != "" {
+			present = append(present, p)
+		}
+	}
+	return strings.Join(present, sep)
 }
 
 // summarise returns a one-line summary of a whole voice note.

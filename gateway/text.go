@@ -79,10 +79,7 @@ func handleTextProcess(llm llmConfig) http.HandlerFunc {
 			resultText = body.Text
 		}
 
-		mode := intent
-		if mode == "" || mode == "transcribe" {
-			mode = "transcribe"
-		}
+		mode := modeForIntent(intent)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
