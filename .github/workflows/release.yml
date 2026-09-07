@@ -63,7 +63,13 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: IMAGE_REF=ghcr.io/dictionlabs/gateway:${{ github.ref_name }}
+          # VERSION feeds core.Version, which GET /health reports and the app uses for its
+          # self-hosted "your gateway is behind" notice. github.ref_name is the tag (v13.0);
+          # the app strips the leading v. Without this every published image reports "dev"
+          # and the notice can never fire for anyone.
+          build-args: |
+            IMAGE_REF=ghcr.io/dictionlabs/gateway:${{ github.ref_name }}
+            VERSION=${{ github.ref_name }}
 
   release:
     name: Create GitHub Release
