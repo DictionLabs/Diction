@@ -197,8 +197,9 @@ type streamAction struct {
 }
 
 type streamResult struct {
-	Text string `json:"text"`
-	Mode string `json:"mode,omitempty"`
+	Text   string `json:"text"`
+	Mode   string `json:"mode,omitempty"`
+	Status string `json:"status,omitempty"`
 }
 
 // Reason — closed vocabulary for ws_read close classification. Kept in sync
@@ -282,6 +283,29 @@ func (g *Gateway) StreamingHandler() http.HandlerFunc {
 // on the transcript when ?enhance=true is requested. Pass nil for no post-processing.
 // postProcess receives (ctx, transcript, contextJSON, intent) and returns (resultText, mode, error).
 func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Context, string, string, string) (string, string, error)) http.HandlerFunc {
+	return g.StreamingHandlerWithSplitEnhance(postProcess, nil)
+}
+
+// StreamingHandlerWithSplitEnhance adds the two-frame answer to the batch socket.
+//
+// A client that sends `?split_enhance=true` (with `?enhance=true`, transcribe intent)
+// gets the **raw final** the moment STT returns, then one **enhanced frame**
+// (`{"type":"enhanced","text":…}` or `{"type":"enhanced","status":"failed"}`) once the
+// Writing Tools pass completes — the same shape the realtime socket has always used.
+// Everyone else gets exactly today's single already-enhanced frame.
+//
+// Why: holding the only frame behind the LLM made the client's local-vs-cloud race
+// compare on-device raw STT against cloud STT + LLM, which the cloud could not win.
+// See .claude/ARCHITECTURE.md → "Cloud/on-device race and enhance timeouts", invariant 1.
+//
+// `inline` bounds the pass while the user is still waiting (short); `postDelivery`
+// bounds it after the raw text has already been delivered (long — the only cost of
+// waiting is how long the on-screen text stays raw). Pass nil for `postDelivery` to
+// use `inline` for both, which is what the community build does today.
+func (g *Gateway) StreamingHandlerWithSplitEnhance(
+	inline, postDelivery func(context.Context, string, string, string) (string, string, error),
+) http.HandlerFunc {
+	postProcess := inline
 	return func(w http.ResponseWriter, r *http.Request) {
 		// --- Codec validation (before WS upgrade) ---
 		// Unknown codec values get a 400 *before* the upgrade so the error is a
@@ -846,25 +870,61 @@ func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Conte
 			g.OnTranscription(ctx, backend.Name, sttMs, len(text), audioDurationMs, enhanceEnabled, false)
 		}
 
+		// Split answer: ship the raw final now, enhance after. Only for transcribe
+		// intents — on an edit intent the transcript is the user's spoken *instruction*,
+		// so emitting it as a text frame would type the instruction into their document.
+		intentParam := r.URL.Query().Get("intent")
+		isEdit := intentParam == "edit" || intentParam == "edit-selected"
+		if r.URL.Query().Get("split_enhance") == "true" && postProcess != nil &&
+			enhanceEnabled && text != "" && !isEdit {
+			g.writeSplitEnhanceFrames(ctx, conn, splitEnhanceInput{
+				raw:         text,
+				contextJSON: contextJSON,
+				intent:      intentParam,
+				enhance:     postDeliveryOrInline(inline, postDelivery),
+			})
+			return
+		}
+
 		// Apply post-processing if provided (e.g. ?enhance=true)
 		var mode string
 		if postProcess != nil && enhanceEnabled && text != "" {
-			intent := r.URL.Query().Get("intent")
+			intent := intentParam
 			if resultText, resultMode, err := postProcess(ctx, text, contextJSON, intent); err == nil {
 				text = resultText
 				mode = resultMode
 			} else {
 				log.Printf("ws post-process: %v", err)
+				isEditIntent := intent == "edit" || intent == "edit-selected"
+				hint := "streaming post-process failed; returning raw"
+				if isEditIntent {
+					hint = "edit intent post-process failed; returning status=failed"
+				}
 				if OnError != nil {
 					OnError(ctx, ErrorEvent{
 						Source:     "stt",
 						Kind:       "stt_post_process",
 						Endpoint:   "/v1/audio/stream",
 						InputChars: len(text),
-						Hint:       "streaming post-process failed; returning raw",
+						Hint:       hint,
 					})
 				}
-				// Do not call OnRequestFailed — raw transcript is still returned below.
+				if isEditIntent {
+					// Return a failure signal rather than the raw transcript so the
+					// client never inserts the spoken instruction as content.
+					// Old clients (no status parsing) hit their empty-text no-op guard
+					// (KeyboardSessionBridge validateDoneResult:77) — non-destructive.
+					result, _ := json.Marshal(streamResult{Text: "", Mode: intent, Status: "failed"})
+					if err := conn.Write(ctx, websocket.MessageText, result); err != nil {
+						log.Printf("ws write edit-failed result: %v", err)
+						if OnRequestFailed != nil {
+							OnRequestFailed(ctx, errTypeSTTError)
+						}
+					}
+					CloseWSWithTimeout(conn, websocket.StatusNormalClosure, "", 2*time.Second)
+					return
+				}
+				// Non-edit: raw transcript fallback is still acceptable (cleanup, not edit).
 			}
 		}
 

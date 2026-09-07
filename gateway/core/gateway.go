@@ -2,7 +2,7 @@ package core
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,6 +14,13 @@ import (
 // ImageRef is set at build time via -ldflags -X. It records the canonical image
 // reference (e.g. ghcr.io/dictionlabs/gateway:v1.2.3) so /health can expose it.
 var ImageRef = "unknown"
+
+// Version is set at build time via -ldflags -X, from the git tag on a tagged
+// release and from `git describe --tags --always` otherwise. Unlike ImageRef
+// it is always emitted on /health (default "dev") so an ABSENT version field
+// on the wire means "predates this release", not "unset" — the app's
+// self-hosted version-mismatch notice depends on that distinction.
+var Version = "dev"
 
 func EnvFloatOrDefault(key string, fallback float64) float64 {
 	if v := os.Getenv(key); v != "" {
@@ -152,15 +159,27 @@ func (g *Gateway) resolveBackend(model string) (*url.URL, *Backend) {
 	return nil, nil
 }
 
+// healthResponse is the GET /health body. Field order (status, version,
+// image_ref, deprecated) is cosmetic — JSON objects are unordered — but kept
+// stable for readability. `Version` has no `omitempty`: it must always be
+// present so an app reading an older gateway's response sees it truly absent,
+// not merely empty.
+type healthResponse struct {
+	Status     string `json:"status"`
+	Version    string `json:"version"`
+	ImageRef   string `json:"image_ref"`
+	Deprecated string `json:"deprecated,omitempty"`
+}
+
 // HealthHandler returns the handler for GET /health.
 func (g *Gateway) HealthHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		resp := healthResponse{Status: "ok", Version: Version, ImageRef: ImageRef}
 		if strings.Contains(ImageRef, "omachala") {
-			fmt.Fprintf(w, `{"status":"ok","image_ref":%q,"deprecated":"this image is hosted under omachala; please switch to ghcr.io/dictionlabs/gateway"}`, ImageRef)
-		} else {
-			fmt.Fprintf(w, `{"status":"ok","image_ref":%q}`, ImageRef)
+			resp.Deprecated = "this image is hosted under omachala; please switch to ghcr.io/dictionlabs/gateway"
 		}
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 }
 

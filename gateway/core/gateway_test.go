@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -163,6 +164,10 @@ func TestEnvBoolOrDefault_Unset(t *testing.T) {
 // --- HealthHandler ---
 
 func TestHealthHandler(t *testing.T) {
+	origVersion := Version
+	Version = "v13.0"
+	defer func() { Version = origVersion }()
+
 	g := testGateway()
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rr := httptest.NewRecorder()
@@ -177,6 +182,19 @@ func TestHealthHandler(t *testing.T) {
 	body := rr.Body.String()
 	if !strings.HasPrefix(body, `{"status":"ok"`) {
 		t.Errorf("body: want prefix {\"status\":\"ok\", got %s", body)
+	}
+	var resp healthResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("response did not decode as JSON: %v (%s)", err, body)
+	}
+	if resp.Version != "v13.0" {
+		t.Errorf("version: want v13.0, got %q", resp.Version)
+	}
+	if resp.ImageRef != ImageRef {
+		t.Errorf("image_ref: want %q, got %q", ImageRef, resp.ImageRef)
+	}
+	if strings.Contains(body, "deprecated") {
+		t.Error("deprecated field must be omitted (omitempty) when ImageRef is not omachala")
 	}
 }
 
@@ -196,6 +214,24 @@ func TestHealthHandler_DeprecatedImageRef(t *testing.T) {
 	body := rr.Body.String()
 	if !strings.Contains(body, "deprecated") {
 		t.Errorf("expected deprecated field in response for omachala image, got: %s", body)
+	}
+}
+
+func TestHealthHandler_VersionAlwaysPresentEvenAsDefault(t *testing.T) {
+	// Version has no `omitempty`: an app relies on absence-on-the-wire meaning
+	// "gateway predates this field", not "unset". Confirms the default "dev"
+	// still serializes rather than being dropped.
+	origVersion := Version
+	Version = "dev"
+	defer func() { Version = origVersion }()
+
+	g := testGateway()
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rr := httptest.NewRecorder()
+	g.HealthHandler()(rr, req)
+
+	if !strings.Contains(rr.Body.String(), `"version":"dev"`) {
+		t.Errorf("expected version field present with default value, got: %s", rr.Body.String())
 	}
 }
 
