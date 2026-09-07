@@ -553,6 +553,66 @@ func withGatewayKey(
 // buildMux reads configuration from environment variables, wires up all
 // handlers, and returns the HTTP mux and the port to listen on.
 // Extracted from main() to allow testing without starting a real server.
+// withEnhanceTimeout wraps a postProcess-shaped function with a hard deadline.
+//
+// Every caller already falls back to the raw transcript on a postProcess error, so
+// cancelling the context here just makes that fallback trigger on a bounded, visible
+// timescale instead of waiting out the LLM client's own timeout — which for a
+// self-hosted BYO-LLM endpoint can be minutes.
+//
+// A timeout <= 0 means "unbounded" and must skip this wrapper entirely: see
+// enhanceBudget below for why that case has to be handled by the caller.
+func withEnhanceTimeout(
+	fn func(ctx context.Context, text, contextJSON, intent string) (string, string, error),
+	timeout time.Duration) func(ctx context.Context, text, contextJSON, intent string) (string, string, error) {
+	return func(ctx context.Context, text, contextJSON, intent string) (string, string, error) {
+		deadlineCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return fn(deadlineCtx, text, contextJSON, intent)
+	}
+}
+
+// Community enhance budgets. These deliberately DIFFER from the cloud build's
+// (2500 / 8000) — do not "fix" them to match without reading this first.
+//
+//   - Inline (20 s vs cloud's 2.5 s) bounds the pass while the user is still waiting.
+//     It governs every path that does NOT use the split answer: /v1/audio/transcriptions,
+//     /v1/audio/stream on edit intents (the client gates split_enhance on an empty intent,
+//     so edit mode never splits), and older apps that omit the parameter. Cloud's 2.5 s is
+//     tuned for Groq at a measured 150-700 ms; a self-hoster's Ollama on CPU routinely
+//     takes 5-20 s, so cloud's default here would make those paths fall back to raw almost
+//     every time — worse than having no timeout at all, which is where we started.
+//
+//   - Post-delivery (8 s, same as cloud) bounds the pass after the raw text has already
+//     been delivered, so waiting costs the user nothing. It is capped by the CLIENT, not
+//     the server: the app's enhanced-frame budget is a hardcoded 9 s that is not
+//     backend-aware, so any value above ~9 s is unreachable — the app has already stopped
+//     listening. 8 s is the honest number.
+//
+// Both are env-tunable, and <= 0 means unbounded (see enhanceBudget).
+const (
+	defaultEnhanceTimeoutMs     = 20000
+	defaultLiveEnhanceTimeoutMs = 8000
+)
+
+// enhanceBudget applies one budget to the post-process closure, treating a
+// non-positive value as "no limit" rather than "no time".
+//
+// core.EnvIntOrDefault does no range validation, so DICTION_ENHANCE_TIMEOUT_MS=0 would
+// otherwise reach context.WithTimeout(ctx, 0) — an already-expired context, failing every
+// Writing Tools pass instantly and silently falling back to raw. 0 is the near-universal
+// spelling of "no limit", so the self-hoster most likely to type it would get the exact
+// opposite of what they asked for, with no error naming the cause.
+func enhanceBudget(
+	fn func(ctx context.Context, text, contextJSON, intent string) (string, string, error),
+	ms int, label string) func(ctx context.Context, text, contextJSON, intent string) (string, string, error) {
+	if ms <= 0 {
+		log.Printf("LLM %s enhance budget disabled (<=0) — a slow LLM can stall for as long as its own client allows", label)
+		return fn
+	}
+	return withEnhanceTimeout(fn, time.Duration(ms)*time.Millisecond)
+}
+
 func buildMux() (http.Handler, string, error) {
 	port := core.EnvOrDefault("GATEWAY_PORT", "8080")
 	defaultModel := core.EnvOrDefault("DEFAULT_MODEL", "small")
@@ -604,12 +664,19 @@ func buildMux() (http.Handler, string, error) {
 	// LLM post-processing (BYO LLM for self-hosters)
 	llm := llmConfigFromEnv()
 	textRoutesOpen := core.EnvBoolOrDefault("TEXT_ROUTES_OPEN", false)
-	var postProcess func(context.Context, string, string, string) (string, string, error)
+	enhanceTimeoutMs := core.EnvIntOrDefault("DICTION_ENHANCE_TIMEOUT_MS", defaultEnhanceTimeoutMs)
+	liveEnhanceTimeoutMs := core.EnvIntOrDefault("DICTION_LIVE_ENHANCE_TIMEOUT_MS", defaultLiveEnhanceTimeoutMs)
+	// Both stay nil when the LLM is off. A wrapped nil would still be non-nil, and
+	// core/streaming.go gates the split answer on `postProcess != nil` — so wrapping
+	// unconditionally would turn "no LLM configured" into "an LLM that always fails".
+	var postProcess, postProcessLive func(context.Context, string, string, string) (string, string, error)
 	if llm.Enabled {
-		postProcess = func(ctx context.Context, transcript, contextJSON, intent string) (string, string, error) {
+		inner := func(ctx context.Context, transcript, contextJSON, intent string) (string, string, error) {
 			result, err := llm.processWithIntent(ctx, transcript, contextJSON, intent)
 			return result, "", err
 		}
+		postProcess = enhanceBudget(inner, enhanceTimeoutMs, "inline")
+		postProcessLive = enhanceBudget(inner, liveEnhanceTimeoutMs, "post-delivery")
 	}
 
 	caps := capabilityFlags{
@@ -651,8 +718,12 @@ func buildMux() (http.Handler, string, error) {
 	mux.HandleFunc("/v1/audio/transcriptions", audioMW(
 		gw.TranscriptionHandlerWithPostProcess(postProcess),
 	))
+	// Split answer: the raw final ships the moment STT returns, the enhanced frame
+	// follows under the longer post-delivery budget. /v1/audio/transcriptions above
+	// deliberately keeps the INLINE closure — it has no post-delivery phase, the user
+	// is blocked on the response.
 	mux.HandleFunc("/v1/audio/stream", audioMW(
-		gw.StreamingHandlerWithPostProcess(postProcess),
+		gw.StreamingHandlerWithSplitEnhance(postProcess, postProcessLive),
 	))
 	mux.HandleFunc("/v1/text/process", textMW(handleTextProcess(llm)))
 	mux.HandleFunc("/v1/text/suggest", textMW(handleTextSuggest(llm)))
@@ -662,7 +733,11 @@ func buildMux() (http.Handler, string, error) {
 	}
 	mux.HandleFunc("/", gw.CatchAllHandler())
 
-	log.Printf("Diction Gateway starting on :%s (default_model=%s, auth=%v, trial=%v, llm=%v, text_routes=%v, pairing=%s)", port, defaultModel, authEnabled, len(trialSecret) > 0, llm.Enabled, textRoutesOpen, pairingMode)
+	// The enhance budgets are logged because `docker logs` is a self-hoster's ONLY
+	// diagnostic surface — the community build wires no error uplink and no metrics.
+	// "My cleanup returns raw text" is otherwise indistinguishable from "my LLM is
+	// down", and the budget is the first thing to check.
+	log.Printf("Diction Gateway starting on :%s (default_model=%s, auth=%v, trial=%v, llm=%v, text_routes=%v, pairing=%s, enhance_ms=%d, live_enhance_ms=%d)", port, defaultModel, authEnabled, len(trialSecret) > 0, llm.Enabled, textRoutesOpen, pairingMode, enhanceTimeoutMs, liveEnhanceTimeoutMs)
 	if keyStore != nil {
 		log.Printf("gateway pairing key active (fingerprint %s, rotation=%v)", keyStore.Fingerprint(), !keyStore.Pinned())
 		publicURL := core.EnvOrDefault("PUBLIC_URL", "")

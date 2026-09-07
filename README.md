@@ -516,8 +516,15 @@ See `AGENTS.md` for the full wire format.
 | `LLM_PROMPT_FORMATTING` | No | Appended to `LLM_PROMPT` when the client requests formatting. Defaults to the built-in formatting rules. |
 | `LLM_PROMPT_SUMMARY` | No | System prompt for `/v1/text/summarize`. Defaults to the built-in summary prompt. |
 | `TEXT_ROUTES_OPEN` | No | Set to `true` to open `/v1/text/process` and `/v1/text/suggest` when `AUTH_ENABLED=false`. Default `false` (routes return 403 until explicitly opened). |
+| `DICTION_ENHANCE_TIMEOUT_MS` | No | How long the cleanup pass may run **while the user is waiting** — `/v1/audio/transcriptions`, and `/v1/audio/stream` on voice-edit intents. Default `20000` (20s), sized for a local model on CPU. On timeout the raw transcript is returned, so nothing is ever lost. Set `0` for no limit. |
+| `DICTION_LIVE_ENHANCE_TIMEOUT_MS` | No | How long the cleanup pass may run **after** the raw text has already been delivered, on `/v1/audio/stream?split_enhance=true`. Default `8000` (8s). Raising it much past 9s has no effect: the app stops waiting for the enhanced frame at 9s and keeps the raw text. Set `0` for no limit. |
 
 Both `LLM_BASE_URL` and `LLM_MODEL` must be set or the feature stays off.
+
+**If cleanup keeps returning raw text**, check the startup log line — it prints
+`enhance_ms=` and `live_enhance_ms=` — and time your model directly against
+`LLM_BASE_URL`. A local model slower than the budget is the usual cause; raise
+`DICTION_ENHANCE_TIMEOUT_MS` rather than switching cleanup off.
 
 > **Behavior change from earlier releases:** operators who set `LLM_BASE_URL` and `LLM_MODEL` without `LLM_PROMPT` now receive the built-in cleanup prompt automatically. Previously the gateway logged a warning and sent no system instructions. The default prompt is: *"You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. Return only the corrected text, nothing else."*
 
