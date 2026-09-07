@@ -115,9 +115,20 @@ func (c llmConfig) processWithPrompt(ctx context.Context, prompt, userMsg string
 		ReasoningEffort     string    `json:"reasoning_effort,omitempty"`
 	}
 
+	// Output length is roughly input length, but the floor is what matters: a
+	// reasoning-class model (gpt-oss, and most "thinking" models) spends tokens on
+	// hidden chain-of-thought *before* writing any output, and charges that to the same
+	// budget. At a 500 floor it can spend the lot thinking and return empty content,
+	// which surfaces to the user as a failed edit. Short inputs are the worst case,
+	// because they get the smallest budget while the reasoning cost stays fixed.
+	//
+	// 4000 is the floor production settled on for the same reason on 2026-09-02, after
+	// measuring 900-2000 reasoning tokens burned on inputs that had only ~200 budgeted.
+	// Costs nothing when the model does not reason: max_completion_tokens is a ceiling,
+	// not a reservation, so a non-reasoning model still stops when it stops.
 	maxTokens := len(userMsg)/2 + 200
-	if maxTokens < 500 {
-		maxTokens = 500
+	if maxTokens < 4000 {
+		maxTokens = 4000
 	}
 	if maxTokens > 8192 {
 		maxTokens = 8192

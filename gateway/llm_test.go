@@ -317,16 +317,55 @@ func TestLLM_Process_MaxTokensBounds(t *testing.T) {
 
 	cfg := llmConfig{Enabled: true, BaseURL: srv.URL, Model: "test"}
 
-	// Short text → minimum 500
+	// Short text → minimum 4000. The floor exists for reasoning-class models, which
+	// spend budget on hidden chain-of-thought before emitting any content; at the old
+	// 500 floor they could spend it all and return empty, which reached users as a
+	// failed edit on a self-hosted gateway running gpt-oss-20b.
 	cfg.process(context.Background(), "hi")
-	if receivedMaxTokens != 500 {
-		t.Errorf("short text: expected 500 max_tokens, got %d", receivedMaxTokens)
+	if receivedMaxTokens != 4000 {
+		t.Errorf("short text: expected 4000 max_tokens, got %d", receivedMaxTokens)
 	}
 
 	// Very long text → capped at 8192
 	cfg.process(context.Background(), strings.Repeat("x", 20000))
 	if receivedMaxTokens != 8192 {
 		t.Errorf("long text: expected 8192 max_tokens, got %d", receivedMaxTokens)
+	}
+}
+
+// TestLLM_EditIntent_HasReasoningHeadroom pins the floor on the path that actually broke:
+// an edit intent with a short spoken instruction, which produces the smallest user message
+// and therefore the smallest budget, while a reasoning model's fixed thinking cost stays
+// the same. Guards the whole intent surface, not just plain cleanup.
+func TestLLM_EditIntent_HasReasoningHeadroom(t *testing.T) {
+	var receivedMaxTokens int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			MaxCompletionTokens int `json:"max_completion_tokens"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		receivedMaxTokens = req.MaxCompletionTokens
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]string{"content": "ok"}}},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := llmConfig{
+		Enabled: true, BaseURL: srv.URL, Model: "test",
+		Prompt: "CLEANUP", PromptEdit: "EDIT", PromptEditSelected: "EDIT_SEL",
+	}
+	for _, intent := range []string{"", "transcribe", "edit", "edit-selected"} {
+		receivedMaxTokens = 0
+		if _, err := cfg.processWithIntent(
+			context.Background(), "fix that", `{"selected":"teh"}`, intent); err != nil {
+			t.Fatalf("intent=%q: %v", intent, err)
+		}
+		if receivedMaxTokens < 4000 {
+			t.Errorf("intent=%q: max_tokens %d leaves no room for hidden reasoning tokens",
+				intent, receivedMaxTokens)
+		}
 	}
 }
 
