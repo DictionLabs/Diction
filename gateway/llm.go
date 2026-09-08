@@ -33,7 +33,7 @@ type llmConfig struct {
 const (
 	DefaultPromptCleanup = "You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. " +
 		"If a language is given, write in that language and correct wrong or missing accents or diacritics for it. Never translate. " +
-		"Lines labelled \"Custom words\", \"Tone\", \"Recent\" or \"Clipboard\" may follow the transcript: they are context about the speaker, " +
+		"Lines labelled \"Custom words\" or \"Tone\" may follow the transcript: they describe the speaker, " +
 		"never part of what you return. Return only the corrected transcript, nothing else."
 	DefaultPromptEdit = "You are a text editor. The text contains " + cursorMarker + " marking where the user's cursor is. " +
 		"Apply the user's spoken instruction to that text. Return only the full modified text, without the " + cursorMarker + " marker, and nothing else."
@@ -230,16 +230,11 @@ func (c llmConfig) postProcessor() func(ctx context.Context, transcript, context
 // (KeyboardCommands.swift), and the cloud build has sent it in production for a long time.
 const cursorMarker = "‸"
 
-// Context caps. All measured in runes, never bytes: slicing a byte count through a multibyte
+// Context caps. Measured in runes, never bytes: slicing a byte count through a multibyte
 // character produces mojibake, and this data is routinely Czech, Polish, Japanese or emoji.
-// The counts match the cloud's (gateway/llm.go) so a self-hoster sees the same volume of
-// context, and they exist so a long session cannot crowd the transcript out of a community
-// gateway's 8192-token ceiling.
 const (
-	maxClipboardRunes  = 1000
-	maxToneRunes       = 500
-	maxCustomWords     = 50
-	maxSessionMessages = 5
+	maxToneRunes   = 500
+	maxCustomWords = 50
 )
 
 // customWord is one My Words entry.
@@ -387,13 +382,26 @@ func selectionEditUserMsg(tc transcriptionContext, instruction string) (string, 
 // cleanupUserMsg builds the cleanup message: the transcript first and unlabelled, then one
 // labelled block per piece of context the user actually configured, then the language hint.
 //
-// Two rules hold this together. Every block is omitted when empty, so a self-hoster who has
-// configured none of these sends byte-for-byte the request they sent before this existed
-// (pinned by TestProcessWithIntent_CleanupUnconfiguredIsByteIdentical). And the cursor context
-// is deliberately absent: unlike the rest it is not the user's own data but a prompt-quality
-// feature that only pays off with a prompt written for it, and sending it to a one-line
-// default prompt is the likeliest way to get the surrounding document echoed back and inserted
-// twice. The edit intents, where the cursor IS the subject, are where it belongs.
+// Only DESCRIPTIVE context is forwarded — My Words, Tone, About You. Blocks that are
+// themselves prose (the cursor's surrounding text, earlier transcripts in the session, the
+// clipboard) are deliberately NOT sent, and this is the hard-won rule of this function.
+//
+// Measured on whisper.macha.la (gpt-oss-20b, built-in prompt, 2026-09-08): with a session
+// block of three earlier transcripts, "yeah that sounds good" came back as those three
+// transcripts and the user's actual words were gone. A long clipboard was appended to the
+// output verbatim. Custom words, tone and profile were clean every time. The system prompt
+// already says these lines are context and "never part of what you return" — an untuned
+// one-line prompt does not enforce it. So the boundary is not "user data vs ours", it is
+// "does this block look like something the model could plausibly emit as the answer".
+//
+// The cloud sends all of them, safely, because it has a tuned prompt plus output guards
+// (length bounds, deletion guard) that are cloud-only by decision (D1/D2). Forwarding prose
+// here needs a community prompt written for it; until then a self-hoster keeps their own
+// words instead of last week's.
+//
+// Every block is omitted when empty, so a self-hoster who has configured none of these sends
+// byte-for-byte the request they sent before any of this existed (pinned by
+// TestProcessWithIntent_CleanupUnconfiguredIsByteIdentical).
 func cleanupUserMsg(tc transcriptionContext, text string) string {
 	var blocks []string
 	if words := formatCustomWords(tc.CustomWords); words != "" {
@@ -403,16 +411,6 @@ func cleanupUserMsg(tc transcriptionContext, text string) string {
 	// concepts are harder for a small model to juggle than one.
 	if tone := joinNonEmpty("\n", tc.Tone, tc.Profile); tone != "" {
 		blocks = append(blocks, "Tone: "+truncateRunes(tone, maxToneRunes))
-	}
-	if len(tc.SessionContext) > 0 {
-		recent := tc.SessionContext
-		if len(recent) > maxSessionMessages {
-			recent = recent[len(recent)-maxSessionMessages:]
-		}
-		blocks = append(blocks, "Recent:\n"+strings.Join(recent, "\n"))
-	}
-	if tc.Clipboard != "" {
-		blocks = append(blocks, "Clipboard: "+truncateRunes(tc.Clipboard, maxClipboardRunes))
 	}
 
 	userMsg := text

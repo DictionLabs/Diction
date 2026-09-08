@@ -529,24 +529,31 @@ what to do with the hint if it matters to you; it is plain text appended after t
 not a template variable.
 
 **What the cleanup call sends.** The transcript comes first, unlabelled, exactly as before.
-Whatever context the user configured in the app then follows, one labelled line per item, and
-each is omitted entirely when the user has not set it — a user with none of them configured
-sends byte-for-byte the request earlier releases sent:
+The descriptive context the user configured in the app then follows, one labelled line per
+item, each omitted entirely when unset — a user with none of them configured sends
+byte-for-byte the request earlier releases sent:
 
 | Line | Source | Cap |
 |------|--------|-----|
 | `Custom words: a, b (also heard as: c)` | the user's My Words list | 50 entries |
 | `Tone: ...` | the user's Tone preset and About You description, merged | 500 characters |
-| `Recent:` followed by one transcript per line | earlier dictations in the same session | 5 most recent |
-| `Clipboard: ...` | the user's clipboard, when they enabled clipboard context | 1000 characters |
 | `(Language: xx)` | the transcript's language, when concrete | — |
 
 Caps are counted in characters, not bytes, so non-Latin scripts are never cut mid-character.
-They exist so a long session cannot crowd the transcript out of a small model's context window.
 
-A custom `LLM_PROMPT` should tell the model that these lines are context and must not appear in
-its reply — the built-in prompt says so. Everything here is the user's own data; no Diction
-prompt engineering is hidden in it.
+**What it deliberately does NOT send, and why you should not add it.** The client also supplies
+the text around the cursor, the earlier transcripts of the session, and the clipboard. The
+gateway decodes them and forwards none of them to the cleanup prompt. Measured against
+`gpt-oss-20b` with the built-in prompt: given a block of three earlier transcripts, the
+dictation "yeah that sounds good" came back as *those three transcripts* — the user's actual
+words gone from their text field. A long clipboard block was appended to the output verbatim.
+Custom words, tone and profile never did this.
+
+The rule that survived: forward context that **describes** the speaker, never context that is
+itself prose the model could emit as the answer. The built-in prompt does say these lines are
+context and must not appear in the reply; a short prompt does not enforce it. If you write a
+custom `LLM_PROMPT` and want to feed it session or clipboard context, you own that trade — test
+it with a short dictation and a long context block before trusting it.
 
 **What the voice-edit call sends.** For `intent=edit` (the user's cursor, nothing selected) the
 gateway sends `Text: <before>‸<after>` followed by `Instruction: <what the user said>`. The `‸`
@@ -563,7 +570,7 @@ edit" instead of typing the user's spoken instruction into their document. A cus
 `LLM_BASE_URL`. A local model slower than the budget is the usual cause; raise
 `DICTION_ENHANCE_TIMEOUT_MS` rather than switching cleanup off.
 
-> **Behavior change from earlier releases:** operators who set `LLM_BASE_URL` and `LLM_MODEL` without `LLM_PROMPT` now receive the built-in cleanup prompt automatically. Previously the gateway logged a warning and sent no system instructions. The default prompt is: *"You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. If a language is given, write in that language and correct wrong or missing accents or diacritics for it. Never translate. Lines labelled “Custom words”, “Tone”, “Recent” or “Clipboard” may follow the transcript: they are context about the speaker, never part of what you return. Return only the corrected transcript, nothing else."*
+> **Behavior change from earlier releases:** operators who set `LLM_BASE_URL` and `LLM_MODEL` without `LLM_PROMPT` now receive the built-in cleanup prompt automatically. Previously the gateway logged a warning and sent no system instructions. The default prompt is: *"You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. If a language is given, write in that language and correct wrong or missing accents or diacritics for it. Never translate. Lines labelled “Custom words” or “Tone” may follow the transcript: they describe the speaker, never part of what you return. Return only the corrected transcript, nothing else."*
 
 ### Option A - Cloud LLM (OpenAI, Groq, etc.)
 

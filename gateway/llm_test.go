@@ -856,8 +856,7 @@ func TestProcessWithIntent_CleanupContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"Custom words:", "Ondrej", "Tone:", "Friendly", "An engineer",
-		"Recent:", "earlier one", "Clipboard:", "pasted text"} {
+	for _, want := range []string{"Custom words:", "Ondrej", "Tone:", "Friendly", "An engineer"} {
 		if !strings.Contains(userMsg, want) {
 			t.Errorf("want %q in user message, got %q", want, userMsg)
 		}
@@ -866,21 +865,57 @@ func TestProcessWithIntent_CleanupContext(t *testing.T) {
 	if !strings.HasPrefix(userMsg, "the transcript") {
 		t.Errorf("transcript must lead the user message, got %q", userMsg)
 	}
-	// Cursor context is deliberately NOT sent to cleanup in v13 (prompt-quality, not user
-	// data — see the plan's Context section). Sending it would change the shape of nearly
-	// every keyboard request and is the likeliest way to get the document echoed back.
-	if strings.Contains(userMsg, "Cursor:") || strings.Contains(userMsg, "a‸b") {
-		t.Errorf("cursor context must not reach the cleanup prompt, got %q", userMsg)
-	}
 
 	empty, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "the transcript", `{"before":"a","after":"b"}`, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, label := range []string{"Custom words:", "Tone:", "Recent:", "Clipboard:"} {
+	for _, label := range []string{"Custom words:", "Tone:"} {
 		if strings.Contains(empty, label) {
 			t.Errorf("label %q must be omitted when the user configured nothing, got %q", label, empty)
 		}
+	}
+}
+
+// The regression that reached a real device: prose blocks in the cleanup message get emitted
+// as the answer, and the user's dictation disappears.
+//
+// Measured on whisper.macha.la (gpt-oss-20b, built-in prompt, 2026-09-08): with three earlier
+// transcripts in a "Recent:" block, "yeah that sounds good" came back as those three
+// transcripts — the user's words gone, last week's typed into their field. A long "Clipboard:"
+// block was appended verbatim. The prompt already told the model these lines were context and
+// "never part of what you return"; an untuned one-line prompt does not enforce it.
+//
+// So the cleanup message carries DESCRIPTIVE context only (My Words, Tone, About You), never
+// prose the model could mistake for the answer: no cursor text, no session transcripts, no
+// clipboard. This test fails the moment any of them is added back without a prompt built to
+// survive it.
+func TestProcessWithIntent_CleanupNeverCarriesProseBlocks(t *testing.T) {
+	ctxJSON := `{"before":"AAA","after":"BBB",` +
+		`"sessionContext":["The meeting went well.","Send the report by Friday."],` +
+		`"clipboard":"buy milk and eggs on the way home","tone":"Friendly"}`
+
+	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "yeah that sounds good", ctxJSON, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	forbidden := map[string]string{
+		"Recent:":                    "session transcripts replaced the user's dictation on a real device",
+		"The meeting went well.":     "a previous transcript leaked into the cleanup prompt",
+		"Send the report by Friday.": "a previous transcript leaked into the cleanup prompt",
+		"Clipboard:":                 "clipboard prose was appended to the output verbatim",
+		"buy milk and eggs":          "clipboard content leaked into the cleanup prompt",
+		"Cursor:":                    "cursor prose belongs to the edit intents, not cleanup",
+		"AAA‸BBB":                    "cursor prose belongs to the edit intents, not cleanup",
+	}
+	for needle, why := range forbidden {
+		if strings.Contains(userMsg, needle) {
+			t.Errorf("%q must not reach the cleanup prompt (%s); got %q", needle, why, userMsg)
+		}
+	}
+	// The descriptive half is still expected to arrive — this is not a rollback of the feature.
+	if !strings.Contains(userMsg, "Tone: Friendly") {
+		t.Errorf("descriptive context must still be forwarded, got %q", userMsg)
 	}
 }
 
@@ -928,12 +963,12 @@ func TestProcessWithIntent_CleanupUnconfiguredIsByteIdentical(t *testing.T) {
 // the user's tone, clipboard and session context down with it — a bigger version of the very
 // bug this type was written to end.
 func TestProcessWithIntent_MalformedCustomWordKeepsRestOfContext(t *testing.T) {
-	ctxJSON := `{"customWords":[123,{"word":"Diction"}],"tone":"Friendly","clipboard":"pasted text"}`
+	ctxJSON := `{"customWords":[123,{"word":"Diction"}],"tone":"Friendly","profile":"An engineer"}`
 	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "the transcript", ctxJSON, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"Tone: Friendly", "Clipboard: pasted text", "Diction"} {
+	for _, want := range []string{"Tone: Friendly", "An engineer", "Diction"} {
 		if !strings.Contains(userMsg, want) {
 			t.Errorf("one bad custom word cost more than itself: want %q in %q", want, userMsg)
 		}

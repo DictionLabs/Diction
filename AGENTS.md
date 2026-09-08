@@ -144,12 +144,18 @@ context fields (all optional; `context` itself is a JSON *string*, not an object
                             strings ["Diction"] are both accepted. Cap 50.
   tone            string    how the user wants to be written for. Cap 500 chars.
   profile         string    who the user is. Merged with `tone` into one block.
-  sessionContext  [string]  earlier transcripts in the same session. 5 most recent.
-  clipboard       string    clipboard context. Cap 1000 chars.
+  sessionContext  [string]  accepted and IGNORED by the cleanup prompt (see note below).
+  clipboard       string    accepted and IGNORED by the cleanup prompt (see note below).
   formatting      bool      opt-out; absent or true = formatting rules on.
   language        string    transcript language, or "auto" to infer.
 
 Caps are counted in characters, not bytes.
+
+Note on `sessionContext` / `clipboard` / cursor text: decoded, never forwarded to the cleanup
+prompt. They are prose, and an untuned prompt emits prose as its answer -- measured against
+gpt-oss-20b, a session block replaced the user's dictation with earlier transcripts and a long
+clipboard was appended verbatim. Only descriptive context (customWords, tone, profile) is
+forwarded. The cursor text IS sent for intent=edit, where it is the subject of the edit.
 
 intent values:
   (empty) or "transcribe"  -- cleanup prompt, text is the transcript. The transcript leads
