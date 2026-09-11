@@ -1,0 +1,98 @@
+name: Mirror Upstream Images
+
+# Keeps ghcr.io/dictionlabs/* and dictionlabs/* serving the digests pinned in
+# .github/mirror-images.json, which is the source of truth.
+#
+# This replaces a cron on a home server that authenticated with a classic PAT. That token
+# expired on 2026-08-28 and mirroring stopped for 14 days without anyone noticing, because the
+# script died at the registry login before reaching its own alerting. Here the job's own
+# GITHUB_TOKEN pushes to ghcr.io/dictionlabs, so there is no long-lived credential to expire,
+# and a failed run is surfaced by GitHub itself.
+#
+# Promotion stays deliberate: the workflow never follows upstream. When upstream moves past a
+# pinned digest it opens an issue and leaves the mirror alone, so a human reviews the change,
+# then bumps `upstream_digest` in the manifest.
+
+on:
+  schedule:
+    # 06:30 UTC, matching the cron this replaces.
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  issues: write
+
+jobs:
+  mirror:
+    name: Reconcile mirrors against pinned digests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install regctl
+        run: |
+          curl -fsSL -o regctl \
+            https://github.com/regclient/regclient/releases/download/v0.11.5/regctl-linux-amd64
+          chmod +x regctl
+          sudo mv regctl /usr/local/bin/regctl
+          regctl version
+
+      # GITHUB_TOKEN can push to ghcr.io/dictionlabs because this repo lives in that org.
+      # It cannot reach a personal namespace, which is why the retired
+      # ghcr.io/omachala/diction-gateway ref is not mirrored here. See README.
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: dictionlabs
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Reconcile
+        id: mirror
+        run: python3 .github/scripts/mirror_images.py
+
+      # Drift is not a failure, so it needs its own durable signal. An issue is self-deduping
+      # (one per pinned-digest change), survives until someone acts, and needs no extra secret.
+      - name: Report drift
+        if: always() && hashFiles('drift.txt') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('drift.txt', 'utf8');
+            const title = 'Upstream images have moved past their pinned digests';
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'image-drift',
+            });
+            const existing = open.data[0];
+            const text = [
+              'The mirror left these alone on purpose. Review the upstream change, test it, then',
+              'bump `upstream_digest` in `.github/mirror-images.json` to promote it.',
+              '',
+              '```',
+              body.trim(),
+              '```',
+              '',
+              `_Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}_`,
+            ].join('\n');
+            if (existing) {
+              if (!existing.body || !existing.body.includes(body.trim().slice(0, 120))) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: existing.number, body: text,
+                });
+              }
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body: text, labels: ['image-drift'],
+              });
+            }

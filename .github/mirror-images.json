@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "Container images mirrored under Diction Labs. THIS FILE IS THE SOURCE OF TRUTH.",
+    "",
+    "`upstream_digest` is the digest we have promoted — what our :tag actually serves.",
+    "scripts/diction-image-mirror.sh reconciles the registries to match this file, and alerts",
+    "when upstream has moved past it. Promotion is deliberate: review the upstream change, test,",
+    "then bump the digest here. Never let the script auto-follow upstream.",
+    "",
+    "Deliberately NOT mirrored: ollama/ollama and cloudflare/cloudflared. Both are actively",
+    "maintained by well-resourced teams and ship security fixes on their own cadence; inserting",
+    "ourselves as a middleman makes us a staleness risk with no offsetting benefit. See",
+    "MIRRORING.md M1."
+  ],
+  "images": [
+    {
+      "name": "whisper-server",
+      "tag": "latest-cpu",
+      "upstream": "ghcr.io/speaches-ai/speaches:latest-cpu",
+      "upstream_digest": "sha256:21e3df06d842fb7802ab470dd77c25f0e8c0d22950e8d8c6ae886e851af53ef8",
+      "licence": "MIT",
+      "note": "M2 (2026-07-29): repointed from abandoned fedirz/faster-whisper-server to speaches-ai/speaches (the official successor). Breaking changes vs fedirz: WHISPER__MODEL/WHISPER__INFERENCE_DEVICE env vars removed (model now specified per-request via ForwardModel); volume path changed from /root/.cache/huggingface to /home/ubuntu/.cache/huggingface/hub."
+    },
+    {
+      "name": "whisper-server",
+      "tag": "latest-cuda",
+      "upstream": "ghcr.io/speaches-ai/speaches:latest-cuda",
+      "upstream_digest": "sha256:6ec12ebf890a17e0d4b242a8ba9e0eb1fb836e60e8a3c857aea9838d541579ac",
+      "licence": "MIT",
+      "note": "Same Speaches migration as latest-cpu."
+    },
+    {
+      "name": "parakeet",
+      "tag": "latest-int8",
+      "upstream": "ghcr.io/achetronic/parakeet:latest-int8",
+      "upstream_digest": "sha256:00f8a02ec0ca6a7d6d5ee9f959060d8498b14f741a25e914941d22547a3f37f4",
+      "licence": "Apache-2.0",
+      "note": "Single-maintainer project. Apache-2.0 requires preserving NOTICE and stating changes; we copy the manifest unmodified, so nothing is changed and attribution lives in the repo description."
+    }
+  ],
+  "targets": [
+    "docker.io/dictionlabs",
+    "ghcr.io/dictionlabs"
+  ]
+}
