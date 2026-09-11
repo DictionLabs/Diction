@@ -32,11 +32,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Uses the workflow's own GITHUB_TOKEN, not a PAT. The previous GHCR_PAT
+      # (classic, write:packages) expired 2026-08-28 and silently stopped image
+      # publishing. It is deliberately not replaced: GitHub's UI now force-selects
+      # `repo` alongside `write:packages`, so any replacement classic PAT could read
+      # every private repo, including diction-dev. GITHUB_TOKEN is scoped to this
+      # repo and this run, and `packages: write` above is all it needs for
+      # ghcr.io/dictionlabs. See ~/network/GITHUB.md on Din.
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PAT }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/login-action@v3
         with:
@@ -47,10 +54,15 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
+          # The legacy ghcr.io/omachala/diction-gateway ref is NOT built here.
+          # GITHUB_TOKEN is scoped to this repo's org (DictionLabs) and cannot push
+          # to a personal namespace, and GHCR accepts no fine-grained token that
+          # could be scoped to packages alone. That ref is mirrored out-of-band by
+          # ~/scripts/diction-image-mirror.sh on Din instead, so old installs keep
+          # receiving identical images without CI holding a broad classic PAT.
           images: |
             docker.io/dictionlabs/gateway
             ghcr.io/dictionlabs/gateway
-            ghcr.io/omachala/diction-gateway
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
