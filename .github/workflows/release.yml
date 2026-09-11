@@ -54,12 +54,13 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          # The legacy ghcr.io/omachala/diction-gateway ref is NOT built here.
-          # GITHUB_TOKEN is scoped to this repo's org (DictionLabs) and cannot push
-          # to a personal namespace, and GHCR accepts no fine-grained token that
-          # could be scoped to packages alone. That ref is mirrored out-of-band by
-          # ~/scripts/diction-image-mirror.sh on Din instead, so old installs keep
-          # receiving identical images without CI holding a broad classic PAT.
+          # ghcr.io/omachala/diction-gateway is RETIRED as of v13.0 and is deliberately
+          # absent. Publishing to a personal namespace needs a credential this repo
+          # should not hold: GITHUB_TOKEN is scoped to DictionLabs, and GHCR accepts
+          # no fine-grained token at all, so the only option was a classic PAT, which
+          # GitHub now force-bundles with `repo` scope and which could therefore read
+          # every private repo. Already-published tags there stay pullable; the README
+          # tells users to move to dictionlabs/gateway. Do not re-add this ref.
           images: |
             docker.io/dictionlabs/gateway
             ghcr.io/dictionlabs/gateway
@@ -103,5 +104,5 @@ jobs:
 
             ```bash
             docker pull dictionlabs/gateway:${{ github.ref_name }}
-            # also available at ghcr.io/dictionlabs/gateway and ghcr.io/omachala/diction-gateway (identical images)
+            # also available at ghcr.io/dictionlabs/gateway (identical image)
             ```

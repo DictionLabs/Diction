@@ -18,7 +18,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PAT }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/login-action@v3
         with:
@@ -32,7 +32,6 @@ jobs:
           images: |
             docker.io/dictionlabs/gateway
             ghcr.io/dictionlabs/gateway
-            ghcr.io/omachala/diction-gateway
           # sha only. This workflow builds untagged images from a manual dispatch, so it
           # cannot know a version -- core.Version stays "dev" and /health reports "dev",
           # which is the correct "no opinion" answer for an untagged build.

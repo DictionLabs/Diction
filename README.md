@@ -148,7 +148,18 @@ services:
       DEFAULT_MODEL: parakeet-v3
 ```
 
-> **Existing installs on `ghcr.io/omachala/diction-gateway` continue to work and receive identical images — no action needed.** Images are now published under [Diction Labs](https://github.com/DictionLabs) on both GHCR and Docker Hub.
+> **`ghcr.io/omachala/diction-gateway` is retired as of v13.0 (2026-09-11).** Images already
+> published there stay pullable and are not going anywhere, but **no new versions will land on it** -
+> that ref is frozen at v12.0. If you are pulling it, switch to `dictionlabs/gateway` to keep
+> receiving updates:
+>
+> ```diff
+> -    image: ghcr.io/omachala/diction-gateway:latest
+> +    image: dictionlabs/gateway:latest
+> ```
+>
+> Images are published under [Diction Labs](https://github.com/DictionLabs) on Docker Hub
+> (`dictionlabs/gateway`, canonical) and GHCR (`ghcr.io/dictionlabs/gateway`).
 
 Model weights are baked into the `parakeet` image, so there's nothing to download on first start. `DEFAULT_MODEL: parakeet-v3` covers 25 European languages - see [Swap the Speech Model](#swap-the-speech-model) for Whisper models and other languages.
 

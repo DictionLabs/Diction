@@ -6,11 +6,11 @@ on:
       source_image:
         description: "Source image (no tag)"
         required: true
-        default: "ghcr.io/omachala/diction-gateway"
+        default: "dictionlabs/gateway"
       dest_images:
         description: "Space-separated destination images (no tag) to copy each tag to"
         required: true
-        default: "ghcr.io/dictionlabs/gateway dictionlabs/gateway"
+        default: "ghcr.io/dictionlabs/gateway"
       tags:
         description: "Space-separated tags to mirror"
         required: true
@@ -27,7 +27,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_PAT }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/login-action@v3
         with:
