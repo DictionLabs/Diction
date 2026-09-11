@@ -277,7 +277,8 @@ func extractFormField(body []byte, boundary, fieldName string) string {
 // responseFormat must be "json" (default) or "text" (OpenAI-compatible plain body).
 // e2eClientKey is the raw X-Diction-E2E header — when set, JSON output is encrypted.
 // "text" + e2eClientKey != "" is rejected upstream in the handler.
-func writeTranscriptionResponse(resp *http.Response, transcript, mode, responseFormat, e2eClientKey string) {
+// status is optional ("failed" on edit intent post-process failures, "" otherwise).
+func writeTranscriptionResponse(resp *http.Response, transcript, mode, status, responseFormat, e2eClientKey string) {
 	// Plain text — OpenAI response_format=text. Only reachable when e2eClientKey == "".
 	if responseFormat == "text" {
 		resp.Header.Set("Content-Type", "text/plain; charset=utf-8")
@@ -297,6 +298,9 @@ func writeTranscriptionResponse(resp *http.Response, transcript, mode, responseF
 			}
 			if mode != "" {
 				result["mode"] = mode
+			}
+			if status != "" {
+				result["status"] = status
 			}
 			newBody, _ := json.Marshal(result)
 			resp.Body = io.NopCloser(bytes.NewReader(newBody))
@@ -321,6 +325,9 @@ func writeTranscriptionResponse(resp *http.Response, transcript, mode, responseF
 	result := map[string]string{"text": transcript}
 	if mode != "" {
 		result["mode"] = mode
+	}
+	if status != "" {
+		result["status"] = status
 	}
 	newBody, _ := json.Marshal(result)
 	resp.Body = io.NopCloser(bytes.NewReader(newBody))
@@ -570,15 +577,21 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 					}
 
 					// LLM post-processing (if requested)
-					var mode string
+					var mode, status string
 					if postProcess != nil && enhanceEnabled {
 						intent := r.URL.Query().Get("intent")
 						llmStart := time.Now()
-						resultText, resultMode, err := postProcess(resp.Request.Context(), transcript, contextJSON, intent)
+						resultText, resultMode, err := postProcess(
+							resp.Request.Context(), transcript, WithContextLanguage(contextJSON, effectiveLang), intent)
 						llmMs := time.Since(llmStart).Milliseconds()
 						resp.Header.Set("X-Diction-LLM-Ms", fmt.Sprintf("%d", llmMs))
 						if err != nil {
-							log.Printf("post-process error (returning raw): %v", err)
+							isEditIntent := intent == "edit" || intent == "edit-selected"
+							hint := "post-process failed; returning raw transcript"
+							if isEditIntent {
+								hint = "edit intent post-process failed; returning status=failed"
+							}
+							log.Printf("post-process error (%s): %v", hint, err)
 							if OnError != nil {
 								OnError(resp.Request.Context(), ErrorEvent{
 									Source:     "stt",
@@ -588,8 +601,15 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 									HTTPStatus: resp.StatusCode,
 									InputChars: len(transcript),
 									LatencyMs:  time.Since(llmStart).Milliseconds(),
-									Hint:       "post-process failed; returning raw transcript",
+									Hint:       hint,
 								})
+							}
+							if isEditIntent {
+								// Return failure signal; don't insert the spoken instruction as content.
+								// Old clients hit their empty-text no-op guard — non-destructive.
+								transcript = ""
+								mode = intent
+								status = "failed"
 							}
 						} else {
 							transcript = resultText
@@ -597,7 +617,7 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 						}
 					}
 
-					writeTranscriptionResponse(resp, transcript, mode, responseFormat, e2eClientKey)
+					writeTranscriptionResponse(resp, transcript, mode, status, responseFormat, e2eClientKey)
 					return nil
 				},
 				Transport: sttBackendTransport,

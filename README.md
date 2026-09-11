@@ -516,10 +516,61 @@ See `AGENTS.md` for the full wire format.
 | `LLM_PROMPT_FORMATTING` | No | Appended to `LLM_PROMPT` when the client requests formatting. Defaults to the built-in formatting rules. |
 | `LLM_PROMPT_SUMMARY` | No | System prompt for `/v1/text/summarize`. Defaults to the built-in summary prompt. |
 | `TEXT_ROUTES_OPEN` | No | Set to `true` to open `/v1/text/process` and `/v1/text/suggest` when `AUTH_ENABLED=false`. Default `false` (routes return 403 until explicitly opened). |
+| `DICTION_ENHANCE_TIMEOUT_MS` | No | How long the cleanup pass may run **while the user is waiting** — `/v1/audio/transcriptions`, and `/v1/audio/stream` on voice-edit intents. Default `20000` (20s), sized for a local model on CPU. On timeout the raw transcript is returned, so nothing is ever lost. Set `0` for no limit. |
+| `DICTION_LIVE_ENHANCE_TIMEOUT_MS` | No | How long the cleanup pass may run **after** the raw text has already been delivered, on `/v1/audio/stream?split_enhance=true`. Default `8000` (8s). Raising it much past 9s has no effect: the app stops waiting for the enhanced frame at 9s and keeps the raw text. Set `0` for no limit. |
 
 Both `LLM_BASE_URL` and `LLM_MODEL` must be set or the feature stays off.
 
-> **Behavior change from earlier releases:** operators who set `LLM_BASE_URL` and `LLM_MODEL` without `LLM_PROMPT` now receive the built-in cleanup prompt automatically. Previously the gateway logged a warning and sent no system instructions. The default prompt is: *"You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. Return only the corrected text, nothing else."*
+**Language hint:** when the client's context carries a concrete `language` (not empty, not the
+auto-detect sentinel `"auto"`), the cleanup call gets a `(Language: xx)` hint appended to the
+user message — the built-in `LLM_PROMPT` tells the model to write in that language and correct
+wrong or missing accents/diacritics for it, never to translate. A custom `LLM_PROMPT` should say
+what to do with the hint if it matters to you; it is plain text appended after the transcript,
+not a template variable.
+
+**What the cleanup call sends.** The transcript comes first, unlabelled, exactly as before.
+The descriptive context the user configured in the app then follows, one labelled line per
+item, each omitted entirely when unset — a user with none of them configured sends
+byte-for-byte the request earlier releases sent:
+
+| Line | Source | Cap |
+|------|--------|-----|
+| `Custom words: a, b (also heard as: c)` | the user's My Words list | 50 entries |
+| `Tone: ...` | the user's Tone preset and About You description, merged | 500 characters |
+| `(Language: xx)` | the transcript's language, when concrete | — |
+
+Caps are counted in characters, not bytes, so non-Latin scripts are never cut mid-character.
+
+**What it deliberately does NOT send, and why you should not add it.** The client also supplies
+the text around the cursor, the earlier transcripts of the session, and the clipboard. The
+gateway decodes them and forwards none of them to the cleanup prompt. Measured against
+`gpt-oss-20b` with the built-in prompt: given a block of three earlier transcripts, the
+dictation "yeah that sounds good" came back as *those three transcripts* — the user's actual
+words gone from their text field. A long clipboard block was appended to the output verbatim.
+Custom words, tone and profile never did this.
+
+The rule that survived: forward context that **describes** the speaker, never context that is
+itself prose the model could emit as the answer. The built-in prompt does say these lines are
+context and must not appear in the reply; a short prompt does not enforce it. If you write a
+custom `LLM_PROMPT` and want to feed it session or clipboard context, you own that trade — test
+it with a short dictation and a long context block before trusting it.
+
+**What the voice-edit call sends.** For `intent=edit` (the user's cursor, nothing selected) the
+gateway sends `Text: <before>‸<after>` followed by `Instruction: <what the user said>`. The `‸`
+marks the cursor. The model is expected to return the **full modified text** with the marker
+removed; the gateway strips any `‸` the model leaves behind, because the app inserts the result
+verbatim. For `intent=edit-selected` the selection is the text and the surrounding context
+follows as `Context before:` / `Context after:` lines. An edit request with nothing to edit (no
+cursor context, or no selection) fails rather than guessing, so the app shows "Couldn't apply
+edit" instead of typing the user's spoken instruction into their document. A custom
+`LLM_PROMPT_EDIT` should account for the marker.
+
+**If cleanup keeps returning raw text**, check the startup log line — it prints
+`enhance_ms=` and `live_enhance_ms=` — and time your model directly against
+`LLM_BASE_URL`. A local model slower than the budget is the usual cause; raise
+`DICTION_ENHANCE_TIMEOUT_MS` rather than switching cleanup off.
+
+> **Behavior change from earlier releases:** operators who set `LLM_BASE_URL` and `LLM_MODEL` without `LLM_PROMPT` now receive the built-in cleanup prompt automatically. Previously the gateway logged a warning and sent no system instructions. The default prompt is: *"You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. If a language is given, write in that language and correct wrong or missing accents or diacritics for it. Never translate. Lines labelled “Custom words” or “Tone” may follow the transcript: they describe the speaker, never part of what you return. Return only the corrected transcript, nothing else."*
 
 ### Option A - Cloud LLM (OpenAI, Groq, etc.)
 

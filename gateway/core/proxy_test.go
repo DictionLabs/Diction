@@ -1512,3 +1512,94 @@ func TestRewriteMultipart_InjectVerboseJSON(t *testing.T) {
 		t.Errorf("response_format: want verbose_json, got %q", vals["response_format"])
 	}
 }
+
+// TestTranscriptionHandler_EditIntentPostProcessFailure pins the wire contract:
+// edit intent + postProcess error → {text:"", mode:"edit", status:"failed"}.
+// The spoken instruction must never be inserted as content.
+func TestTranscriptionHandler_EditIntentPostProcessFailure(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"text":"translate to Russian"}`)
+	}))
+	defer backend.Close()
+
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", URL: backend.URL, Aliases: []string{"small"}},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+	g.health.set("small", true)
+
+	postProcess := func(_ context.Context, _, _, _ string) (string, string, error) {
+		return "", "", fmt.Errorf("context-edit output too long")
+	}
+
+	body, ct := buildMultipart(t, map[string]string{"model": "small"}, "audio.m4a", "fake-audio")
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions?enhance=true&intent=edit", bytes.NewReader(body))
+	req.Header.Set("Content-Type", ct)
+	rr := httptest.NewRecorder()
+	g.TranscriptionHandlerWithPostProcess(postProcess)(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+
+	var result map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if result["text"] != "" {
+		t.Errorf("text: want empty, got %q (spoken instruction must not be inserted as content)", result["text"])
+	}
+	if result["mode"] != "edit" {
+		t.Errorf("mode: want 'edit', got %q", result["mode"])
+	}
+	if result["status"] != "failed" {
+		t.Errorf("status: want 'failed', got %q", result["status"])
+	}
+}
+
+// TestTranscriptionHandler_NonEditPostProcessFailureKeepsRawFallback is the
+// regression pin: cleanup (no edit intent) + postProcess error → raw transcript.
+func TestTranscriptionHandler_NonEditPostProcessFailureKeepsRawFallback(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"text":"raw transcript"}`)
+	}))
+	defer backend.Close()
+
+	g := &Gateway{
+		backends: []Backend{
+			{Name: "small", URL: backend.URL, Aliases: []string{"small"}},
+		},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+	g.health.set("small", true)
+
+	postProcess := func(_ context.Context, _, _, _ string) (string, string, error) {
+		return "", "", fmt.Errorf("cleanup error")
+	}
+
+	body, ct := buildMultipart(t, map[string]string{"model": "small"}, "audio.m4a", "fake-audio")
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions?enhance=true", bytes.NewReader(body))
+	req.Header.Set("Content-Type", ct)
+	rr := httptest.NewRecorder()
+	g.TranscriptionHandlerWithPostProcess(postProcess)(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d", rr.Code)
+	}
+
+	body2 := rr.Body.String()
+	if !strings.Contains(body2, "raw transcript") {
+		t.Errorf("expected raw transcript fallback, got: %s", body2)
+	}
+	if strings.Contains(body2, "status") {
+		t.Errorf("cleanup fallback must not include 'status' field, got: %s", body2)
+	}
+}

@@ -317,16 +317,58 @@ func TestLLM_Process_MaxTokensBounds(t *testing.T) {
 
 	cfg := llmConfig{Enabled: true, BaseURL: srv.URL, Model: "test"}
 
-	// Short text → minimum 500
+	// Short text → minimum 4000. The floor exists for reasoning-class models, which
+	// spend budget on hidden chain-of-thought before emitting any content; at the old
+	// 500 floor they could spend it all and return empty, which reached users as a
+	// failed edit on a self-hosted gateway running gpt-oss-20b.
 	cfg.process(context.Background(), "hi")
-	if receivedMaxTokens != 500 {
-		t.Errorf("short text: expected 500 max_tokens, got %d", receivedMaxTokens)
+	if receivedMaxTokens != 4000 {
+		t.Errorf("short text: expected 4000 max_tokens, got %d", receivedMaxTokens)
 	}
 
 	// Very long text → capped at 8192
 	cfg.process(context.Background(), strings.Repeat("x", 20000))
 	if receivedMaxTokens != 8192 {
 		t.Errorf("long text: expected 8192 max_tokens, got %d", receivedMaxTokens)
+	}
+}
+
+// TestLLM_EditIntent_HasReasoningHeadroom pins the floor on the path that actually broke:
+// an edit intent with a short spoken instruction, which produces the smallest user message
+// and therefore the smallest budget, while a reasoning model's fixed thinking cost stays
+// the same. Guards the whole intent surface, not just plain cleanup.
+func TestLLM_EditIntent_HasReasoningHeadroom(t *testing.T) {
+	var receivedMaxTokens int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			MaxCompletionTokens int `json:"max_completion_tokens"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		receivedMaxTokens = req.MaxCompletionTokens
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]string{"content": "ok"}}},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := llmConfig{
+		Enabled: true, BaseURL: srv.URL, Model: "test",
+		Prompt: "CLEANUP", PromptEdit: "EDIT", PromptEditSelected: "EDIT_SEL",
+	}
+	// Carries a target for both edit intents (a selection and cursor context), since an edit
+	// with nothing to edit is now a hard error and would never reach the token budget.
+	const editable = `{"selected":"teh","before":"say ","after":" again"}`
+	for _, intent := range []string{"", "transcribe", "edit", "edit-selected"} {
+		receivedMaxTokens = 0
+		if _, err := cfg.processWithIntent(
+			context.Background(), "fix that", editable, intent); err != nil {
+			t.Fatalf("intent=%q: %v", intent, err)
+		}
+		if receivedMaxTokens < 4000 {
+			t.Errorf("intent=%q: max_tokens %d leaves no room for hidden reasoning tokens",
+				intent, receivedMaxTokens)
+		}
 	}
 }
 
@@ -402,9 +444,12 @@ func TestLLM_ProcessWithIntent_PicksPrompt(t *testing.T) {
 		{"edit-selected", "EDIT_SEL_PROMPT"},
 	}
 
+	// Same context for every intent: a selection and cursor text, so each edit intent has a
+	// target and the test stays about which *prompt* was picked.
+	const editable = `{"selected":"teh","before":"say ","after":" again"}`
 	for _, tc := range tests {
 		receivedPrompt = ""
-		_, err := cfg.processWithIntent(context.Background(), "hello", "", tc.intent)
+		_, err := cfg.processWithIntent(context.Background(), "hello", editable, tc.intent)
 		if err != nil {
 			t.Errorf("intent=%q: unexpected error: %v", tc.intent, err)
 			continue
@@ -412,6 +457,75 @@ func TestLLM_ProcessWithIntent_PicksPrompt(t *testing.T) {
 		if receivedPrompt != tc.want {
 			t.Errorf("intent=%q: prompt: want %q, got %q", tc.intent, tc.want, receivedPrompt)
 		}
+	}
+}
+
+// TestLLM_ProcessWithIntent_LanguageHint pins the language hint added by
+// .claude/plans/on-device-language-fix-plan.md: a concrete context.language appends
+// "(Language: xx)" to the cleanup user message; "auto"/empty/absent don't; edit intents
+// never get it (the transcript there is a spoken instruction, not the text to clean).
+func TestLLM_ProcessWithIntent_LanguageHint(t *testing.T) {
+	var receivedUserMsg string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		for _, m := range req.Messages {
+			if m.Role == "user" {
+				receivedUserMsg = m.Content
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": "result"}},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := llmConfig{
+		Enabled:            true,
+		BaseURL:            srv.URL,
+		Model:              "test",
+		Prompt:             "CLEANUP_PROMPT",
+		PromptEdit:         "EDIT_PROMPT",
+		PromptEditSelected: "EDIT_SEL_PROMPT",
+	}
+
+	tests := []struct {
+		name        string
+		intent      string
+		contextJSON string
+		wantHint    bool
+	}{
+		{"concrete language, cleanup intent", "", `{"language":"cs"}`, true},
+		{"concrete language, transcribe intent", "transcribe", `{"language":"cs"}`, true},
+		{"auto sentinel", "", `{"language":"auto"}`, false},
+		{"empty string", "", `{"language":""}`, false},
+		{"absent field", "", `{}`, false},
+		{"no context at all", "", "", false},
+		// Both edit intents need a target now, or they fail before a hint could be added.
+		{"concrete language, edit intent", "edit", `{"language":"cs","before":"a ","after":" b"}`, false},
+		{"concrete language, edit-selected intent", "edit-selected", `{"language":"cs","selected":"a"}`, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			receivedUserMsg = ""
+			_, err := cfg.processWithIntent(context.Background(), "some text", tc.contextJSON, tc.intent)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			hasHint := strings.Contains(receivedUserMsg, "(Language: cs)")
+			if hasHint != tc.wantHint {
+				t.Errorf("(Language: cs) present = %v, want %v (user message: %q)", hasHint, tc.wantHint, receivedUserMsg)
+			}
+		})
 	}
 }
 
@@ -569,7 +683,8 @@ func TestFormatting_false_omitsRules(t *testing.T) {
 // there would fight the user's own instruction.
 func TestFormatting_editIntent_neverAppendsRules(t *testing.T) {
 	cfg := llmConfig{PromptEdit: "EDIT", PromptFormatting: "|FORMATTING|"}
-	got := captureSystemPrompt(t, cfg, `{"formatting":true}`, "edit")
+	// Cursor context included: an edit with no target now fails before a prompt is sent.
+	got := captureSystemPrompt(t, cfg, `{"formatting":true,"before":"a ","after":" b"}`, "edit")
 	if strings.Contains(got, "|FORMATTING|") {
 		t.Errorf("edit intent must not carry formatting rules; got %q", got)
 	}
@@ -580,5 +695,282 @@ func TestFormatting_emptyContext_appendsRules(t *testing.T) {
 	got := captureSystemPrompt(t, cfg, "", "")
 	if !strings.Contains(got, "|FORMATTING|") {
 		t.Errorf("empty context must default to formatting ON; got %q", got)
+	}
+}
+
+// ── Self-hosted Writing Tools parity (.claude/plans/selfhosted-writing-tools-parity-plan.md) ──
+//
+// These pin the three defects found during v13.0 release testing, all of which were silent:
+// an edit intent answered with a transcribe mode, a cursor edit that passed the spoken
+// instruction as its own subject, and My Words never decoding at all. A test for a silent bug
+// that passes before the fix proves nothing, so each of these was run against unmodified code
+// first — see `## Implementation Progress` in the plan for the fail-first output.
+
+// captureUserMsg runs processWithIntent against a fake LLM and returns the user message the
+// gateway actually sent. `reply` is what the fake LLM answers with.
+func captureUserMsg(t *testing.T, cfg llmConfig, reply, text, contextJSON, intent string) (string, string, error) {
+	t.Helper()
+	var userMsg string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		json.NewDecoder(r.Body).Decode(&req) //nolint:errcheck
+		for _, m := range req.Messages {
+			if m.Role == "user" {
+				userMsg = m.Content
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+			"choices": []map[string]any{{"message": map[string]string{"content": reply}}},
+		})
+	}))
+	defer srv.Close()
+
+	cfg.Enabled = true
+	cfg.BaseURL = srv.URL
+	cfg.Model = "test"
+	out, err := cfg.processWithIntent(context.Background(), text, contextJSON, intent)
+	return userMsg, out, err
+}
+
+func parityTestConfig() llmConfig {
+	return llmConfig{
+		Prompt:             "CLEANUP_PROMPT",
+		PromptEdit:         "EDIT_PROMPT",
+		PromptEditSelected: "EDIT_SEL_PROMPT",
+	}
+}
+
+// The cursor-edit bug itself: intent=edit with no selection used to send
+// "Text: <spoken>\nInstruction: <spoken>" — the instruction as its own subject — which is
+// where the 97 characters of nonsense came from. It must now send before‸after as the text.
+func TestProcessWithIntent_CursorEdit(t *testing.T) {
+	ctxJSON := `{"before":"Hello ","after":" world"}`
+	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "edited", "translate to French", ctxJSON, "edit")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(userMsg, "Hello ‸ world") {
+		t.Errorf("want cursor context %q in user message, got %q", "Hello ‸ world", userMsg)
+	}
+	if strings.Contains(userMsg, "Text: translate to French") {
+		t.Errorf("the spoken instruction is being passed as its own subject: %q", userMsg)
+	}
+	if !strings.Contains(userMsg, "Instruction: translate to French") {
+		t.Errorf("want the instruction present as an instruction, got %q", userMsg)
+	}
+}
+
+// An edit with nothing to edit must error so the caller's failure path runs and the app shows
+// "Couldn't apply edit". The alternative — today's behaviour — is typing the user's own
+// instruction into their document, which is the worst available outcome.
+func TestProcessWithIntent_EditRequiresTarget(t *testing.T) {
+	cases := []struct {
+		name        string
+		intent      string
+		contextJSON string
+	}{
+		{"cursor edit with no surrounding text", "edit", `{"before":"","after":""}`},
+		{"cursor edit with no context at all", "edit", ""},
+		{"edit-selected with no selection", "edit-selected", `{"before":"a","after":"b"}`},
+		{"edit-selected with no context at all", "edit-selected", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := captureUserMsg(t, parityTestConfig(), "result", "make it formal", tc.contextJSON, tc.intent)
+			if err == nil {
+				t.Errorf("want an error so the failure path fires, got nil")
+			}
+		})
+	}
+}
+
+// The gateway sends ‸ as the cursor marker; the app inserts results verbatim
+// (KeyboardSessionBridge.applyEditResult). A model that echoes the marker would type it into
+// the user's document, so the gateway strips it on the way out. Cloud does the same
+// (gateway/llm.go:459).
+func TestProcessWithIntent_StripsCursorMarker(t *testing.T) {
+	cases := []struct {
+		name        string
+		intent      string
+		contextJSON string
+	}{
+		{"edit", "edit", `{"before":"Hello ","after":" world"}`},
+		{"edit-selected", "edit-selected", `{"selected":"Hello world"}`},
+		{"cleanup", "", `{}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, out, err := captureUserMsg(t, parityTestConfig(), "Hello ‸there world", "x", tc.contextJSON, tc.intent)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if strings.Contains(out, "‸") {
+				t.Errorf("cursor marker reached the caller and would be typed into the document: %q", out)
+			}
+			if out != "Hello there world" {
+				t.Errorf("want %q, got %q", "Hello there world", out)
+			}
+		})
+	}
+}
+
+// My Words has never reached a self-hosted LLM: the app sends [{"word":"..."}] and the
+// gateway declared []string, so the decode failed on that field alone and was
+// //nolint:errcheck'd away. Strings must keep working too — AGENTS.md documents the field
+// untyped, so a third-party client may well send them.
+func TestProcessWithIntent_CustomWordsDecode(t *testing.T) {
+	cases := []struct {
+		name        string
+		contextJSON string
+	}{
+		{"app object shape", `{"customWords":[{"word":"Ondrej"},{"word":"Diction"}]}`},
+		{"third-party string shape", `{"customWords":["Ondrej","Diction"]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "ondrej works on diction", tc.contextJSON, "")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !strings.Contains(userMsg, "Ondrej") || !strings.Contains(userMsg, "Diction") {
+				t.Errorf("custom words did not reach the LLM: %q", userMsg)
+			}
+		})
+	}
+}
+
+// The user's own configured context must reach their own LLM (D8), and nothing else may.
+// Absent fields stay absent: a one-line prompt must never be handed an empty label.
+func TestProcessWithIntent_CleanupContext(t *testing.T) {
+	full := `{"before":"a","after":"b","tone":"Friendly","profile":"An engineer",` +
+		`"sessionContext":["earlier one","earlier two"],"clipboard":"pasted text",` +
+		`"customWords":[{"word":"Ondrej"}]}`
+
+	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "the transcript", full, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"Custom words:", "Ondrej", "Tone:", "Friendly", "An engineer"} {
+		if !strings.Contains(userMsg, want) {
+			t.Errorf("want %q in user message, got %q", want, userMsg)
+		}
+	}
+	// The transcript stays first and unlabelled — the layout the language hint already set.
+	if !strings.HasPrefix(userMsg, "the transcript") {
+		t.Errorf("transcript must lead the user message, got %q", userMsg)
+	}
+
+	empty, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "the transcript", `{"before":"a","after":"b"}`, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, label := range []string{"Custom words:", "Tone:"} {
+		if strings.Contains(empty, label) {
+			t.Errorf("label %q must be omitted when the user configured nothing, got %q", label, empty)
+		}
+	}
+}
+
+// The regression that reached a real device: prose blocks in the cleanup message get emitted
+// as the answer, and the user's dictation disappears.
+//
+// Measured on whisper.macha.la (gpt-oss-20b, built-in prompt, 2026-09-08): with three earlier
+// transcripts in a "Recent:" block, "yeah that sounds good" came back as those three
+// transcripts — the user's words gone, last week's typed into their field. A long "Clipboard:"
+// block was appended verbatim. The prompt already told the model these lines were context and
+// "never part of what you return"; an untuned one-line prompt does not enforce it.
+//
+// So the cleanup message carries DESCRIPTIVE context only (My Words, Tone, About You), never
+// prose the model could mistake for the answer: no cursor text, no session transcripts, no
+// clipboard. This test fails the moment any of them is added back without a prompt built to
+// survive it.
+func TestProcessWithIntent_CleanupNeverCarriesProseBlocks(t *testing.T) {
+	ctxJSON := `{"before":"AAA","after":"BBB",` +
+		`"sessionContext":["The meeting went well.","Send the report by Friday."],` +
+		`"clipboard":"buy milk and eggs on the way home","tone":"Friendly"}`
+
+	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "yeah that sounds good", ctxJSON, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	forbidden := map[string]string{
+		"Recent:":                    "session transcripts replaced the user's dictation on a real device",
+		"The meeting went well.":     "a previous transcript leaked into the cleanup prompt",
+		"Send the report by Friday.": "a previous transcript leaked into the cleanup prompt",
+		"Clipboard:":                 "clipboard prose was appended to the output verbatim",
+		"buy milk and eggs":          "clipboard content leaked into the cleanup prompt",
+		"Cursor:":                    "cursor prose belongs to the edit intents, not cleanup",
+		"AAA‸BBB":                    "cursor prose belongs to the edit intents, not cleanup",
+	}
+	for needle, why := range forbidden {
+		if strings.Contains(userMsg, needle) {
+			t.Errorf("%q must not reach the cleanup prompt (%s); got %q", needle, why, userMsg)
+		}
+	}
+	// The descriptive half is still expected to arrive — this is not a rollback of the feature.
+	if !strings.Contains(userMsg, "Tone: Friendly") {
+		t.Errorf("descriptive context must still be forwarded, got %q", userMsg)
+	}
+}
+
+// The compatibility promise, pinned rather than asserted: a self-hoster who has configured
+// none of My Words, Tone, Profile, session or clipboard sends exactly the bytes they send
+// today. Every keyboard dictation carries before/after/formatting/language, so this is the
+// common case, not an edge case.
+func TestProcessWithIntent_CleanupUnconfiguredIsByteIdentical(t *testing.T) {
+	cases := []struct {
+		name        string
+		contextJSON string
+		want        string
+	}{
+		{
+			name:        "with a concrete language",
+			contextJSON: `{"before":"a","after":"b","formatting":true,"language":"cs"}`,
+			want:        "the transcript\n\n(Language: cs)",
+		},
+		{
+			name:        "under auto-detect",
+			contextJSON: `{"before":"a","after":"b","formatting":true,"language":"auto"}`,
+			want:        "the transcript",
+		},
+		{
+			name:        "no context at all",
+			contextJSON: "",
+			want:        "the transcript",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "the transcript", tc.contextJSON, "")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if userMsg != tc.want {
+				t.Errorf("user message changed for an unconfigured self-hoster:\n want %q\n got  %q", tc.want, userMsg)
+			}
+		})
+	}
+}
+
+// One unreadable vocabulary entry must cost that entry and nothing else. A custom
+// UnmarshalJSON that returns an error aborts the enclosing json.Unmarshal, which would take
+// the user's tone, clipboard and session context down with it — a bigger version of the very
+// bug this type was written to end.
+func TestProcessWithIntent_MalformedCustomWordKeepsRestOfContext(t *testing.T) {
+	ctxJSON := `{"customWords":[123,{"word":"Diction"}],"tone":"Friendly","profile":"An engineer"}`
+	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "the transcript", ctxJSON, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"Tone: Friendly", "An engineer", "Diction"} {
+		if !strings.Contains(userMsg, want) {
+			t.Errorf("one bad custom word cost more than itself: want %q in %q", want, userMsg)
+		}
 	}
 }

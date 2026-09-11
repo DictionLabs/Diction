@@ -1556,3 +1556,100 @@ func TestStreamingHandler_Backend4xx_KeepsBackendHealthy(t *testing.T) {
 		t.Error("backend demoted on a 4xx — a bad request must not take the backend down for everyone")
 	}
 }
+
+// sendAndReceiveStreamResult dials the WS, sends silence + done, and returns the
+// decoded result frame. Fails the test on any error.
+func sendAndReceiveStreamResult(t *testing.T, ctx context.Context, wsAddr string) map[string]string {
+	t.Helper()
+	conn, _, err := websocket.Dial(ctx, wsAddr, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200)); err != nil {
+		t.Fatalf("write audio: %v", err)
+	}
+	done, _ := json.Marshal(map[string]string{"action": "done"})
+	if err := conn.Write(ctx, websocket.MessageText, done); err != nil {
+		t.Fatalf("write done: %v", err)
+	}
+	_, data, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatalf("read result: %v", err)
+	}
+	var result map[string]string
+	if err := json.Unmarshal(data, &result); err != nil {
+		t.Fatalf("unmarshal: %v (raw=%s)", err, data)
+	}
+	return result
+}
+
+// TestStreamingHandler_EditIntentPostProcessFailure pins the new edit-failure
+// wire contract: ?intent=edit + failing postProcess → {text:"", mode:"edit", status:"failed"}.
+// The spoken instruction must never be inserted as content.
+func TestStreamingHandler_EditIntentPostProcessFailure(t *testing.T) {
+	postProcess := func(_ context.Context, text, _, _ string) (string, string, error) {
+		return "", "", fmt.Errorf("llm output too long")
+	}
+	srv := startStreamingServerWithPostProcess(t, "translate to Russian", postProcess)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result := sendAndReceiveStreamResult(t, ctx, wsURL(srv, "model=small&enhance=true&intent=edit"))
+
+	if result["text"] != "" {
+		t.Errorf("text: want empty, got %q (instruction must not be inserted as content)", result["text"])
+	}
+	if result["mode"] != "edit" {
+		t.Errorf("mode: want 'edit', got %q", result["mode"])
+	}
+	if result["status"] != "failed" {
+		t.Errorf("status: want 'failed', got %q", result["status"])
+	}
+}
+
+// TestStreamingHandler_EditSelectedIntentPostProcessFailure is the edit-selected variant.
+func TestStreamingHandler_EditSelectedIntentPostProcessFailure(t *testing.T) {
+	postProcess := func(_ context.Context, _, _, _ string) (string, string, error) {
+		return "", "", fmt.Errorf("llm error")
+	}
+	srv := startStreamingServerWithPostProcess(t, "translate this to Russian please", postProcess)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result := sendAndReceiveStreamResult(t, ctx, wsURL(srv, "model=small&enhance=true&intent=edit-selected"))
+
+	if result["text"] != "" {
+		t.Errorf("text: want empty, got %q", result["text"])
+	}
+	if result["mode"] != "edit-selected" {
+		t.Errorf("mode: want 'edit-selected', got %q", result["mode"])
+	}
+	if result["status"] != "failed" {
+		t.Errorf("status: want 'failed', got %q", result["status"])
+	}
+}
+
+// TestStreamingHandler_NonEditPostProcessFailureKeepsRawFallback is the regression
+// pin: no intent + failing postProcess → raw transcript returned, no status field.
+func TestStreamingHandler_NonEditPostProcessFailureKeepsRawFallback(t *testing.T) {
+	postProcess := func(_ context.Context, _, _, _ string) (string, string, error) {
+		return "", "", fmt.Errorf("cleanup error")
+	}
+	srv := startStreamingServerWithPostProcess(t, "raw transcript text", postProcess)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	result := sendAndReceiveStreamResult(t, ctx, wsURL(srv, "model=small&enhance=true"))
+
+	if result["text"] != "raw transcript text" {
+		t.Errorf("text: want 'raw transcript text', got %q", result["text"])
+	}
+	if result["status"] != "" {
+		t.Errorf("status: want empty (no status on cleanup fallback), got %q", result["status"])
+	}
+}

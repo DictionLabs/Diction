@@ -7,6 +7,22 @@ description: What's new in each Diction release. Full changelog for every App St
 
 # Release Notes
 
+## Diction 13.0
+
+- Pairing a self-hosted server is now a QR code, not a manual key. Scan it from your terminal and you're connected. Keys rotate on their own from there.
+- Writing Tools now runs on your own server too, and it's free there, because it's your hardware doing the work.
+- On-device transcription is back to full quality for free, in every language. We built our own compact version of a full-size speech model so it fits on your phone without asking you to pay for it, and it's noticeably more accurate than the lightweight model it replaces.
+- You can start dictating the moment you tap the mic, even while a larger model is still getting ready in the background, instead of waiting it out.
+- Dictating in a language other than English now gives you that language back. It had been quietly transcribing into English instead.
+- Live and Live X clean up your text the moment you stop talking, and catch the kind of repeated-phrase glitches speech models sometimes produce before they land in your document.
+- Long-press accents now cover 47 languages, and they're ordered for the language you're actually typing in rather than a US English layout.
+- Copy and Save to My Words now work on your last dictation even if you haven't selected anything.
+- Words you teach the keyboard now reach AI cleanup too, so names and jargon you've corrected before stop getting mangled again.
+- The app tells you separately when your speech backend and your AI backend are having trouble, and lets you know if your self-hosted server has fallen behind the app.
+- Fixes for downloads that failed partway on a nearly full device, and for switching models mid-download.
+- Cloud dictation text now appears sooner. Renewals no longer interrupt an in-progress dictation, and a brief hiccup no longer tells a subscriber they need to subscribe. Clearer errors when the server is at fault instead of blaming your network.
+- Various polish across the keyboard and settings.
+
 ## Diction 12.1
 
 - Pro subscribers are no longer told "Subscription required" by mistake. Existing lockouts heal themselves.

@@ -33,9 +33,16 @@ jobs:
             docker.io/dictionlabs/gateway
             ghcr.io/dictionlabs/gateway
             ghcr.io/omachala/diction-gateway
+          # sha only. This workflow builds untagged images from a manual dispatch, so it
+          # cannot know a version -- core.Version stays "dev" and /health reports "dev",
+          # which is the correct "no opinion" answer for an untagged build.
+          #
+          # `latest` deliberately does NOT live here. It is what most self-hosters actually
+          # run, and publishing it from both workflows meant a dispatch after a release
+          # silently moved `latest` back onto a versionless image, undoing the version
+          # reporting with no signal. `latest` belongs to release.yml, which knows the tag.
           tags: |
             type=sha
-            type=raw,value=latest
 
       - uses: docker/build-push-action@v6
         with:

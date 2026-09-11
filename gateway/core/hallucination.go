@@ -46,6 +46,15 @@ func hasDegenerateRepetition(text string) bool {
 	return false
 }
 
+// HasDegenerateRepetition is the exported form of hasDegenerateRepetition, for
+// callers outside this package that need to reason about a transcript before
+// deciding what to do with it — rather than reject it outright as the proxy
+// paths do. The realtime path uses it to tell a legitimate cleanup of a
+// repetition loop apart from an LLM pruning real content.
+func HasDegenerateRepetition(text string) bool {
+	return hasDegenerateRepetition(text)
+}
+
 // normalizeRepetitionWord lowercases a word and strips surrounding
 // punctuation so "tamb," "Tamb" and "tamb." all collapse to the same token.
 func normalizeRepetitionWord(w string) string {

@@ -133,21 +133,57 @@ Request:
 
   {
     "text": "<text or instruction>",
-    "context": "{\"before\":\"...\",\"after\":\"...\",\"selected\":\"...\",\"customWords\":[...]}"
+    "context": "<JSON string, see below>"
   }
 
+context fields (all optional; `context` itself is a JSON *string*, not an object):
+  before          string    text before the user's cursor
+  after           string    text after the user's cursor
+  selected        string    the user's selection, for intent=edit-selected
+  customWords     array     user vocabulary. Objects [{"word":"Diction"}] or plain
+                            strings ["Diction"] are both accepted. Cap 50.
+  tone            string    how the user wants to be written for. Cap 500 chars.
+  profile         string    who the user is. Merged with `tone` into one block.
+  sessionContext  [string]  accepted and IGNORED by the cleanup prompt (see note below).
+  clipboard       string    accepted and IGNORED by the cleanup prompt (see note below).
+  formatting      bool      opt-out; absent or true = formatting rules on.
+  language        string    transcript language, or "auto" to infer.
+
+Caps are counted in characters, not bytes.
+
+Note on `sessionContext` / `clipboard` / cursor text: decoded, never forwarded to the cleanup
+prompt. They are prose, and an untuned prompt emits prose as its answer -- measured against
+gpt-oss-20b, a session block replaced the user's dictation with earlier transcripts and a long
+clipboard was appended verbatim. Only descriptive context (customWords, tone, profile) is
+forwarded. The cursor text IS sent for intent=edit, where it is the subject of the edit.
+
 intent values:
-  (empty) or "transcribe"  -- cleanup prompt, text is the transcript
-  "edit"                   -- edit prompt, text is the spoken instruction
-  "edit-selected"          -- edit-selected prompt, applies instruction to selected text
+  (empty) or "transcribe"  -- cleanup prompt, text is the transcript. The transcript leads
+                              the user message; each context field present follows as its
+                              own labelled line, and absent ones are omitted entirely.
+  "edit"                   -- edit prompt, text is the spoken instruction. The user message
+                              is "Text: <before>‸<after>" + "Instruction: <text>", where ‸
+                              marks the cursor. The model must return the FULL modified
+                              text; the gateway strips any ‸ left in the reply. Requires
+                              `before` or `after`.
+  "edit-selected"          -- edit-selected prompt, applies instruction to selected text.
+                              Requires `selected`.
 
 Response 200:
   {"text": "<result>", "mode": "<intent>"}
+
+`mode` is always present and is one of "transcribe", "edit", "edit-selected" — derived from
+the request's intent, never inferred from what the user said. The audio endpoints
+(/v1/audio/transcriptions, /v1/audio/stream) report it the same way in their result frames.
 
 On edit failure:
   "edit"          --> 500 {"error":"processing failed"}
   "edit-selected" --> 200 {"text":"<original-selected>","mode":"edit-selected","status":"failed"}
   transcribe      --> 200 {"text":"<original-text>","mode":"transcribe"}  (raw fallback)
+
+An edit request with nothing to edit (intent=edit with no before/after, or
+intent=edit-selected with no selected) is an edit failure, not a cleanup: the gateway will
+not fall back to processing the spoken instruction as if it were dictation.
 ```
 
 ### POST /v1/text/suggest
