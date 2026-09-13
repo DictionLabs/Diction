@@ -95,246 +95,6 @@
   border-radius: 22.5%;
 }
 
-/* -- Home page background glow -- */
-.VPHome {
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0, 122, 255, 0.08), transparent),
-    radial-gradient(ellipse 50% 50% at 10% 60%, rgba(0, 122, 255, 0.05), transparent);
-}
-
-.dark .VPHome {
-  background:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0, 122, 255, 0.15), transparent),
-    radial-gradient(ellipse 50% 50% at 10% 60%, rgba(0, 122, 255, 0.08), transparent);
-}
-
-/* -- Hero typography -- */
-.VPHero .name {
-  font-family: 'BigShouldersInlineText', sans-serif;
-  font-weight: 800;
-  padding-bottom: 0.2em;
-  /* Override VitePress gradient clip — solid color only */
-  background: none !important;
-  -webkit-background-clip: unset !important;
-  background-clip: unset !important;
-  -webkit-text-fill-color: var(--vp-home-hero-name-color) !important;
-}
-
-.VPHero .name,
-.VPHero .text,
-.VPHero .tagline {
-  transition: none;
-}
-
-.VPHero .text {
-  font-family: 'FiraSans', sans-serif;
-  font-weight: 400;
-  font-style: italic;
-  color: var(--diction-black);
-}
-
-.dark .VPHero .text {
-  color: #e8e8e8;
-}
-
-/* -- Hero takes full viewport, centered -- */
-.VPHero {
-  min-height: calc(100dvh - var(--vp-nav-height, 64px));
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding-top: calc(48px + var(--vp-nav-height, 64px)) !important;
-  padding-bottom: 48px !important;
-  box-sizing: border-box;
-}
-
-/* -- Hero container: both halves centered, same width as features -- */
-.VPHero .container {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: 100% !important;
-  min-height: 580px;
-}
-
-/* -- Text block: left-aligned, centered vertically -- */
-.VPHero .main {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: flex-start !important;
-  justify-content: center !important;
-  max-width: none !important;
-  flex: 1 1 55% !important;
-  margin-top: -40px;
-}
-
-/* -- Image block: center the phone -- */
-.VPHero .image {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  flex: 1 1 45% !important;
-}
-
-.VPHero .image-container {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  transform: none !important;
-}
-
-.VPHero .main {
-  text-align: left;
-  align-items: flex-start;
-}
-
-.VPHero .heading {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.VPHero .actions {
-  justify-content: flex-start !important;
-  margin-top: 24px !important;
-}
-
-/* -- Hero action buttons with icons -- */
-.VPHero .actions .VPButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  padding: 10px 24px;
-  border-radius: 20px;
-}
-
-/* -- Hero text sizing -- */
-.VPHero .name {
-  font-size: 96px !important;
-  line-height: 1.1 !important;
-  margin-bottom: 16px !important;
-}
-
-.VPHero .text {
-  font-size: 44px !important;
-  line-height: 1.2 !important;
-  margin-bottom: 24px !important;
-}
-
-.VPHero .tagline {
-  font-family: 'FiraSans', sans-serif;
-  font-weight: 400;
-  font-style: italic;
-  font-size: 28px !important;
-  line-height: 1.35 !important;
-  max-width: 560px !important;
-}
-
-.VPHero .actions .VPButton {
-  font-size: 18px;
-  padding: 12px 28px;
-}
-
-.VPHero .actions .VPButton.brand {
-  background-color: var(--diction-blue) !important;
-  border-color: var(--diction-blue) !important;
-}
-
-.VPHero .actions .VPButton.brand:hover {
-  background-color: var(--diction-blue-dark) !important;
-  border-color: var(--diction-blue-dark) !important;
-}
-
-/* App Store button -- Apple logo */
-.VPHero .actions .VPButton.brand::before {
-  content: '';
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  background: url('/apple-logo.svg') no-repeat center / contain;
-  flex-shrink: 0;
-}
-
-/* GitHub button -- black bg, white text, GitHub logo */
-.VPHero .actions .VPButton.alt {
-  background: var(--diction-black) !important;
-  color: white !important;
-  border-color: var(--diction-black) !important;
-}
-
-.VPHero .actions .VPButton.alt:hover {
-  background: #333 !important;
-  border-color: #333 !important;
-}
-
-.dark .VPHero .actions .VPButton.alt {
-  background: #fff !important;
-  color: #1a1a1a !important;
-  border-color: #fff !important;
-}
-
-.dark .VPHero .actions .VPButton.alt:hover {
-  background: #e0e0e0 !important;
-  border-color: #e0e0e0 !important;
-}
-
-.VPHero .actions .VPButton.alt::before {
-  content: '';
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  background: url('/github-mark.svg') no-repeat center / contain;
-  flex-shrink: 0;
-}
-
-.dark .VPHero .actions .VPButton.alt::before {
-  filter: invert(1);
-}
-
-/* -- Feature card typography & icons -- */
-.VPFeatures .VPFeature .VPImage {
-  width: 36px !important;
-  height: 36px !important;
-  filter: brightness(0) saturate(100%) invert(27%) sepia(97%) saturate(3000%) hue-rotate(211deg) brightness(118%) contrast(101%);
-}
-
-.VPFeatures .VPFeature .title {
-  font-family: 'FiraSans', sans-serif;
-  font-weight: 400;
-  font-style: italic;
-  font-size: 22px !important;
-}
-
-/* -- Feature cards -- white bg with lift on hover -- */
-.VPFeatures .VPFeature {
-  background: white !important;
-  border: 1px solid var(--vp-c-divider) !important;
-  border-radius: 12px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.VPFeatures .VPFeature:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 122, 255, 0.1);
-}
-
-.dark .VPFeatures .VPFeature {
-  background: rgba(30, 30, 32, 0.8) !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
-}
-
-.dark .VPFeatures .VPFeature:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-}
-
-.dark .VPFeatures .VPFeature .VPImage {
-  filter: brightness(0) saturate(100%) invert(63%) sepia(60%) saturate(1200%) hue-rotate(196deg) brightness(108%) contrast(101%);
-}
-
-/* -- Diction One feature card -- */
-
 /* -- Collapsible FAQ -- */
 .faq-section details {
   border: 1px solid var(--vp-c-divider);
@@ -378,68 +138,6 @@
   line-height: 1.7;
 }
 
-/* -- Mobile hero: hide phone demo (it overlaps text), clean background -- */
-@media (max-width: 959px) {
-  .VPHero .image {
-    display: none !important;
-  }
-
-  .VPHero .main {
-    max-width: 100%;
-    align-items: center !important;
-    text-align: center !important;
-  }
-
-  .VPHero .heading {
-    align-items: center !important;
-  }
-
-  .VPHero .actions {
-    justify-content: center !important;
-  }
-
-  .VPHero .tagline {
-    text-align: center;
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .VPHero .name {
-    font-size: 64px !important;
-    margin-bottom: 12px !important;
-  }
-
-  .VPHero .text {
-    font-size: 32px !important;
-    margin-bottom: 16px !important;
-  }
-
-  .VPHero .tagline {
-    font-size: 20px !important;
-  }
-
-  /* Neutralize the blue gradient behind the inline font on mobile */
-  .VPHome {
-    background: none;
-  }
-}
-
-@media (max-width: 480px) {
-  .VPHero .name {
-    font-size: 52px !important;
-    margin-bottom: 10px !important;
-  }
-
-  .VPHero .text {
-    font-size: 26px !important;
-    margin-bottom: 14px !important;
-  }
-
-  .VPHero .tagline {
-    font-size: 17px !important;
-  }
-}
-
 /* -- Content sections -- */
 .content-section {
   max-width: 780px;
@@ -453,55 +151,27 @@
   margin-top: 2rem;
 }
 
-/* -- Homepage bottom CTA -- */
-.cta-bottom {
-  text-align: center;
-  padding: 5rem 1.5rem 6rem;
-  max-width: 720px;
-  margin: 0 auto;
-}
-
-.cta-bottom h2 {
-  font-size: clamp(3rem, 8vw, 6rem);
-  font-weight: 800;
-  line-height: 1.1;
-  border-top: none !important;
-  margin: 0 0 2rem;
-  letter-spacing: -0.03em;
-}
-
-.cta-bottom p {
-  font-size: 1.6rem;
-  color: var(--vp-c-text-2);
-  line-height: 1.7;
-  margin: 0 auto 2.5rem;
-  max-width: 560px;
-}
-
-.cta-bottom .VPHero {
-  background: none !important;
-  padding: 0 !important;
-  min-height: 0 !important;
-}
-
-.cta-bottom .VPHero .actions {
-  justify-content: center;
-}
-
-.cta-bottom .VPButton {
-  text-decoration: none !important;
-}
-
-@media (max-width: 640px) {
-  .cta-bottom h2 {
-    font-size: 2.4rem;
-  }
-  .cta-bottom p {
-    font-size: 1.15rem;
-  }
-}
-
 /* -- Illustrations -- */
 .dark img.illustration {
   filter: invert(1) hue-rotate(180deg);
+}
+
+/* -- Nav: Download as a pill button -- */
+.VPNavBarMenu .VPNavBarMenuLink[href*="apps.apple.com"] {
+  align-self: center;
+  height: 36px;
+  line-height: 36px;
+  margin-left: 8px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--vp-c-brand-1);
+  color: #fff !important;
+  font-weight: 600;
+  transition: background-color 0.2s;
+}
+.VPNavBarMenu .VPNavBarMenuLink[href*="apps.apple.com"]:hover {
+  background: var(--diction-blue-dark);
+}
+.VPNavBarMenu .VPNavBarMenuLink[href*="apps.apple.com"]::after {
+  display: none;
 }

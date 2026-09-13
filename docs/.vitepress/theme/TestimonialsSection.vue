@@ -1,180 +1,247 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { data as reviews } from './reviews.data.js'
+import reviews from './reviews-curated.json'
 
-const visibleReviews = computed(() => reviews.slice(0, 4))
+interface CuratedReview {
+  author: string
+  title: string
+  excerpt: string
+  translated?: string
+  storefront: string
+}
+
 const APP_STORE_REVIEWS_URL = 'https://apps.apple.com/app/id6759807364?see-all=reviews'
 
-const expanded = ref(new Set())
-function toggle(event: Event, author: string) {
-  event.preventDefault()
-  event.stopPropagation()
-  if (expanded.value.has(author)) expanded.value.delete(author)
-  else expanded.value.add(author)
+const list = reviews as CuratedReview[]
+// First entry is the featured quote; the rest fill the grid.
+const featured = list[0]
+const others = list.slice(1)
+
+function initial(author: string): string {
+  return (author.trim().charAt(0) || 'A').toUpperCase()
+}
+
+// Short untranslated titles become the overline; translated reviews show the language note instead.
+function overline(review: CuratedReview): string | null {
+  if (review.translated) return `Translated from ${review.translated}`
+  const title = review.title.trim().replace(/[.!]+$/, '')
+  return title.length > 0 && title.length <= 32 ? title : null
 }
 </script>
 
 <template>
-  <section v-if="visibleReviews.length > 0" class="testimonials">
-    <div class="testimonials-inner">
-      <p class="testimonials-label">From the App Store</p>
-      <h2 class="testimonials-heading">Straight from real users.</h2>
-      <div class="testimonials-grid">
+  <section v-if="list.length > 0" class="ld-section testimonials">
+    <div class="ld-container">
+      <div class="ld-label-row" v-reveal>
+        <span class="ld-mono">08 / From the App Store</span>
+        <span class="ld-mono">apps.apple.com</span>
+      </div>
+
+      <div class="t-head" v-reveal>
+        <h2 class="ld-h2">People who switched.</h2>
+        <a :href="APP_STORE_REVIEWS_URL" target="_blank" rel="noopener" class="rating">
+          <span class="stars" aria-hidden="true">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
+          <span class="ld-readout"><b>4.9</b> on the App Store</span>
+        </a>
+      </div>
+
+      <div class="t-layout">
         <a
-          v-for="review in visibleReviews"
-          :key="review.author"
+          v-if="featured"
           :href="APP_STORE_REVIEWS_URL"
           target="_blank"
           rel="noopener"
-          class="testimonial-card"
+          class="ld-card hover t-card featured"
+          v-reveal
         >
-          <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-          <span class="review-title">{{ review.title }}</span>
-          <p class="review-body" :class="{ clamped: !expanded.has(review.author) }">{{ review.body }}</p>
-          <button
-            v-if="review.body.length > 280"
-            class="review-toggle"
-            @click="toggle($event, review.author)"
-          >
-            {{ expanded.has(review.author) ? 'Show less' : 'Read more' }}
-          </button>
-          <div class="review-footer">
-            <Icon name="user-circle" class="review-author-icon" />
-            <span class="review-author">{{ review.author }}</span>
+          <span class="quote-mark" aria-hidden="true">&ldquo;</span>
+          <span v-if="overline(featured)" class="overline ld-mono">{{ overline(featured) }}</span>
+          <blockquote class="quote">&ldquo;{{ featured.excerpt }}&rdquo;</blockquote>
+          <div class="author">
+            <span class="avatar" aria-hidden="true">{{ initial(featured.author) }}</span>
+            <span class="name">{{ featured.author }}</span>
+            <span class="source ld-mono">App Store &middot; {{ featured.storefront }}</span>
           </div>
         </a>
+
+        <div class="t-grid ld-stagger" v-reveal="{ delay: 120 }">
+          <a
+            v-for="review in others"
+            :key="review.author"
+            :href="APP_STORE_REVIEWS_URL"
+            target="_blank"
+            rel="noopener"
+            class="ld-card hover t-card"
+          >
+            <span v-if="overline(review)" class="overline ld-mono">{{ overline(review) }}</span>
+            <blockquote class="quote">&ldquo;{{ review.excerpt }}&rdquo;</blockquote>
+            <div class="author">
+              <span class="avatar" aria-hidden="true">{{ initial(review.author) }}</span>
+              <span class="name">{{ review.author }}</span>
+              <span class="source ld-mono">App Store &middot; {{ review.storefront }}</span>
+            </div>
+          </a>
+        </div>
       </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-.testimonials {
-  padding: 5rem 1.5rem;
-  background: var(--vp-c-bg-soft);
+/* ---------- Header ---------- */
+.t-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  margin-bottom: clamp(2rem, 4vw, 3rem);
 }
-
-.testimonials-inner {
-  max-width: 1152px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.testimonials-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--vp-c-text-3);
-  margin: 0 0 0.75rem;
-}
-
-.testimonials-heading {
-  font-family: 'FiraSans', sans-serif;
-  font-weight: 400;
-  font-style: italic;
-  font-size: clamp(1.75rem, 3.5vw, 2.25rem);
-  color: var(--vp-c-text-1);
-  margin: 0 0 3rem;
-  border: none;
-  letter-spacing: normal;
-}
-
-.testimonials-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.25rem;
-  text-align: left;
-}
-
-.testimonial-card {
-  background: var(--vp-c-bg);
+.rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 14px;
   border: 1px solid var(--vp-c-divider);
-  border-radius: 14px;
-  padding: 1.5rem;
+  border-radius: 10px;
+  color: var(--vp-c-text-2);
+  text-decoration: none !important;
+  transition: border-color 0.2s;
+}
+.rating:hover {
+  border-color: var(--vp-c-text-3);
+}
+.stars {
+  color: var(--ld-orange);
+  font-size: 0.9375rem;
+  letter-spacing: 0.08em;
+  line-height: 1;
+}
+
+/* ---------- Layout ---------- */
+.t-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.t-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+@media (min-width: 640px) {
+  .t-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 960px) {
+  .t-layout {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 1.25rem;
+  }
+  .t-grid {
+    gap: 1.25rem;
+  }
+}
+
+/* ---------- Cards ---------- */
+.t-card {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.875rem;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-  text-decoration: none;
+  gap: 0.75rem;
+  padding: 1.375rem 1.375rem 1.25rem;
   color: inherit;
+  text-decoration: none !important;
 }
-
-.testimonial-card:hover {
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
+.overline {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.5;
 }
-
-.dark .testimonial-card:hover {
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-}
-
-.stars {
-  color: #FF9F0A;
-  font-size: 1rem;
-  letter-spacing: 0.1em;
-}
-
-.review-body {
-  font-size: 0.95rem;
-  color: var(--vp-c-text-2);
-  line-height: 1.65;
+.quote {
   margin: 0;
-  flex: 1;
-  white-space: pre-line;
+  padding: 0;
+  border: none;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--vp-c-text-1);
+  text-wrap: pretty;
 }
 
-.review-body.clamped {
-  display: -webkit-box;
-  -webkit-line-clamp: 6;
-  -webkit-box-orient: vertical;
+/* ---------- Featured quote block ---------- */
+.featured {
+  padding: clamp(1.75rem, 3vw, 2.5rem) clamp(1.375rem, 3vw, 2.25rem) 1.5rem;
+  gap: 1rem;
   overflow: hidden;
 }
-
-.review-toggle {
-  align-self: flex-start;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: -0.5rem 0 0;
-  font-size: 0.8rem;
-  font-weight: 600;
+.featured .quote-mark {
+  position: absolute;
+  top: 0.9rem;
+  left: 0.75rem;
+  font-size: clamp(8rem, 12vw, 10rem);
+  font-weight: 700;
+  line-height: 1;
   color: var(--vp-c-brand-1);
-  cursor: pointer;
+  opacity: 0.14;
+  pointer-events: none;
+  user-select: none;
+}
+@media (min-width: 960px) {
+  .featured {
+    position: sticky;
+    top: calc(var(--vp-nav-height, 64px) + 24px);
+  }
+}
+.featured .quote {
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.featured .overline,
+.featured .quote {
+  position: relative;
 }
 
-.review-toggle:hover {
-  text-decoration: underline;
-}
-
-.review-footer {
+/* ---------- Author row ---------- */
+.author {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding-top: 0.5rem;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 0.875rem;
   border-top: 1px solid var(--vp-c-divider);
 }
-
-.review-author-icon {
-  color: var(--vp-c-text-3);
-  font-size: 1.1em;
-  flex-shrink: 0;
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 50%;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
 }
-
-.review-title {
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--vp-c-text-1);
 }
-
-.review-author {
-  font-size: 0.8rem;
-  color: var(--vp-c-text-3);
-}
-
-@media (max-width: 640px) {
-  .testimonials {
-    padding: 3.5rem 1.25rem;
-  }
+.source {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 0.6875rem;
 }
 </style>
