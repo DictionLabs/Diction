@@ -75,7 +75,7 @@ const year = new Date().getFullYear();
 }
 
 .dark {
-  --footer-bg: var(--ld-navy-900);
+  --footer-bg: var(--ld-navy-950);
   --footer-border: rgba(255, 255, 255, 0.06);
   --footer-heading: var(--ld-navy-100);
   --footer-link: var(--ld-navy-300);

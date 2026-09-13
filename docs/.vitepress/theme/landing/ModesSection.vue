@@ -85,7 +85,7 @@ const plans: Plan[] = [
   <section class="ld-section ld-grid-bg modes-section">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono">04 / Where it runs</span>
+        <span class="ld-mono ld-accent ld-blue">04 / Where it runs</span>
         <span class="ld-mono">diction.one</span>
       </div>
 

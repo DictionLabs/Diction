@@ -68,7 +68,7 @@ function videoFor(row: Row): string | undefined {
   <section class="ld-section story-section">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono">02 / What it does</span>
+        <span class="ld-mono ld-accent ld-blue">02 / What it does</span>
         <span class="ld-mono">diction.one</span>
       </div>
 

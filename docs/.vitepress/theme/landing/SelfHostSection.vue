@@ -214,7 +214,7 @@ onUnmounted(() => {
   <section class="ld-section soft selfhost-section">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono">07 / Self-host</span>
+        <span class="ld-mono ld-accent ld-violet">07 / Self-host</span>
         <span class="ld-mono">diction.one</span>
       </div>
 

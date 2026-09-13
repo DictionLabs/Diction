@@ -49,7 +49,7 @@ function isIcon(item: Item): item is { icon: string } {
   <section class="ld-section apps-marquee">
     <div class="ld-container" v-reveal>
       <div class="ld-label-row marquee-head">
-        <span class="ld-mono">01 / Works everywhere you type</span>
+        <span class="ld-mono ld-accent ld-blue">01 / Works everywhere you type</span>
         <span class="ld-mono">Any app, any text field</span>
       </div>
     </div>

@@ -112,7 +112,7 @@ function overline(review: CuratedReview): string | null {
   border-color: var(--vp-c-text-3);
 }
 .stars {
-  color: var(--ld-orange);
+  color: var(--ld-violet-blue);
   font-size: 0.9375rem;
   letter-spacing: 0.08em;
   line-height: 1;

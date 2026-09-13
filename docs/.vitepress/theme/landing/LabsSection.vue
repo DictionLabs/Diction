@@ -92,7 +92,7 @@ const pad = (n: number) => String(n).padStart(2, '0')
   <section class="ld-section ink ld-grid-bg labs">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono">05 / Diction Labs</span>
+        <span class="ld-mono ld-accent ld-violet">05 / Diction Labs</span>
         <span class="ld-mono">Research, models, measurement</span>
       </div>
 
@@ -191,7 +191,7 @@ const pad = (n: number) => String(n).padStart(2, '0')
 
 <style scoped>
 .labs {
-  background-color: var(--ld-navy-975);
+  background-color: var(--ld-navy-950);
   --labs-accent: #4da3ff;
   --labs-line: rgba(255, 255, 255, 0.18);
 }
@@ -275,13 +275,13 @@ const pad = (n: number) => String(n).padStart(2, '0')
   position: absolute;
   inset: 0;
   border-radius: 1.4em;
-  background: color-mix(in srgb, var(--ld-navy-900) 94%, transparent);
+  background: color-mix(in srgb, var(--ld-navy-850) 94%, transparent);
   border: 1px solid var(--labs-line);
   overflow: hidden;
   transition: border-color 0.25s, background-color 0.25s;
 }
 .layer-keys .labs-face {
-  background: color-mix(in srgb, var(--ld-navy-850) 97%, transparent);
+  background: color-mix(in srgb, var(--ld-navy-700) 97%, transparent);
 }
 .layer-stt .labs-face,
 .layer-wt .labs-face {
@@ -538,14 +538,14 @@ const pad = (n: number) => String(n).padStart(2, '0')
   flex-direction: column;
   gap: 0.6rem;
   padding: 1.4rem 1.4rem 1.5rem;
-  background: var(--ld-navy-975);
+  background: var(--ld-navy-900);
   color: inherit;
   text-decoration: none;
   transition: background-color 0.25s;
 }
 .labs-tile:hover,
 .labs-tile:focus-visible {
-  background: var(--ld-navy-950);
+  background: var(--ld-navy-850);
   outline: none;
 }
 .labs-tile-label {

@@ -33,7 +33,7 @@ const tracks = computed(() => rows.map((row) => [...row.greetings, ...row.greeti
   <section class="ld-section soft lang-section">
     <div class="ld-container" v-reveal>
       <div class="ld-label-row">
-        <span class="ld-mono">06 / 99 languages</span>
+        <span class="ld-mono ld-accent ld-blue">06 / 99 languages</span>
         <span class="ld-mono">Auto-detect on by default</span>
       </div>
     </div>

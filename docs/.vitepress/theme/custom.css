@@ -46,6 +46,12 @@
   --vp-c-text-2: var(--ld-navy-500);
   --vp-c-text-3: var(--ld-navy-400);
 
+  /* Surfaces and hairlines, navy-tinted rather than neutral gray */
+  --vp-c-bg-soft: var(--ld-navy-25);
+  --vp-c-bg-alt: var(--ld-navy-15);
+  --vp-c-divider: var(--ld-navy-line);
+  --vp-c-gutter: var(--ld-navy-line);
+
   /* Home hero name -- solid ink, no gradient */
   --vp-home-hero-name-color: var(--diction-ink);
   --vp-home-hero-name-background: none;
@@ -68,6 +74,14 @@
      that the two stop reading as different levels. Pre-existing, not introduced
      by the navy ramp; worth a separate decision about tertiary text on dark. */
   --vp-c-text-3: var(--ld-navy-450);
+
+  /* The page itself is navy in dark mode, not VitePress's neutral #1b1b1f */
+  --vp-c-bg: var(--ld-navy-900);
+  --vp-c-bg-alt: var(--ld-navy-950);
+  --vp-c-bg-soft: var(--ld-navy-850);
+  --vp-c-bg-elv: var(--ld-navy-850);
+  --vp-c-divider: var(--ld-navy-700);
+  --vp-c-gutter: var(--ld-navy-950);
 
   --vp-home-hero-name-color: var(--ld-navy-100);
   --vp-home-hero-image-background-image: radial-gradient(circle, rgba(0, 122, 255, 0.3), rgba(0, 122, 255, 0.08));

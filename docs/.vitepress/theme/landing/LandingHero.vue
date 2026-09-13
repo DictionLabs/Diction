@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import HeroScript from './HeroScript.vue'
-
 const APP_STORE = 'https://apps.apple.com/app/id6759807364'
 
 // Media slot. Set `video` to a path like '/hero.mp4' to swap the placeholder photo
@@ -36,9 +34,9 @@ const readouts = [
 
       <div class="hero-row" v-reveal="{ delay: 140 }">
         <p class="ld-lead hero-lead">
-          It types with an autocorrect I wrote from scratch. It turns what you say into
-          clean text, fast. It rewrites what is already on screen when you ask. And you
-          decide whether any of that ever leaves your phone.
+          Tap the mic in any app and get back finished text: fillers gone, grammar
+          fixed, lists laid out. It is a full keyboard underneath, and nothing has to
+          leave your phone unless you want it to.
         </p>
         <div class="hero-cta">
           <a class="ld-btn hero-btn-primary" :href="APP_STORE" target="_blank" rel="noopener">
@@ -86,17 +84,16 @@ const readouts = [
         </ul>
       </div>
 
-      <HeroScript />
     </div>
   </section>
 </template>
 
 <style scoped>
 .hero {
-  --hero-ink: var(--ld-navy-975);
+  --hero-ink: var(--ld-navy-950);
   background-color: var(--hero-ink);
   padding-top: clamp(2.5rem, 6vw, 5rem);
-  padding-bottom: 0;
+  padding-bottom: clamp(3.5rem, 7vw, 6rem);
 }
 
 .hero-top {
@@ -134,10 +131,21 @@ const readouts = [
   gap: 12px;
   justify-content: flex-end;
 }
+/* Scaled to sit under a display headline, not a body paragraph. */
+.hero-cta .ld-btn {
+  min-height: 58px;
+  padding: 0 30px;
+  font-size: 1.0625rem;
+  gap: 12px;
+}
+.hero-cta .ld-btn img {
+  width: 21px;
+  height: 21px;
+}
 
 .hero-btn-primary {
   background: #fff;
-  color: var(--ld-navy-975) !important;
+  color: var(--ld-navy-950) !important;
 }
 .hero-btn-primary img {
   filter: brightness(0);
@@ -180,8 +188,8 @@ const readouts = [
   inset: 0;
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--ld-navy-975) 85%, transparent) 0%,
-    color-mix(in srgb, var(--ld-navy-975) 15%, transparent) 45%,
+    color-mix(in srgb, var(--ld-navy-950) 90%, transparent) 0%,
+    color-mix(in srgb, var(--ld-navy-950) 18%, transparent) 45%,
     transparent 100%
   );
   pointer-events: none;
@@ -193,7 +201,7 @@ const readouts = [
   left: 16px;
   padding: 6px 10px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--ld-navy-975) 60%, transparent);
+  background: color-mix(in srgb, var(--ld-navy-900) 66%, transparent);
   color: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(6px);
 }
@@ -253,6 +261,8 @@ const readouts = [
   }
   .hero-cta .ld-btn {
     width: 100%;
+    min-height: 54px;
+    font-size: 1rem;
   }
   .hero-readouts {
     flex-direction: column;

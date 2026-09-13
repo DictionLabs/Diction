@@ -8,11 +8,11 @@
      pair on one hue: the background is hsl(227.5, 29%, 16%) and the D is
      hsl(228, 17%, 88%), so they anchor the two ends of this scale and every
      step between them holds that hue. Nothing on the site is neutral black. */
-  --ld-navy-990: #06070b;
-  --ld-navy-975: #080a10;
-  --ld-navy-950: #0c0f17;
-  --ld-navy-900: #141724;
-  --ld-navy-850: #181d2c;
+  --ld-navy-990: #090c18;
+  --ld-navy-975: #0c101f;
+  --ld-navy-950: #101528;
+  --ld-navy-900: #151a2e;
+  --ld-navy-850: #191f33;
   --ld-navy-800: #1d2235; /* the app icon background */
   --ld-navy-700: #272d45;
   --ld-navy-600: #333a57;
@@ -23,11 +23,17 @@
   --ld-navy-200: #bfc2cf;
   --ld-navy-100: #dcdee6; /* the D in the app icon */
   --ld-navy-50: #f4f4f6;
+  /* Navy-tinted neutrals: surfaces and hairlines carry the hue too, so nothing
+     on the page falls back to a gray that has no relationship to the icon. */
+  --ld-navy-25: #f4f5f8;
+  --ld-navy-15: #fafbfc;
+  --ld-navy-line: #e4e6ec;
 
   --ld-ink: var(--ld-navy-800);
   --ld-green: #34c759;
   --ld-orange: #ff9f0a;
   /* Two accents, mirroring the keyboard: blue = transcription (mic), violet = Writing Tools (edit, AI). */
+  --ld-violet-blue: #007aff;
   --ld-violet: #af52de;
   --ld-violet-soft: rgba(175, 82, 222, 0.14);
   --ld-r-card: 20px;
@@ -42,6 +48,7 @@
 
 .dark {
   --ld-ink: var(--ld-navy-100);
+  --ld-violet-blue: #4da3ff;
   --ld-violet: #bf5af2;
   --ld-violet-soft: rgba(191, 90, 242, 0.18);
   --ld-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
@@ -118,8 +125,14 @@
   background: var(--vp-c-bg-soft);
 }
 .ld-section.ink {
-  background: var(--ld-navy-900);
+  background: var(--ld-navy-950);
   color: #fff;
+}
+/* Both accents lift on a dark ground, in either site theme. */
+.ld-section.ink {
+  --ld-violet-blue: #6db3ff;
+  --ld-violet: #c78cee;
+  --ld-violet-soft: rgba(199, 140, 238, 0.18);
 }
 .ld-container {
   max-width: 1152px;
@@ -477,8 +490,27 @@ html:has(.ld-page) .VPLocalNav {
   }
 }
 
-/* Violet accent helpers (Writing Tools / edit) */
-.ld-violet { color: var(--ld-violet); }
+/* ---------- The two accents ----------
+   Blue is voice coming in (transcription, the mic). Violet is the model working
+   on text (Writing Tools, edits). They alternate down the page so the rhythm is
+   deliberate rather than decorative. On an ink band both lift, so they keep
+   their weight against a dark navy ground. */
+.ld-blue,
+.ld-section.ink .ld-blue { color: var(--ld-violet-blue); }
+.ld-violet,
+.ld-section.ink .ld-violet { color: var(--ld-violet); }
+
+/* A short rule before a mono label, inheriting whichever accent is on it. */
+.ld-accent::before {
+  content: '';
+  display: inline-block;
+  width: 18px;
+  height: 2px;
+  margin-right: 10px;
+  vertical-align: middle;
+  border-radius: 2px;
+  background: currentColor;
+}
 .ld-chip.violet {
   border-color: transparent;
   background: var(--ld-violet-soft);

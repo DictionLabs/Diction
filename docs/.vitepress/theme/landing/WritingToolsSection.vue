@@ -223,7 +223,7 @@ const tiles = [
   <section class="ld-section soft wt-section" ref="root">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-violet">03 / Writing Tools</span>
+        <span class="ld-mono ld-accent ld-violet">03 / Writing Tools</span>
         <span class="ld-mono">diction.one</span>
       </div>
 
