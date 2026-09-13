@@ -297,9 +297,9 @@ onUnmounted(() => {
 }
 
 .terminal {
-  background: #0f1115;
-  border: 1px solid #26282e;
-  color: #d7dadf;
+  background: var(--ld-navy-950);
+  border: 1px solid var(--ld-navy-700);
+  color: var(--ld-navy-100);
   border-radius: 14px;
   overflow: hidden;
   box-shadow: var(--ld-shadow-md);
@@ -310,7 +310,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 12px 14px;
-  border-bottom: 1px solid #26282e;
+  border-bottom: 1px solid var(--ld-navy-700);
 }
 .dot {
   width: 11px;
@@ -446,7 +446,7 @@ onUnmounted(() => {
   background: transparent;
 }
 .qr-cell.on {
-  background: #0f1115;
+  background: var(--ld-navy-950);
 }
 .qr-caption {
   color: rgba(255, 255, 255, 0.4);

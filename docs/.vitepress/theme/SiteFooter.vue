@@ -67,21 +67,21 @@ const year = new Date().getFullYear();
 :root {
   --footer-bg: #f6f8fa;
   --footer-border: var(--vp-c-divider);
-  --footer-heading: #1a1a1a;
-  --footer-link: #4a4a4a;
+  --footer-heading: var(--ld-navy-800);
+  --footer-link: var(--ld-navy-500);
   --footer-link-hover: var(--diction-blue);
-  --footer-divider: #d1d5db;
-  --footer-muted: #6e6e6e;
+  --footer-divider: var(--ld-navy-200);
+  --footer-muted: var(--ld-navy-400);
 }
 
 .dark {
-  --footer-bg: #141416;
+  --footer-bg: var(--ld-navy-900);
   --footer-border: rgba(255, 255, 255, 0.06);
-  --footer-heading: #e8e8e8;
-  --footer-link: #a0a0a0;
+  --footer-heading: var(--ld-navy-100);
+  --footer-link: var(--ld-navy-300);
   --footer-link-hover: #4DA3FF;
   --footer-divider: rgba(255, 255, 255, 0.08);
-  --footer-muted: #707070;
+  --footer-muted: var(--ld-navy-450);
 }
 </style>
 

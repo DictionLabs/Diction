@@ -191,7 +191,7 @@ const pad = (n: number) => String(n).padStart(2, '0')
 
 <style scoped>
 .labs {
-  background-color: #0b0b0d;
+  background-color: var(--ld-navy-975);
   --labs-accent: #4da3ff;
   --labs-line: rgba(255, 255, 255, 0.18);
 }
@@ -268,20 +268,20 @@ const pad = (n: number) => String(n).padStart(2, '0')
   position: absolute;
   inset: 0;
   border-radius: 1.4em;
-  background: #07080a;
+  background: var(--ld-navy-990);
   transform: translateZ(-0.6em);
 }
 .labs-face {
   position: absolute;
   inset: 0;
   border-radius: 1.4em;
-  background: rgba(21, 22, 26, 0.94);
+  background: color-mix(in srgb, var(--ld-navy-900) 94%, transparent);
   border: 1px solid var(--labs-line);
   overflow: hidden;
   transition: border-color 0.25s, background-color 0.25s;
 }
 .layer-keys .labs-face {
-  background: rgba(27, 28, 33, 0.97);
+  background: color-mix(in srgb, var(--ld-navy-850) 97%, transparent);
 }
 .layer-stt .labs-face,
 .layer-wt .labs-face {
@@ -538,14 +538,14 @@ const pad = (n: number) => String(n).padStart(2, '0')
   flex-direction: column;
   gap: 0.6rem;
   padding: 1.4rem 1.4rem 1.5rem;
-  background: #0b0b0d;
+  background: var(--ld-navy-975);
   color: inherit;
   text-decoration: none;
   transition: background-color 0.25s;
 }
 .labs-tile:hover,
 .labs-tile:focus-visible {
-  background: #131417;
+  background: var(--ld-navy-950);
   outline: none;
 }
 .labs-tile-label {

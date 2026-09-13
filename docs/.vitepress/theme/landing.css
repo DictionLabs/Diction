@@ -4,7 +4,27 @@
    =========================================== */
 
 :root {
-  --ld-ink: #1a1a1a;
+  /* Navy ramp, taken from the app icon. The icon's two colors are a matched
+     pair on one hue: the background is hsl(227.5, 29%, 16%) and the D is
+     hsl(228, 17%, 88%), so they anchor the two ends of this scale and every
+     step between them holds that hue. Nothing on the site is neutral black. */
+  --ld-navy-990: #06070b;
+  --ld-navy-975: #080a10;
+  --ld-navy-950: #0c0f17;
+  --ld-navy-900: #141724;
+  --ld-navy-850: #181d2c;
+  --ld-navy-800: #1d2235; /* the app icon background */
+  --ld-navy-700: #272d45;
+  --ld-navy-600: #333a57;
+  --ld-navy-500: #424b6c;
+  --ld-navy-450: #697296; /* tertiary text on dark; see note in custom.css */
+  --ld-navy-400: #5e688d;
+  --ld-navy-300: #8f95ae;
+  --ld-navy-200: #bfc2cf;
+  --ld-navy-100: #dcdee6; /* the D in the app icon */
+  --ld-navy-50: #f4f4f6;
+
+  --ld-ink: var(--ld-navy-800);
   --ld-green: #34c759;
   --ld-orange: #ff9f0a;
   /* Two accents, mirroring the keyboard: blue = transcription (mic), violet = Writing Tools (edit, AI). */
@@ -21,14 +41,14 @@
 }
 
 .dark {
-  --ld-ink: #e8e8e8;
+  --ld-ink: var(--ld-navy-100);
   --ld-violet: #bf5af2;
   --ld-violet-soft: rgba(191, 90, 242, 0.18);
   --ld-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
   --ld-shadow-md: 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.5);
   --ld-shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5), 0 40px 90px rgba(0, 0, 0, 0.6);
-  --ld-surface: #1e1e20;
-  --ld-surface-2: #161618;
+  --ld-surface: var(--ld-navy-850);
+  --ld-surface-2: var(--ld-navy-900);
 }
 
 /* Landing page shell: full-bleed, no doc padding */
@@ -98,7 +118,7 @@
   background: var(--vp-c-bg-soft);
 }
 .ld-section.ink {
-  background: #16171a;
+  background: var(--ld-navy-900);
   color: #fff;
 }
 .ld-container {
@@ -227,7 +247,7 @@
 }
 .dark .ld-btn.alt {
   background: #fff;
-  color: #1a1a1a !important;
+  color: var(--ld-navy-800) !important;
 }
 .ld-btn.alt img {
   filter: brightness(0) invert(1);

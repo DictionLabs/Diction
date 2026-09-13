@@ -246,7 +246,7 @@ function videoFor(row: Row): string | undefined {
   height: 24px;
   padding: 0 8px;
   border-radius: 6px;
-  background: rgba(22, 23, 26, 0.72);
+  background: color-mix(in srgb, var(--ld-navy-900) 72%, transparent);
   color: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);

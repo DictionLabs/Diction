@@ -93,7 +93,7 @@ const readouts = [
 
 <style scoped>
 .hero {
-  --hero-ink: #0b0b0d;
+  --hero-ink: var(--ld-navy-975);
   background-color: var(--hero-ink);
   padding-top: clamp(2.5rem, 6vw, 5rem);
   padding-bottom: 0;
@@ -137,7 +137,7 @@ const readouts = [
 
 .hero-btn-primary {
   background: #fff;
-  color: #0b0b0d !important;
+  color: var(--ld-navy-975) !important;
 }
 .hero-btn-primary img {
   filter: brightness(0);
@@ -161,7 +161,7 @@ const readouts = [
   aspect-ratio: 21 / 9;
   border-radius: 16px;
   overflow: hidden;
-  background: #16171a;
+  background: var(--ld-navy-900);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -178,7 +178,12 @@ const readouts = [
 .hero-media-shade {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(11, 11, 13, 0.85) 0%, rgba(11, 11, 13, 0.15) 45%, rgba(11, 11, 13, 0) 100%);
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--ld-navy-975) 85%, transparent) 0%,
+    color-mix(in srgb, var(--ld-navy-975) 15%, transparent) 45%,
+    transparent 100%
+  );
   pointer-events: none;
 }
 
@@ -188,7 +193,7 @@ const readouts = [
   left: 16px;
   padding: 6px 10px;
   border-radius: 6px;
-  background: rgba(11, 11, 13, 0.6);
+  background: color-mix(in srgb, var(--ld-navy-975) 60%, transparent);
   color: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(6px);
 }

@@ -32,7 +32,8 @@
   --diction-blue: #007AFF;
   --diction-blue-dark: #0055CC;
   --diction-blue-light: #4DA3FF;
-  --diction-black: #1a1a1a;
+  /* Not black. The app icon's navy, via the ramp in landing.css. */
+  --diction-ink: var(--ld-navy-800);
 
   /* VitePress brand overrides */
   --vp-c-brand-1: var(--diction-blue);
@@ -41,12 +42,12 @@
   --vp-c-brand-soft: rgba(0, 122, 255, 0.12);
 
   /* Text */
-  --vp-c-text-1: var(--diction-black);
-  --vp-c-text-2: #4a4a4a;
-  --vp-c-text-3: #6e6e6e;
+  --vp-c-text-1: var(--diction-ink);
+  --vp-c-text-2: var(--ld-navy-500);
+  --vp-c-text-3: var(--ld-navy-400);
 
-  /* Home hero name -- solid black, no gradient */
-  --vp-home-hero-name-color: var(--diction-black);
+  /* Home hero name -- solid ink, no gradient */
+  --vp-home-hero-name-color: var(--diction-ink);
   --vp-home-hero-name-background: none;
 
   /* Hero glow behind screenshots */
@@ -60,11 +61,15 @@
   --vp-c-brand-3: #0055CC;
   --vp-c-brand-soft: rgba(77, 163, 255, 0.14);
 
-  --vp-c-text-1: #e8e8e8;
-  --vp-c-text-2: #a0a0a0;
-  --vp-c-text-3: #707070;
+  --vp-c-text-1: var(--ld-navy-100);
+  --vp-c-text-2: var(--ld-navy-300);
+  /* 3.56:1 on the dark surface. Better than the #707070 it replaces (3.36:1),
+     still short of AA 4.5:1 — the step that clears AA sits so close to text-2
+     that the two stop reading as different levels. Pre-existing, not introduced
+     by the navy ramp; worth a separate decision about tertiary text on dark. */
+  --vp-c-text-3: var(--ld-navy-450);
 
-  --vp-home-hero-name-color: #e8e8e8;
+  --vp-home-hero-name-color: var(--ld-navy-100);
   --vp-home-hero-image-background-image: radial-gradient(circle, rgba(0, 122, 255, 0.3), rgba(0, 122, 255, 0.08));
 }
 
@@ -74,7 +79,7 @@
 }
 
 .dark {
-  --vp-nav-bg-color: #1e1e20;
+  --vp-nav-bg-color: var(--ld-navy-850);
 }
 
 /* -- Search button border -- */

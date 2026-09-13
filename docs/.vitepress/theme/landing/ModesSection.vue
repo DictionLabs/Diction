@@ -207,7 +207,7 @@ const plans: Plan[] = [
   color: var(--pl-fg);
 }
 .plan.featured {
-  --pl-bg: #16171a;
+  --pl-bg: var(--ld-navy-900);
   --pl-fg: #ffffff;
   --pl-fg2: rgba(255, 255, 255, 0.74);
   --pl-fg3: rgba(255, 255, 255, 0.5);
@@ -217,8 +217,8 @@ const plans: Plan[] = [
   box-shadow: var(--ld-shadow-md), 0 0 0 1px var(--vp-c-brand-1);
 }
 .dark .plan.featured {
-  --pl-bg: #f4f4f5;
-  --pl-fg: #111113;
+  --pl-bg: var(--ld-navy-50);
+  --pl-fg: var(--ld-navy-950);
   --pl-fg2: rgba(0, 0, 0, 0.7);
   --pl-fg3: rgba(0, 0, 0, 0.48);
   --pl-line: rgba(0, 0, 0, 0.12);
