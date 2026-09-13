@@ -29,7 +29,7 @@ const readouts = [
       </div>
 
       <h1 class="ld-h1 hero-h1" v-reveal="{ delay: 60 }">
-        The intelligent keyboard for iPhone.
+        The intelligent<br /><span class="hero-h1-line2">voice keyboard for iPhone.</span>
       </h1>
 
       <div class="hero-row" v-reveal="{ delay: 140 }">
@@ -106,10 +106,12 @@ const readouts = [
 }
 
 .hero-h1 {
-  font-size: clamp(2.75rem, 9.2vw, 8.25rem);
+  /* Sized so the second line always fits the container on one line: it measures
+     10.83x the font size, and the container caps at 1152px. */
+  font-size: clamp(2.75rem, 8.4vw, 6.375rem);
   line-height: 0.96;
   letter-spacing: -0.045em;
-  max-width: 14ch;
+  max-width: 22ch;
 }
 
 .hero-row {
@@ -238,6 +240,13 @@ const readouts = [
 }
 .hero-btn-ghost img {
   filter: brightness(0) invert(1);
+}
+
+/* Above the phone breakpoint the headline's second line never breaks. */
+@media (min-width: 641px) {
+  .hero-h1-line2 {
+    white-space: nowrap;
+  }
 }
 
 @media (max-width: 900px) {
