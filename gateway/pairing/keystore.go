@@ -161,10 +161,10 @@ func (ks *KeyStore) Fingerprint() string {
 // the fixed key (TTL never applies to a pinned literal); otherwise a token
 // bearing a correct HMAC tag under the current secret or a retired secret
 // still inside its grace window, honoring that token's own embedded
-// expiry — plus, only while no TTL is configured, a legacy exact match
-// against the raw secret itself (the pre-per-device-token credential; see
-// the removal trigger in gatewaykey.go's history — deleted in the first
-// release after v13 ships). hmac.Equal and ConstantTimeCompare are both
+// expiry. The signing secret itself is never a bearer credential — the
+// pre-per-device-token exact-match fallback was removed in v14, the first
+// release after v13 shipped QR pairing, by which point every paired device
+// held a minted token. hmac.Equal and ConstantTimeCompare are both
 // constant-time; a garbage token still walks the full grace ring before
 // failing, so verification time does not distinguish "expired" from
 // "never valid" at the network level (accepted; see plan Risks).
@@ -200,23 +200,6 @@ func (ks *KeyStore) Verify(token string) bool {
 		}
 		if v == verdictExpired {
 			worst = verdictExpired
-		}
-	}
-	// Legacy acceptance: the pre-per-device-token shared secret still works
-	// as a bearer token in its own right, but only while TTL is unset — a
-	// credential that can never expire must not survive the operator
-	// opting into expiry (Expiry policy rule 3).
-	if ttl == 0 {
-		if subtle.ConstantTimeCompare([]byte(token), []byte(current)) == 1 {
-			return true
-		}
-		for _, prev := range previous {
-			if prev.RetiredAt.Before(cutoff) {
-				continue
-			}
-			if subtle.ConstantTimeCompare([]byte(token), []byte(prev.Key)) == 1 {
-				return true
-			}
 		}
 	}
 	log.Printf("pairing: token rejected (nonce %s, verdict %s)", tokenNoncePrefix(token), worst)

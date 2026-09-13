@@ -128,17 +128,24 @@ func TestKeyStoreVerify(t *testing.T) {
 	}
 }
 
-func TestKeyStoreVerify_LegacySecretAcceptedOnlyWithoutTTL(t *testing.T) {
-	ks, _ := newTestKeyStore(t, "", time.Hour, 0)
-	secret := ks.CurrentKey()
-	if !ks.Verify(secret) {
-		t.Fatal("legacy raw-secret bearer must verify while TTL is unset")
-	}
-
-	ksStrict, _ := newTestKeyStore(t, "", time.Hour, time.Hour)
-	strictSecret := ksStrict.CurrentKey()
-	if ksStrict.Verify(strictSecret) {
-		t.Fatal("legacy raw-secret bearer must be rejected once TTL is set")
+// The signing secret is not a credential. The pre-per-device-token exact
+// match against the raw secret was removed in v14; this pins that it stays
+// gone under every TTL setting, including a retired secret still inside its
+// grace window (which keeps verifying tokens signed by it, and nothing else).
+func TestKeyStoreVerify_RawSecretIsNeverABearerToken(t *testing.T) {
+	for _, ttl := range []time.Duration{0, time.Hour} {
+		ks, _ := newTestKeyStore(t, "", time.Hour, ttl)
+		secret := ks.CurrentKey()
+		if ks.Verify(secret) {
+			t.Fatalf("ttl=%s: the signing secret must not verify as a bearer token", ttl)
+		}
+		ks.now = func() time.Time { return time.Now().Add(48 * time.Hour) }
+		if _, _, _, err := ks.Rotate(); err != nil {
+			t.Fatalf("ttl=%s: Rotate: %v", ttl, err)
+		}
+		if ks.Verify(secret) {
+			t.Fatalf("ttl=%s: a retired signing secret must not verify as a bearer token", ttl)
+		}
 	}
 }
 
