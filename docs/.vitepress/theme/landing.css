@@ -31,7 +31,10 @@
 
   --ld-ink: var(--ld-navy-800);
   --ld-green: #34c759;
-  --ld-orange: #ff9f0a;
+  /* Orange is typing (the keys, autocorrect). Darker than iOS orange in light
+     mode so it holds up as text on white. */
+  --ld-orange: #c2560a;
+  --ld-orange-soft: rgba(194, 86, 10, 0.1);
   /* Two accents, mirroring the keyboard: blue = transcription (mic), violet = Writing Tools (edit, AI). */
   --ld-violet-blue: #007aff;
   --ld-violet: #af52de;
@@ -51,6 +54,8 @@
   --ld-violet-blue: #4da3ff;
   --ld-violet: #bf5af2;
   --ld-violet-soft: rgba(191, 90, 242, 0.18);
+  --ld-orange: #ff9f0a;
+  --ld-orange-soft: rgba(255, 159, 10, 0.16);
   --ld-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
   --ld-shadow-md: 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 40px rgba(0, 0, 0, 0.5);
   --ld-shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5), 0 40px 90px rgba(0, 0, 0, 0.6);
@@ -133,6 +138,8 @@
   --ld-violet-blue: #6db3ff;
   --ld-violet: #c78cee;
   --ld-violet-soft: rgba(199, 140, 238, 0.18);
+  --ld-orange: #ffb340;
+  --ld-orange-soft: rgba(255, 179, 64, 0.16);
 }
 .ld-container {
   max-width: 1152px;
@@ -168,6 +175,11 @@
   height: 2px;
   background: currentColor;
   border-radius: 2px;
+}
+/* Display headings: Libre Franklin. Body text stays on the VitePress face. */
+.ld-h1,
+.ld-h2 {
+  font-family: 'Libre Franklin', var(--vp-font-family-base);
 }
 .ld-h1 {
   font-size: clamp(2.5rem, 6.5vw, 4.75rem);
@@ -421,17 +433,51 @@ html:has(.ld-page) .VPLocalNav {
 .ld-section.ink .ld-mono {
   color: rgba(255, 255, 255, 0.55);
 }
+/* Section label: [NN] NAME ──────────── caption. The number sits in an accent
+   box, a hairline runs between the name and the caption, and the caption is
+   a fact the heading below does not already say. */
 .ld-label-row {
+  --ld-label-line: var(--vp-c-divider);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding-bottom: 0.75rem;
+  gap: 16px;
   margin-bottom: clamp(2rem, 4vw, 3rem);
-  border-bottom: 1px solid var(--vp-c-divider);
+}
+.ld-label-row::after {
+  content: '';
+  order: 1;
+  flex: 1;
+  min-width: 24px;
+  height: 1px;
+  background: var(--ld-label-line);
+}
+.ld-label-row > :last-child:not(:first-child) {
+  order: 2;
+}
+.ld-label-row > :first-child {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.ld-label-row .ld-accent::before {
+  display: none;
+}
+.ld-idx {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2.4em;
+  height: 2.1em;
+  padding: 0 0.45em;
+  margin-right: 0.9em;
+  border-radius: 6px;
+  border: 1px solid currentColor;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 10%, transparent);
 }
 .ld-section.ink .ld-label-row {
-  border-bottom-color: rgba(255, 255, 255, 0.12);
+  --ld-label-line: rgba(255, 255, 255, 0.14);
 }
 .ld-rule {
   height: 1px;
@@ -499,6 +545,8 @@ html:has(.ld-page) .VPLocalNav {
 .ld-section.ink .ld-blue { color: var(--ld-violet-blue); }
 .ld-violet,
 .ld-section.ink .ld-violet { color: var(--ld-violet); }
+.ld-orange,
+.ld-section.ink .ld-orange { color: var(--ld-orange); }
 
 /* A short rule before a mono label, inheriting whichever accent is on it. */
 .ld-accent::before {
@@ -515,4 +563,30 @@ html:has(.ld-page) .VPLocalNav {
   border-color: transparent;
   background: var(--ld-violet-soft);
   color: var(--ld-violet);
+}
+
+/* ---------- Item label ----------
+   The label on a numbered item inside a section (story rows, plan cards):
+   the number and name in the accent. No rules, no dashes. */
+.ld-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.005em;
+  color: var(--ld-item-color, var(--vp-c-brand-1));
+}
+.ld-item.violet {
+  --ld-item-color: var(--ld-violet);
+}
+.ld-item.orange {
+  --ld-item-color: var(--ld-orange);
+}
+.ld-item-num {
+  font-family: var(--vp-font-family-mono);
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }

@@ -33,13 +33,13 @@ const tracks = computed(() => rows.map((row) => [...row.greetings, ...row.greeti
   <section class="ld-section soft lang-section">
     <div class="ld-container" v-reveal>
       <div class="ld-label-row">
-        <span class="ld-mono ld-accent ld-blue">06 / 99 languages</span>
-        <span class="ld-mono">Auto-detect on by default</span>
+        <span class="ld-mono ld-accent ld-blue"><b class="ld-idx">07</b>99 languages</span>
+        <span class="ld-mono">Pick yours, or auto-detect</span>
       </div>
     </div>
     <div class="ld-container ld-center ld-head" v-reveal>
       <h2 class="ld-h2">Speak in your language. Or switch halfway.</h2>
-      <p class="ld-lead">Auto-detect is on by default. Switch mid-sentence and it keeps up.</p>
+      <p class="ld-lead">Pick your language, or turn on auto-detect and just talk.</p>
     </div>
 
     <div class="lang-rows" v-reveal="{ delay: 160 }">

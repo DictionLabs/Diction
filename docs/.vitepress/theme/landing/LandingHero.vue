@@ -23,27 +23,22 @@ const readouts = [
 <template>
   <section class="ld-section ink ld-grid-bg hero">
     <div class="ld-container">
-      <div class="hero-top" v-reveal>
-        <span class="ld-mono">Diction Labs</span>
-        <span class="ld-mono hero-top-right">Keyboard for iPhone</span>
-      </div>
-
       <h1 class="ld-h1 hero-h1" v-reveal="{ delay: 60 }">
         The intelligent<br /><span class="hero-h1-line2">voice keyboard for iPhone.</span>
       </h1>
 
       <div class="hero-row" v-reveal="{ delay: 140 }">
         <p class="ld-lead hero-lead">
-          Tap the mic in any app and get back finished text: fillers gone, grammar
-          fixed, lists laid out. It is a full keyboard underneath, and nothing has to
-          leave your phone unless you want it to.
+          Say it in any app and get text you can send as it is. No ums, no typos,
+          no retyping. It’s a full keyboard too, so it’s the only one you need.
+          Free on your iPhone and on your own server.
         </p>
         <div class="hero-cta">
           <a class="ld-btn hero-btn-primary" :href="APP_STORE" target="_blank" rel="noopener">
             <img src="/apple-logo.svg" alt="" />
             Get the app
           </a>
-          <a class="ld-btn ghost hero-btn-ghost" href="/self-hosted">
+          <a class="ld-btn ghost hero-btn-ghost" href="https://github.com/DictionLabs/Diction" target="_blank" rel="noopener">
             <img src="/github-mark.svg" alt="" />
             Self-host
           </a>
@@ -92,25 +87,18 @@ const readouts = [
 .hero {
   --hero-ink: var(--ld-navy-950);
   background-color: var(--hero-ink);
-  padding-top: clamp(2.5rem, 6vw, 5rem);
+  padding-top: clamp(3.5rem, 8vw, 7rem);
   padding-bottom: clamp(3.5rem, 7vw, 6rem);
 }
 
-.hero-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  margin-bottom: clamp(2rem, 5vw, 4rem);
-}
 
 .hero-h1 {
-  /* Sized so the second line always fits the container on one line: it measures
-     10.83x the font size, and the container caps at 1152px. */
-  font-size: clamp(2.75rem, 8.4vw, 6.375rem);
-  line-height: 0.96;
-  letter-spacing: -0.045em;
+  /* Sized so the second line always fits the container on one line. In Libre
+     Franklin 700 at -0.035em it measures 11.74x the font size; the container is
+     the viewport minus 40px of padding, capped at 1152px (1152 / 11.74 = 98px). */
+  font-size: clamp(2.75rem, calc((100vw - 40px) / 11.9), 6rem);
+  line-height: 0.98;
+  letter-spacing: -0.035em;
   max-width: 22ch;
 }
 
@@ -259,9 +247,6 @@ const readouts = [
 }
 
 @media (max-width: 640px) {
-  .hero-top-right {
-    display: none;
-  }
   .hero-h1 {
     font-size: clamp(2.6rem, 12.5vw, 3.4rem);
   }

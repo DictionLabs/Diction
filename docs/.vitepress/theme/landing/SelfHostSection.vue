@@ -6,16 +6,29 @@ import { onMounted, onUnmounted, ref } from 'vue'
 const props = defineProps<{ video?: string }>()
 
 // Mirrors docs/features/self-hosting-setup.md ("Pick one and start" and
-// "Connecting the app"). Output shape follows real `docker compose up -d`.
+// "Connecting the app"). Every output line is copied from a real first run of
+// the public docker-compose.yml on a clean Docker host (Compose v5, 2026-09-19).
+// Only the pairing key is made up.
 const CMD_UP = 'docker compose --profile parakeet up -d'
 const UP_LINES = [
-  '[+] Running 3/3',
-  ' ✔ Network diction_default        Created',
-  ' ✔ Container diction-parakeet     Started',
-  ' ✔ Container diction-gateway      Started',
+  '[+] up 15/15',
+  ' ✔ Image dictionlabs/gateway:latest       Pulled         2.5s',
+  ' ✔ Image dictionlabs/parakeet:latest-int8 Pulled        18.9s',
+  ' ✔ Network diction_default                Created        0.0s',
+  ' ✔ Volume diction-gateway-data            Created        0.0s',
+  ' ✔ Container diction-parakeet             Started        0.5s',
+  ' ✔ Container diction-gateway              Started        0.6s',
 ]
 const CMD_AUTH = 'docker compose exec gateway gateway auth'
-const SCAN_LINE = 'Scan with Diction: Self-Hosted > Scan to pair'
+const SCAN_LINE = 'Pair the Diction app with this gateway. Scan in Diction > Self-Hosted > Scan to pair:'
+const LINK_LINES = [
+  'Or open this link on your iPhone:',
+  '  diction://pair?key=dk_Q7xN2vLp8RkT4mWc9HsY3bAAAAAAAAAAAqZ-fJuE6dVn1XoKs5GtRw0yPbMhCaLi4eUz_Nq7jD2',
+]
+const TIP_LINES = [
+  'Tip: set PUBLIC_URL=https://your-host:port to embed the gateway address in the QR,',
+  'so pairing fills in both the URL and the key.',
+]
 
 // Deterministic 25x25 grid shaped like a version 2 QR code: three finder
 // patterns with separators, timing lines, an alignment pattern and the dark
@@ -88,6 +101,7 @@ const authStarted = ref(false)
 const typedAuth = ref('')
 const qrVisible = ref(false)
 const scanVisible = ref(false)
+const linkVisible = ref(false)
 const playing = ref(false)
 const finished = ref(false)
 
@@ -109,6 +123,7 @@ function resetState() {
   typedAuth.value = ''
   qrVisible.value = false
   scanVisible.value = false
+  linkVisible.value = false
   finished.value = false
 }
 
@@ -119,6 +134,7 @@ function showFinalState() {
   typedAuth.value = CMD_AUTH
   qrVisible.value = true
   scanVisible.value = true
+  linkVisible.value = true
   finished.value = true
   playing.value = false
 }
@@ -141,7 +157,8 @@ async function playSequence() {
   for (const line of UP_LINES) {
     if (disposed) return
     upLines.value = [...upLines.value, line]
-    await sleep(line.startsWith('[+]') ? 260 : 380)
+    // The parakeet image is the long pull; everything after it is instant.
+    await sleep(line.includes('parakeet:latest') ? 900 : line.startsWith('[+]') ? 260 : 300)
   }
 
   await sleep(500)
@@ -151,10 +168,13 @@ async function playSequence() {
   await typeInto(typedAuth, CMD_AUTH)
   await sleep(380)
   if (disposed) return
-  qrVisible.value = true
-  await sleep(320)
-  if (disposed) return
   scanVisible.value = true
+  await sleep(240)
+  if (disposed) return
+  qrVisible.value = true
+  await sleep(420)
+  if (disposed) return
+  linkVisible.value = true
   playing.value = false
   finished.value = true
 }
@@ -214,8 +234,8 @@ onUnmounted(() => {
   <section class="ld-section soft selfhost-section">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-violet">07 / Self-host</span>
-        <span class="ld-mono">diction.one</span>
+        <span class="ld-mono ld-accent ld-violet"><b class="ld-idx">08</b>Self-host</span>
+        <span class="ld-mono">MIT licensed · Docker</span>
       </div>
 
       <div class="split">
@@ -237,7 +257,7 @@ onUnmounted(() => {
               <span class="dot red" />
               <span class="dot yellow" />
               <span class="dot green" />
-              <span class="terminal-title">ondrej@home-server: ~/diction</span>
+              <span class="terminal-title">~/diction</span>
               <button type="button" class="replay-btn" :disabled="playing" @click="replay">Replay</button>
             </div>
 
@@ -259,16 +279,20 @@ onUnmounted(() => {
                 <span v-if="!finished" class="term-caret" aria-hidden="true" />
               </div>
 
+              <div v-if="scanVisible" class="term-line scan">{{ SCAN_LINE }}</div>
+
               <div v-if="qrVisible" class="qr-wrap">
                 <div class="qr-tile" role="img" aria-label="Illustrative pairing QR code">
                   <div class="qr-grid">
                     <span v-for="(on, i) in qrCells" :key="i" class="qr-cell" :class="{ on }" />
                   </div>
                 </div>
-                <span class="ld-mono qr-caption">Illustrative</span>
               </div>
 
-              <div v-if="scanVisible" class="term-line scan">{{ SCAN_LINE }}</div>
+              <template v-if="linkVisible">
+                <div v-for="(line, i) in LINK_LINES" :key="'l' + i" class="term-line output" :class="{ link: i === 1 }">{{ line }}</div>
+                <div v-for="(line, i) in TIP_LINES" :key="'t' + i" class="term-line output tip" :class="{ first: i === 0 }">{{ line }}</div>
+              </template>
             </div>
           </div>
         </div>
@@ -419,6 +443,20 @@ onUnmounted(() => {
 .term-line.scan {
   color: #e7e9ec;
   margin-top: 4px;
+  white-space: pre-wrap;
+}
+/* The pairing link is one long line in a real terminal; here it trails off. */
+.term-line.link {
+  color: #e7e9ec;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.term-line.tip {
+  margin-top: 0;
+  white-space: pre-wrap;
+}
+.term-line.tip.first {
+  margin-top: 8px;
 }
 
 .qr-wrap {
@@ -447,9 +485,6 @@ onUnmounted(() => {
 }
 .qr-cell.on {
   background: var(--ld-navy-950);
-}
-.qr-caption {
-  color: rgba(255, 255, 255, 0.4);
 }
 
 @keyframes term-blink {

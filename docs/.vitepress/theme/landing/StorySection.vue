@@ -21,23 +21,15 @@ interface Row {
   videoDark?: string
   /** Phone recordings are portrait: centered in the frame over a blurred copy. */
   portrait?: boolean
+  /** Things you can say, shown as chips under the lead. Same words as the App Store slides. */
+  actions?: string[]
+  /** Accent: blue is voice (default), violet is Writing Tools, orange is typing. */
+  tone?: 'violet' | 'orange'
 }
 
 const rows: Row[] = [
   {
     num: '01',
-    label: 'Type',
-    h2: 'A keyboard that keeps up.',
-    lead: 'A full keyboard with autocorrect I wrote from scratch, so it learns your names and jargon instead of fighting them.',
-    bullets: [
-      'Layouts for English, German, Czech, French and Spanish',
-      'Long-press accents in 47 languages',
-      'A key row you arrange yourself',
-    ],
-    image: '/placeholder/type.jpg',
-  },
-  {
-    num: '02',
     label: 'Speak',
     h2: 'Tap the mic. Text appears.',
     lead: 'Dictate in any app, in your language, for as long as you like. Fillers and false starts come out clean.',
@@ -45,16 +37,31 @@ const rows: Row[] = [
     image: '/placeholder/speak.jpg',
   },
   {
-    num: '03',
-    label: 'Fix',
+    num: '02',
+    label: 'Edit',
+    tone: 'violet',
     h2: "Talk to what's on screen.",
-    lead: 'Select a sentence and say what should change. Rewrite, translate, shorten, make it formal. The rest of the message stays as it was.',
+    lead: 'Select a sentence and say what should change. The rest of the message stays as it was.',
     bullets: [
       'Edits the selection, not the whole text',
-      'Translate on the spot',
+      'Hold the mic to edit by voice',
       'Sounds like you, not like AI',
     ],
     image: '/placeholder/fix.jpg',
+    actions: ['Translate', 'Format', 'Fix grammar', 'Rewrite', 'Summarize'],
+  },
+  {
+    num: '03',
+    label: 'Type',
+    tone: 'orange',
+    h2: 'A keyboard that keeps up.',
+    lead: 'A full keyboard on our own autocorrect engine, built to match the iPhone keyboard on accuracy and speed. It learns your names and jargon instead of correcting them away.',
+    bullets: [
+      'Layouts for English, German, Czech, French and Spanish',
+      'Long-press accents in 47 languages',
+      'A key row you arrange yourself',
+    ],
+    image: '/placeholder/type.jpg',
   },
 ]
 
@@ -68,12 +75,12 @@ function videoFor(row: Row): string | undefined {
   <section class="ld-section story-section">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-blue">02 / What it does</span>
-        <span class="ld-mono">diction.one</span>
+        <span class="ld-mono ld-accent ld-blue"><b class="ld-idx">02</b>What it does</span>
+        <span class="ld-mono">One keyboard, everywhere</span>
       </div>
 
       <div class="ld-center ld-head story-head" v-reveal>
-        <h2 class="ld-h2 story-title">Type. Speak. Fix.</h2>
+        <h2 class="ld-h2 story-title">Speak. Edit. Type.</h2>
         <p class="ld-lead">One keyboard that does the three things you do with text all day.</p>
       </div>
 
@@ -82,7 +89,7 @@ function videoFor(row: Row): string | undefined {
           v-for="(row, i) in rows"
           :key="row.num"
           class="story-row"
-          :class="{ flip: i % 2 === 1, violet: row.num === '03' }"
+          :class="[row.tone, { flip: i % 2 === 1 }]"
         >
           <div class="story-media-col" v-reveal>
             <div class="story-media" :class="{ 'kb-alt': i % 2 === 1 }">
@@ -115,13 +122,15 @@ function videoFor(row: Row): string | undefined {
           </div>
 
           <div class="story-text ld-stagger" v-reveal="{ delay: 100 }">
-            <p class="story-num ld-mono">
-              <span class="story-num-big">{{ row.num }}</span>
-              <span class="story-num-sep" aria-hidden="true"></span>
+            <p class="ld-item story-num" :class="row.tone">
+              <span class="ld-item-num">{{ row.num }}</span>
               <span>{{ row.label }}</span>
             </p>
             <h3 class="ld-h2 story-h2">{{ row.h2 }}</h3>
             <p class="ld-lead story-lead">{{ row.lead }}</p>
+            <ul v-if="row.actions" class="story-actions" aria-label="Things you can ask for">
+              <li v-for="a in row.actions" :key="a" class="story-action">{{ a }}</li>
+            </ul>
             <ul class="story-list">
               <li v-for="b in row.bullets" :key="b">
                 <span class="ld-check" aria-hidden="true"></span>
@@ -265,22 +274,10 @@ function videoFor(row: Row): string | undefined {
 
 /* ---------- Text column ---------- */
 .story-num {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 1.25rem;
-  color: var(--vp-c-text-3);
+  margin-bottom: 1.1rem;
 }
 
-.story-num-big {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--vp-c-brand-1);
-  letter-spacing: 0.04em;
-}
-
-/* Row 03 (Fix) is the Writing Tools side of the keyboard: violet, not blue */
-.story-row.violet .story-num-big,
+/* The Edit row is the Writing Tools side of the keyboard: violet, not blue */
 .story-row.violet .story-corner {
   color: var(--ld-violet);
 }
@@ -288,11 +285,6 @@ function videoFor(row: Row): string | undefined {
   background-color: var(--ld-violet);
 }
 
-.story-num-sep {
-  width: 28px;
-  height: 1px;
-  background: var(--vp-c-divider);
-}
 
 .story-h2 {
   font-size: clamp(1.9rem, 3.6vw, 2.75rem);
@@ -302,6 +294,37 @@ function videoFor(row: Row): string | undefined {
 .story-lead {
   font-size: clamp(1rem, 1.4vw, 1.125rem);
   max-width: 480px;
+}
+
+.story-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 1.25rem;
+}
+.story-actions .story-action {
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--vp-c-brand-1);
+  background: color-mix(in srgb, var(--vp-c-brand-1) 10%, transparent);
+}
+.story-row.violet .story-action {
+  color: var(--ld-violet);
+  background: var(--ld-violet-soft);
+}
+.story-row.orange .story-corner {
+  color: var(--ld-orange);
+}
+.story-row.orange .ld-check {
+  background-color: var(--ld-orange);
+}
+.story-row.orange .story-action {
+  color: var(--ld-orange);
+  background: var(--ld-orange-soft);
 }
 
 .story-list {
@@ -361,9 +384,6 @@ function videoFor(row: Row): string | undefined {
   }
   .story-num {
     margin-bottom: 0.9rem;
-  }
-  .story-num-big {
-    font-size: 0.8125rem;
   }
   .story-lead {
     max-width: none;

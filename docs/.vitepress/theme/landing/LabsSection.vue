@@ -50,35 +50,44 @@ const lines = [
 ]
 
 interface Tile {
-  layer: string
+  /** Layer in the stack this tile lights up on hover, if any. */
+  layer?: string
   label: string
+  title: string
   body: string
   href?: string
   cta?: string
 }
 
+// Each tile is one claim and what it means for the person reading. No
+// implementation detail: the /website rule is outcome, not engineering.
 const tiles: Tile[] = [
   {
     layer: 'ac',
-    label: 'In-house autocorrect engine',
-    body: 'A C++ correction engine with per-language word statistics, tuned on our own benchmarks.',
+    label: 'Autocorrect',
+    title: 'Our own autocorrect engine',
+    body: 'Written from scratch, not borrowed from iOS, so we can tune it to how you type. Your names and jargon stay as you wrote them.',
   },
   {
     layer: 'stt',
-    label: 'Models we convert ourselves',
-    body: 'Speech models converted and tuned for iPhone and servers, published on Hugging Face.',
+    label: 'Speech models',
+    title: 'Models we tune ourselves',
+    body: 'Open speech models we convert and tune to run fast on iPhone, offline, and on servers. All public, so you can see exactly what runs.',
     href: 'https://huggingface.co/DictionLabs',
-    cta: 'huggingface.co/DictionLabs',
+    cta: 'On Hugging Face →',
   },
   {
     layer: 'enc',
-    label: 'Encrypted transcripts',
-    body: 'AES-256-GCM on every transcript, keys exchanged with X25519, fresh per request.',
+    label: 'Encryption',
+    title: 'Encrypted on every transcript',
+    body: 'Sealed with AES-256-GCM and a fresh key for every request before it leaves the server. Your words never travel unprotected.',
   },
   {
-    layer: 'enc',
-    label: 'Key rotation',
-    body: 'Self-hosted pairing keys rotate; the gateway prints a new QR whenever you ask.',
+    label: 'Open source',
+    title: 'A server you can read',
+    body: 'The server behind self-hosting is MIT-licensed on GitHub. Read it, run it on your own hardware, change it.',
+    href: 'https://github.com/DictionLabs/Diction',
+    cta: 'On GitHub →',
   },
 ]
 
@@ -92,13 +101,12 @@ const pad = (n: number) => String(n).padStart(2, '0')
   <section class="ld-section ink ld-grid-bg labs">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-violet">05 / Diction Labs</span>
+        <span class="ld-mono ld-accent ld-violet"><b class="ld-idx">06</b>Diction Labs</span>
         <span class="ld-mono">Research, models, measurement</span>
       </div>
 
       <div class="labs-head" v-reveal="{ delay: 60 }">
-        <h2 class="ld-h2">An engineering project, not a wrapper.</h2>
-        <p class="ld-lead">Here is what sits under the keys.</p>
+        <h2 class="ld-h2">Built from the keys down.</h2>
       </div>
 
       <div class="labs-grid">
@@ -174,12 +182,13 @@ const pad = (n: number) => String(n).padStart(2, '0')
             :href="t.href"
             :target="t.href ? '_blank' : undefined"
             :rel="t.href ? 'noopener' : undefined"
-            @mouseenter="hl = t.layer"
+            @mouseenter="hl = t.layer ?? null"
             @mouseleave="hl = null"
-            @focusin="hl = t.layer"
+            @focusin="hl = t.layer ?? null"
             @focusout="hl = null"
           >
             <span class="ld-mono labs-tile-label">{{ t.label }}</span>
+            <h3 class="labs-tile-title">{{ t.title }}</h3>
             <p class="labs-tile-body">{{ t.body }}</p>
             <span v-if="t.cta" class="ld-mono labs-tile-cta">{{ t.cta }}</span>
           </component>
@@ -550,6 +559,14 @@ const pad = (n: number) => String(n).padStart(2, '0')
 }
 .labs-tile-label {
   color: #6db3ff;
+}
+.labs-tile-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: #fff;
 }
 .labs-tile-body {
   color: rgba(255, 255, 255, 0.72);

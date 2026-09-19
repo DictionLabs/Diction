@@ -16,7 +16,8 @@ interface Chip {
 
 interface Plan {
   key: string
-  index: string
+  num: string
+  label: string
   name: string
   price: string
   priceNote?: string
@@ -35,7 +36,8 @@ interface Plan {
 const plans: Plan[] = [
   {
     key: 'device',
-    index: '01 / On-device',
+    num: '01',
+    label: 'On-device',
     name: 'On your iPhone',
     price: 'Free',
     promise: 'Speech models run on the phone. Nothing leaves it.',
@@ -50,7 +52,8 @@ const plans: Plan[] = [
   },
   {
     key: 'server',
-    index: '02 / Self-hosted',
+    num: '02',
+    label: 'Self-hosted',
     name: 'On your server',
     price: 'Free',
     promise: 'Run your own speech model or LLM? Plug it into the keyboard.',
@@ -64,7 +67,8 @@ const plans: Plan[] = [
   },
   {
     key: 'cloud',
-    index: '03 / Cloud',
+    num: '03',
+    label: 'Cloud',
     name: 'Diction One',
     price: 'Subscription',
     priceNote: 'free trial included',
@@ -85,13 +89,13 @@ const plans: Plan[] = [
   <section class="ld-section ld-grid-bg modes-section">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-blue">04 / Where it runs</span>
-        <span class="ld-mono">diction.one</span>
+        <span class="ld-mono ld-accent ld-blue"><b class="ld-idx">04</b>Where it runs</span>
+        <span class="ld-mono">Free on-device and self-hosted</span>
       </div>
 
       <div class="modes-head" v-reveal="{ delay: 60 }">
-        <h2 class="ld-h2">Three ways to run it. Two are free.</h2>
-        <p class="ld-lead">Pick where your voice is processed. Change it any time.</p>
+        <h2 class="ld-h2">Your voice. Your choice.</h2>
+        <p class="ld-lead">On your iPhone, on your own server, or on ours. Switch any time.</p>
       </div>
 
       <div class="modes-grid ld-stagger" v-reveal="{ delay: 120 }">
@@ -101,7 +105,10 @@ const plans: Plan[] = [
           class="ld-card hover plan"
           :class="{ featured: p.featured }"
         >
-          <p class="ld-mono plan-index">{{ p.index }}</p>
+          <p class="ld-item plan-index">
+            <span class="ld-item-num">{{ p.num }}</span>
+            <span>{{ p.label }}</span>
+          </p>
           <h3 class="plan-name">{{ p.name }}</h3>
 
           <div class="plan-price">
@@ -227,8 +234,14 @@ const plans: Plan[] = [
 
 /* ---- Name, price, promise ---- */
 .plan-index {
-  color: var(--pl-fg3);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+/* The featured card inverts against the page theme, so its blue does too. */
+.plan.featured .plan-index {
+  --ld-item-color: #4da3ff;
+}
+.dark .plan.featured .plan-index {
+  --ld-item-color: #007aff;
 }
 .plan-name {
   font-size: clamp(1.35rem, 1.8vw, 1.6rem);

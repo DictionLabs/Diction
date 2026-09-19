@@ -20,20 +20,16 @@ function initial(author: string): string {
   return (author.trim().charAt(0) || 'A').toUpperCase()
 }
 
-// Short untranslated titles become the overline; translated reviews show the language note instead.
-function overline(review: CuratedReview): string | null {
-  if (review.translated) return `Translated from ${review.translated}`
-  const title = review.title.trim().replace(/[.!]+$/, '')
-  return title.length > 0 && title.length <= 32 ? title : null
-}
+// Avatars cycle through the three accents so the grid does not read as one block.
+const TONES = ['blue', 'violet', 'orange'] as const
+const tone = (i: number) => TONES[i % TONES.length]
 </script>
 
 <template>
   <section v-if="list.length > 0" class="ld-section testimonials">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono">08 / From the App Store</span>
-        <span class="ld-mono">apps.apple.com</span>
+        <span class="ld-mono ld-accent ld-blue"><b class="ld-idx">09</b>From the App Store</span>
       </div>
 
       <div class="t-head" v-reveal>
@@ -54,30 +50,24 @@ function overline(review: CuratedReview): string | null {
           v-reveal
         >
           <span class="quote-mark" aria-hidden="true">&ldquo;</span>
-          <span v-if="overline(featured)" class="overline ld-mono">{{ overline(featured) }}</span>
           <blockquote class="quote">&ldquo;{{ featured.excerpt }}&rdquo;</blockquote>
           <div class="author">
-            <span class="avatar" aria-hidden="true">{{ initial(featured.author) }}</span>
-            <span class="name">{{ featured.author }}</span>
-            <span class="source ld-mono">App Store &middot; {{ featured.storefront }}</span>
+            <span class="avatar" :class="tone(0)" aria-hidden="true">{{ initial(featured.author) }}</span>
           </div>
         </a>
 
         <div class="t-grid ld-stagger" v-reveal="{ delay: 120 }">
           <a
-            v-for="review in others"
+            v-for="(review, i) in others"
             :key="review.author"
             :href="APP_STORE_REVIEWS_URL"
             target="_blank"
             rel="noopener"
             class="ld-card hover t-card"
           >
-            <span v-if="overline(review)" class="overline ld-mono">{{ overline(review) }}</span>
             <blockquote class="quote">&ldquo;{{ review.excerpt }}&rdquo;</blockquote>
             <div class="author">
-              <span class="avatar" aria-hidden="true">{{ initial(review.author) }}</span>
-              <span class="name">{{ review.author }}</span>
-              <span class="source ld-mono">App Store &middot; {{ review.storefront }}</span>
+              <span class="avatar" :class="tone(i + 1)" aria-hidden="true">{{ initial(review.author) }}</span>
             </div>
           </a>
         </div>
@@ -155,12 +145,6 @@ function overline(review: CuratedReview): string | null {
   color: inherit;
   text-decoration: none !important;
 }
-.overline {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.5;
-}
 .quote {
   margin: 0;
   padding: 0;
@@ -202,7 +186,6 @@ function overline(review: CuratedReview): string | null {
   letter-spacing: -0.015em;
   text-wrap: balance;
 }
-.featured .overline,
 .featured .quote {
   position: relative;
 }
@@ -213,8 +196,7 @@ function overline(review: CuratedReview): string | null {
   align-items: center;
   gap: 10px;
   margin-top: auto;
-  padding-top: 0.875rem;
-  border-top: 1px solid var(--vp-c-divider);
+  padding-top: 0.25rem;
 }
 .avatar {
   display: inline-flex;
@@ -230,18 +212,12 @@ function overline(review: CuratedReview): string | null {
   font-weight: 700;
   line-height: 1;
 }
-.name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--vp-c-text-1);
+.avatar.violet {
+  background: var(--ld-violet-soft);
+  color: var(--ld-violet);
 }
-.source {
-  margin-left: auto;
-  flex: 0 0 auto;
-  font-size: 0.6875rem;
+.avatar.orange {
+  background: var(--ld-orange-soft);
+  color: var(--ld-orange);
 }
 </style>

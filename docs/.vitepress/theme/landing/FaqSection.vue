@@ -14,7 +14,7 @@ const faqs = [
   },
   {
     q: 'Which languages?',
-    a: '99 for dictation, auto-detected. 25 European languages use our most accurate engine.',
+    a: '99 for dictation. Pick yours, or turn on auto-detect. 25 European languages use our most accurate engine.',
   },
   {
     q: 'Is my voice stored?',
@@ -31,7 +31,7 @@ const faqs = [
   <section class="ld-section faq-landing">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono">09 / FAQ</span>
+        <span class="ld-mono ld-accent ld-violet"><b class="ld-idx">10</b>FAQ</span>
         <span class="ld-mono">Short answers</span>
       </div>
     </div>

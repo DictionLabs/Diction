@@ -13,6 +13,7 @@ import AppsMarquee from './.vitepress/theme/landing/AppsMarquee.vue'
 import StorySection from './.vitepress/theme/landing/StorySection.vue'
 import WritingToolsSection from './.vitepress/theme/landing/WritingToolsSection.vue'
 import ModesSection from './.vitepress/theme/landing/ModesSection.vue'
+import DictionOneSection from './.vitepress/theme/landing/DictionOneSection.vue'
 import LabsSection from './.vitepress/theme/landing/LabsSection.vue'
 import LanguagesSection from './.vitepress/theme/landing/LanguagesSection.vue'
 import SelfHostSection from './.vitepress/theme/landing/SelfHostSection.vue'
@@ -27,6 +28,7 @@ import FinalCta from './.vitepress/theme/landing/FinalCta.vue'
 <StorySection />
 <WritingToolsSection />
 <ModesSection />
+<DictionOneSection />
 <LabsSection />
 <LanguagesSection />
 <SelfHostSection />

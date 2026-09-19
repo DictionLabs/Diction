@@ -83,6 +83,10 @@ export default defineConfig({
   head: [
     // Preconnect for performance
     ['link', { rel: 'preconnect', href: 'https://www.googletagmanager.com' }],
+    // Display face for the landing page's big headings (.ld-h1 / .ld-h2).
+    ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
+    ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
+    ['link', { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@600;700&display=swap' }],
     ['link', { rel: 'dns-prefetch', href: 'https://www.googletagmanager.com' }],
     // Google Analytics 4
     ['script', { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-PCV64Y7GFM' }],

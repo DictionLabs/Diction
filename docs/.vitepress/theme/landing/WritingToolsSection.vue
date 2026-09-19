@@ -223,8 +223,8 @@ const tiles = [
   <section class="ld-section soft wt-section" ref="root">
     <div class="ld-container">
       <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-violet">03 / Writing Tools</span>
-        <span class="ld-mono">diction.one</span>
+        <span class="ld-mono ld-accent ld-violet"><b class="ld-idx">03</b>Writing Tools</span>
+        <span class="ld-mono">Your server or ours</span>
       </div>
 
       <div class="ld-head wt-head" v-reveal>
@@ -345,7 +345,7 @@ const tiles = [
             <template v-if="!fillersRemoved && !fixes && !listItems">unchanged</template>
             <template v-else>
               <span v-if="fillersRemoved">{{ fillersRemoved }} fillers removed</span>
-              <span v-if="fixes">{{ fixes }} fixes</span>
+              <span v-if="fixes">{{ fixes }} {{ fixes === 1 ? 'edit' : 'edits' }}</span>
               <span v-if="listItems">list of {{ listItems }}</span>
             </template>
           </div>
