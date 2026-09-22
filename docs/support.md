@@ -40,7 +40,7 @@ Go to **Settings > General > Keyboard > Keyboards > Diction** and enable **Allow
 
 ### On-device transcription not working
 
-Make sure you have downloaded a speech model in the Diction app. The Standard model downloads automatically on first launch. Check the On-Device section in the app to confirm.
+Make sure you have downloaded a speech model. Open the On-Device section in the Diction app and pick one. Nothing downloads until you ask for it, so a fresh install has no model until you choose.
 
 ### Transcription fails or times out
 
@@ -66,7 +66,7 @@ You can cancel at any time. Your subscription remains active until the end of th
 <summary>Is it really free?</summary>
 <div>
 
-On-device and self-hosted modes are completely free. No word limits, no daily caps. Diction One unlocks cloud transcription with the highest accuracy, plus Writing Tools with per-app tones and a custom dictionary. Free trial included.
+On-device and self-hosted modes are completely free, every on-device model included. No word limits, no daily caps. Diction One unlocks cloud transcription with the highest accuracy, plus Writing Tools with per-app tones and a custom dictionary. Free trial included.
 
 </div>
 </details>

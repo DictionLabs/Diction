@@ -14,7 +14,7 @@ Download a model once and dictate anywhere. On a plane, in the underground, in a
 
 ## How It Works
 
-1. Download a speech model in the Diction app (one-time, happens automatically on first launch).
+1. Pick a speech model in the Diction app and download it. One time, then it is yours.
 2. Switch to the Diction keyboard in any text field.
 3. Tap the mic and speak. Transcription happens on your iPhone.
 4. Text is inserted. Audio is discarded from memory. Nothing is saved.
@@ -26,8 +26,7 @@ No account required. No internet required. No setup beyond the initial download.
 - **Complete privacy**: audio is processed in memory and discarded immediately. Nothing is transmitted anywhere.
 - **Works offline**: no Wi-Fi, no cellular, no connection of any kind needed.
 - **Multilingual**: most on-device models support 99 languages. Switch languages in settings.
-- **Two free models**: Standard and Advanced on-device models are free with no word limits, no daily caps, no restrictions.
-- **Premium model**: highest accuracy model available with a Diction One subscription. See pricing in the app.
+- **Every model is free**: all of them, including the most accurate one. No subscription, no word limits, no daily caps. Download whichever fits your phone and your language.
 
 ## Best For
 
