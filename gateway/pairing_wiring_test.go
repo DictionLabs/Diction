@@ -177,6 +177,7 @@ func TestPairing_TextRoutesNotOverAdvertisedToKeylessCallers(t *testing.T) {
 		Capabilities struct {
 			LLM         bool `json:"llm"`
 			TextProcess bool `json:"text_process"`
+			TextPredict bool `json:"text_predict"`
 		} `json:"capabilities"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
@@ -187,6 +188,9 @@ func TestPairing_TextRoutesNotOverAdvertisedToKeylessCallers(t *testing.T) {
 	}
 	if resp.Capabilities.TextProcess {
 		t.Fatal("text_process must be false for a keyless caller that would get 403")
+	}
+	if resp.Capabilities.TextPredict {
+		t.Fatal("text_predict must be false for a keyless caller that would get 403")
 	}
 	// A keyless call really does 403, which is what the flag now reflects.
 	req = httptest.NewRequest(http.MethodPost, "/v1/text/process", nil)
@@ -214,6 +218,7 @@ func TestPairing_TextRoutesAdvertisedToKeyedCaller(t *testing.T) {
 	var resp struct {
 		Capabilities struct {
 			TextProcess bool `json:"text_process"`
+			TextPredict bool `json:"text_predict"`
 		} `json:"capabilities"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
@@ -221,6 +226,9 @@ func TestPairing_TextRoutesAdvertisedToKeyedCaller(t *testing.T) {
 	}
 	if !resp.Capabilities.TextProcess {
 		t.Fatal("a caller with a valid pairing key must see text_process:true")
+	}
+	if !resp.Capabilities.TextPredict {
+		t.Fatal("a caller with a valid pairing key must see text_predict:true")
 	}
 }
 
