@@ -11,6 +11,7 @@ const features = [
   'Our most accurate speech models',
   'Words appear live as you talk',
   'Writing Tools: clean up, format, edit by voice',
+  'Say "new paragraph" or "comma" and it happens',
   'Transcripts encrypted with AES-256-GCM',
   'Nothing to install or run',
 ]

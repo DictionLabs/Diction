@@ -216,6 +216,12 @@ const tiles = [
     before: 'one two three',
     after: '1. 2. 3.',
   },
+  {
+    label: 'By voice',
+    line: 'Say "new paragraph", "new line" or "exclamation mark"',
+    before: 'thanks exclamation mark',
+    after: 'Thanks!',
+  },
 ]
 </script>
 
@@ -624,7 +630,7 @@ const tiles = [
 /* ---------- Tiles ---------- */
 .wt-tiles {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 1rem;
   margin-top: 1.25rem;
 }
@@ -698,6 +704,12 @@ const tiles = [
 }
 
 /* ---------- Mobile ---------- */
+@media (max-width: 1100px) {
+  .wt-tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 860px) {
   .wt-panel {
     grid-template-columns: 1fr;
