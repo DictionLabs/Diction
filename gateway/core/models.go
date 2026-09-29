@@ -31,7 +31,6 @@ type capabilities struct {
 	LLM         bool `json:"llm"`
 	TextProcess bool `json:"text_process"`
 	TextSuggest bool `json:"text_suggest"`
-	TextPredict bool `json:"text_predict"` // /v1/text/predict exists; an older gateway omits it
 	Pairing     bool `json:"pairing"`      // /v1/auth/key exists and gateway keys are accepted
 	KeyRotation bool `json:"key_rotation"` // /v1/auth/rotate usable (false when key is env-pinned)
 }
@@ -123,7 +122,6 @@ func (g *Gateway) ModelsHandler() http.HandlerFunc {
 				LLM:         g.llmEnabled,
 				TextProcess: g.llmEnabled,
 				TextSuggest: g.llmEnabled,
-				TextPredict: g.llmEnabled,
 				Pairing:     g.pairingEnabled,
 				KeyRotation: g.keyRotationEnabled,
 			},

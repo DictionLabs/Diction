@@ -53,8 +53,7 @@ Content-Type: application/json
   "capabilities": {
     "llm": true,
     "text_process": true,
-    "text_suggest": true,
-    "text_predict": true
+    "text_suggest": true
   }
 }
 ```
@@ -66,7 +65,6 @@ Content-Type: application/json
 | `llm` | bool | LLM_BASE_URL + LLM_MODEL are set and LLM is active |
 | `text_process` | bool | /v1/text/process is open (llm=true AND TEXT_ROUTES_OPEN=true, or auth=true) |
 | `text_suggest` | bool | /v1/text/suggest is open (same condition as text_process) |
-| `text_predict` | bool | /v1/text/predict is open (same condition as text_process) |
 | `text_summarize` | bool | /v1/text/summarize is open (same condition as text_process) |
 | `formatting` | bool | the `formatting` context key is honoured on cleanup (llm=true) |
 
@@ -216,46 +214,6 @@ Response 503:
   {"error": "llm_not_configured"}
 ```
 
-### POST /v1/text/predict
-
-**Plaintext JSON -- no E2E encryption. Bearer token optional.**
-
-Next-word prediction for the keyboard: asks the LLM for the three most likely
-next words after the text before the cursor, most likely first. The text ends at
-a word boundary, so the model predicts the following word rather than completing
-the last one.
-
-The gateway keeps only the last 300 characters (runes) of `text`. Each
-prediction is a single word with surrounding punctuation trimmed (apostrophes
-and hyphens inside a word stay), deduplicated case-insensitively, at most 3.
-`language` is an optional hint.
-
-Always soft-fails: any LLM error or unparseable reply returns 200 with
-`{"predictions":[]}`. Blank text returns the same without calling the LLM.
-The text and predictions are never logged.
-
-Same auth requirements as /v1/text/process.
-
-```
-Request:
-  POST /v1/text/predict
-  Content-Type: application/json
-
-  {
-    "text": "<text before the cursor>",
-    "language": "en"
-  }
-
-Response 200:
-  {"predictions": ["much", "well", "kindly"]}
-
-Response 400:
-  {"error": "invalid body"}
-
-Response 503:
-  {"error": "llm_not_configured"}
-```
-
 ### POST /v1/text/summarize
 
 **Plaintext JSON -- no E2E encryption. Bearer token optional.**
@@ -351,7 +309,6 @@ Both LLM_BASE_URL and LLM_MODEL must be set or the LLM feature stays off.
 | `LLM_PROMPT_SUGGEST` | (see default) | System prompt for suggest intent |
 | `LLM_PROMPT_FORMATTING` | built-in | Appended to `LLM_PROMPT` when the client requests formatting |
 | `LLM_PROMPT_SUMMARY` | built-in | System prompt for /v1/text/summarize |
-| `LLM_PROMPT_PREDICT` | built-in | System prompt for /v1/text/predict. Must ask for JSON `{"predictions":[...]}` or a bare array |
 | `TEXT_ROUTES_OPEN` | `false` | Set to `true` to open /v1/text/* when AUTH_ENABLED=false |
 
 ## Default Prompts

@@ -319,9 +319,8 @@ func TestModelsHandler_EmptyProvider_DefaultsToWhisper(t *testing.T) {
 }
 
 // The text capabilities follow llmEnabled. Clients decode each key by name, so the existing keys
-// stay exactly as they are and text_predict is added beside them: an iOS build gates next-word
-// prediction on a self-hosted gateway on this key, and an older gateway without it reads as
-// unable.
+// stay exactly as they are. text_predict was removed with /v1/text/predict (2026-09-29): an iOS
+// build that still reads it treats its absence as unable.
 func TestModelsHandler_TextCapabilities(t *testing.T) {
 	for _, llm := range []bool{false, true} {
 		g := testGateway()
@@ -337,7 +336,7 @@ func TestModelsHandler_TextCapabilities(t *testing.T) {
 			t.Fatalf("decode: %v", err)
 		}
 		want := map[string]bool{
-			"llm": llm, "text_process": llm, "text_suggest": llm, "text_predict": llm,
+			"llm": llm, "text_process": llm, "text_suggest": llm,
 			"pairing": false, "key_rotation": false,
 		}
 		if len(resp.Capabilities) != len(want) {
