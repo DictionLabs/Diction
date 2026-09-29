@@ -1041,6 +1041,14 @@ func TestTranscriptionHandler_E2EEncryptFails_ReturnsPlainText(t *testing.T) {
 func TestTranscriptionHandler_MalformedBackendURL_Returns400(t *testing.T) {
 	// Backend exists but its URL is malformed — resolveBackend returns (nil, nil),
 	// indistinguishable from "no matching model". Locks in the 400 response.
+	// Also the HTTP-path equivalent of the WS pre-upgrade 503's silent branch
+	// (see .claude/bow/stt-failure-rate-2026-09-13.md): this used to return
+	// 400 with an empty X-Diction-Route-Model header and no errors event.
+	events, restoreErr := withCapturedOnError(t)
+	defer restoreErr()
+	calls, restoreFailed := withCapturedOnRequestFailed(t)
+	defer restoreFailed()
+
 	g := &Gateway{
 		backends:     []Backend{{Name: "broken", URL: "://\x00invalid", Aliases: []string{"broken"}}},
 		health:       newHealthState(),
@@ -1056,6 +1064,15 @@ func TestTranscriptionHandler_MalformedBackendURL_Returns400(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("status: want 400, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("X-Diction-Route-Model"); got != "broken" {
+		t.Errorf("X-Diction-Route-Model: want broken, got %q", got)
+	}
+	if len(*events) != 1 || (*events)[0].Kind != "stt_route_fail" {
+		t.Errorf("OnError: want one stt_route_fail event, got %+v", *events)
+	}
+	if len(*calls) != 1 || (*calls)[0] != errTypeSTTError {
+		t.Errorf("OnRequestFailed: want one %q call, got %v", errTypeSTTError, *calls)
 	}
 }
 
@@ -1563,8 +1580,10 @@ func TestTranscriptionHandler_EditIntentPostProcessFailure(t *testing.T) {
 }
 
 // TestTranscriptionHandler_NonEditPostProcessFailureKeepsRawFallback is the
-// regression pin: cleanup (no edit intent) + postProcess error → raw transcript.
+// regression pin: cleanup (no edit intent) + postProcess error → raw transcript,
+// silently — no status, no error event, one enhance skip on the request row.
 func TestTranscriptionHandler_NonEditPostProcessFailureKeepsRawFallback(t *testing.T) {
+	signals := captureCleanupSignals(t)
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"text":"raw transcript"}`)
@@ -1599,7 +1618,17 @@ func TestTranscriptionHandler_NonEditPostProcessFailureKeepsRawFallback(t *testi
 	if !strings.Contains(body2, "raw transcript") {
 		t.Errorf("expected raw transcript fallback, got: %s", body2)
 	}
-	if strings.Contains(body2, "status") {
-		t.Errorf("cleanup fallback must not include 'status' field, got: %s", body2)
+	// The raw text arrives exactly as if Clean up were off: no status for the client
+	// to act on (owner decision 2026-09-27 — a cleanup that is not on time is silent).
+	var parsed map[string]string
+	if err := json.Unmarshal([]byte(body2), &parsed); err != nil {
+		t.Fatalf("unmarshal: %v (%s)", err, body2)
+	}
+	if _, has := parsed["status"]; has {
+		t.Errorf("status: want none on a cleanup that did not land, got %q", parsed["status"])
+	}
+	signals.assertSilentSkip(t, EnhanceSkipError)
+	if parsed["mode"] != "" {
+		t.Errorf("mode: want empty (no post-processing ran), got %q", parsed["mode"])
 	}
 }

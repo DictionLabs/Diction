@@ -83,6 +83,14 @@ type Gateway struct {
 	pairingEnabled     bool
 	keyRotationEnabled bool
 
+	// langCapabilityRouting gates whether ModelForLanguage's health fallbacks
+	// consult Backend.Languages. Default on; DICTION_LANG_CAPABILITY_ROUTING=false
+	// reverts to the pre-2026-09 behaviour (any healthy backend is offered
+	// regardless of language) as a one-restart rollback path, given the
+	// 2026-08-26 reconnect-storm precedent recorded in
+	// .claude/bow/stt-failure-rate-2026-09-13.md.
+	langCapabilityRouting bool
+
 	// streamIdleTimeout bounds inter-frame gap on /v1/audio/stream. See Config.
 	// Tests override the field directly after construction.
 	streamIdleTimeout time.Duration
@@ -93,6 +101,13 @@ type Gateway struct {
 	// enhance and e2e indicate whether LLM post-processing and E2E encryption were requested.
 	// Leave nil in community builds.
 	OnTranscription func(ctx context.Context, model string, whisperMs int64, chars int, durationMs int64, enhance, e2e bool)
+
+	// OnAudioReceived is an optional hook called once the gateway knows how
+	// much audio it holds, regardless of outcome — unlike OnTranscription,
+	// which only fires on success. This is what lets a failed dictation be
+	// told apart from one where nothing was ever recorded. Leave nil in
+	// community builds.
+	OnAudioReceived func(ctx context.Context, durationMs int64)
 
 	// DeviceHashFromContext returns the SHA-256 hex device hash for the current request.
 	// Wired by the private gateway main() to read from the request log entry; nil in community builds.
@@ -124,19 +139,20 @@ func NewGateway(cfg Config) *Gateway {
 		idle = defaultStreamIdleTimeout
 	}
 	g := &Gateway{
-		backends:           backends,
-		health:             newHealthState(),
-		defaultModel:       defaultModel,
-		fallbackModel:      cfg.FallbackModel,
-		englishModel:       cfg.EnglishModel,
-		parakeetModel:      cfg.ParakeetModel,
-		cohereModel:        cfg.CohereModel,
-		maxBodySize:        cfg.MaxBodySize,
-		streamIdleTimeout:  idle,
-		profileStore:       cfg.ProfileStore,
-		llmEnabled:         cfg.LLMEnabled,
-		pairingEnabled:     cfg.PairingEnabled,
-		keyRotationEnabled: cfg.KeyRotationEnabled,
+		backends:              backends,
+		health:                newHealthState(),
+		defaultModel:          defaultModel,
+		fallbackModel:         cfg.FallbackModel,
+		englishModel:          cfg.EnglishModel,
+		parakeetModel:         cfg.ParakeetModel,
+		cohereModel:           cfg.CohereModel,
+		maxBodySize:           cfg.MaxBodySize,
+		streamIdleTimeout:     idle,
+		profileStore:          cfg.ProfileStore,
+		llmEnabled:            cfg.LLMEnabled,
+		pairingEnabled:        cfg.PairingEnabled,
+		keyRotationEnabled:    cfg.KeyRotationEnabled,
+		langCapabilityRouting: EnvBoolOrDefault("DICTION_LANG_CAPABILITY_ROUTING", true),
 	}
 	g.startHealthChecker()
 	return g

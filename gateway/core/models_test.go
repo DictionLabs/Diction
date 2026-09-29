@@ -318,6 +318,39 @@ func TestModelsHandler_EmptyProvider_DefaultsToWhisper(t *testing.T) {
 	}
 }
 
+// The text capabilities follow llmEnabled. Clients decode each key by name, so the existing keys
+// stay exactly as they are and text_predict is added beside them: an iOS build gates next-word
+// prediction on a self-hosted gateway on this key, and an older gateway without it reads as
+// unable.
+func TestModelsHandler_TextCapabilities(t *testing.T) {
+	for _, llm := range []bool{false, true} {
+		g := testGateway()
+		g.llmEnabled = llm
+		req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+		rr := httptest.NewRecorder()
+		g.ModelsHandler()(rr, req)
+
+		var resp struct {
+			Capabilities map[string]bool `json:"capabilities"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		want := map[string]bool{
+			"llm": llm, "text_process": llm, "text_suggest": llm, "text_predict": llm,
+			"pairing": false, "key_rotation": false,
+		}
+		if len(resp.Capabilities) != len(want) {
+			t.Errorf("llm=%v: capabilities = %v, want exactly %v", llm, resp.Capabilities, want)
+		}
+		for k, v := range want {
+			if got, ok := resp.Capabilities[k]; !ok || got != v {
+				t.Errorf("llm=%v: capabilities[%q] = %v (present %v), want %v", llm, k, got, ok, v)
+			}
+		}
+	}
+}
+
 func TestModelsHandler_PairingCapabilities(t *testing.T) {
 	cases := []struct {
 		name                 string

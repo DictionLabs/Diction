@@ -1210,8 +1210,13 @@ func TestStreamingHandler_NoAudio_TriggersOnRequestFailed(t *testing.T) {
 	if len(*calls) == 0 {
 		t.Fatal("OnRequestFailed not called for no-audio path")
 	}
-	if (*calls)[0] != errTypeSTTError {
-		t.Errorf("errorType: want %q, got %q", errTypeSTTError, (*calls)[0])
+	// Changed 2026-09: no-audio gets its own error_type (errTypeNoAudio), not
+	// errTypeSTTError — it is a distinct classification specifically so it
+	// can be measured and judged apart from a real backend fault. See
+	// TestStreamingHandler_NoAudio_EmitsEventWithSocketMetrics for the fuller
+	// assertion (kind, LatencyMs, InputChars).
+	if (*calls)[0] != errTypeNoAudio {
+		t.Errorf("errorType: want %q, got %q", errTypeNoAudio, (*calls)[0])
 	}
 }
 
@@ -1634,8 +1639,10 @@ func TestStreamingHandler_EditSelectedIntentPostProcessFailure(t *testing.T) {
 }
 
 // TestStreamingHandler_NonEditPostProcessFailureKeepsRawFallback is the regression
-// pin: no intent + failing postProcess → raw transcript returned, no status field.
+// pin: no intent + failing postProcess → raw transcript returned silently: no status,
+// no error event, one enhance skip on the request row.
 func TestStreamingHandler_NonEditPostProcessFailureKeepsRawFallback(t *testing.T) {
+	signals := captureCleanupSignals(t)
 	postProcess := func(_ context.Context, _, _, _ string) (string, string, error) {
 		return "", "", fmt.Errorf("cleanup error")
 	}
@@ -1649,7 +1656,160 @@ func TestStreamingHandler_NonEditPostProcessFailureKeepsRawFallback(t *testing.T
 	if result["text"] != "raw transcript text" {
 		t.Errorf("text: want 'raw transcript text', got %q", result["text"])
 	}
-	if result["status"] != "" {
-		t.Errorf("status: want empty (no status on cleanup fallback), got %q", result["status"])
+	if _, has := result["status"]; has {
+		t.Errorf("status: want none on a cleanup that did not land, got %q", result["status"])
+	}
+	signals.assertSilentSkip(t, EnhanceSkipError)
+}
+
+// --- Commit D: silent-branch instrumentation (2026-09) ---
+// See .claude/bow/stt-failure-rate-2026-09-13.md and
+// .claude/plans/stt-failure-visibility-plan.md.
+
+func TestStreamingHandler_NoAudio_EmitsEventWithSocketMetrics(t *testing.T) {
+	// Not parallel-safe: mutates core.OnError / core.OnRequestFailed.
+	events, restoreErr := withCapturedOnError(t)
+	defer restoreErr()
+	calls, restoreFailed := withCapturedOnRequestFailed(t)
+	defer restoreFailed()
+
+	srv, _ := startStreamingServer(t, "ok", http.StatusOK)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+
+	// Send done with no preceding audio — the branch under test.
+	done, _ := json.Marshal(map[string]string{"action": "done"})
+	conn.Write(ctx, websocket.MessageText, done)
+
+	// Server closes with wsCloseNoAudio; wait for the read to fail as proof.
+	_, _, err = conn.Read(ctx)
+	if err == nil {
+		t.Fatal("expected connection to be closed by server")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(*events) == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(*events) != 1 {
+		t.Fatalf("OnError calls: want 1, got %d: %+v", len(*events), *events)
+	}
+	ev := (*events)[0]
+	if ev.Kind != "ws_no_audio" {
+		t.Errorf("Kind: want ws_no_audio, got %q", ev.Kind)
+	}
+	if ev.Source != "streaming" {
+		t.Errorf("Source: want streaming, got %q", ev.Source)
+	}
+	// InputChars is repurposed as frame count on this kind — no binary
+	// frames were ever sent, so it must be 0.
+	if ev.InputChars != 0 {
+		t.Errorf("InputChars (frame count): want 0, got %d", ev.InputChars)
+	}
+	// LatencyMs is repurposed as socket-open duration — must be present
+	// (non-negative; a fresh connection closed quickly should read near-zero,
+	// but the only real invariant here is that it was actually recorded).
+	if ev.LatencyMs < 0 {
+		t.Errorf("LatencyMs (socket-open ms): want >= 0, got %d", ev.LatencyMs)
+	}
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(*calls) == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("OnRequestFailed calls: want 1, got %d: %v", len(*calls), *calls)
+	}
+	if (*calls)[0] != errTypeNoAudio {
+		t.Errorf("errorType: want %q, got %q", errTypeNoAudio, (*calls)[0])
+	}
+}
+
+func TestStreamingHandler_PreUpgrade503_EmitsRouteFailAndSetsHeader(t *testing.T) {
+	// Not parallel-safe: mutates core.OnError / core.OnRequestFailed.
+	events, restoreErr := withCapturedOnError(t)
+	defer restoreErr()
+	calls, restoreFailed := withCapturedOnRequestFailed(t)
+	defer restoreFailed()
+
+	srv, g := startStreamingServer(t, "ok", http.StatusOK)
+	g.health.set("small", false) // demoted — the pre-upgrade 503 branch
+
+	resp, err := http.Get(srv.URL + "/v1/audio/stream")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status: want 503, got %d", resp.StatusCode)
+	}
+	// The row must carry the backend it wanted — before this fix, this
+	// header was never set on this branch, so stt_model read as unknown.
+	if got := resp.Header.Get("X-Diction-Route-Model"); got != "small" {
+		t.Errorf("X-Diction-Route-Model: want small, got %q", got)
+	}
+
+	if len(*events) != 1 {
+		t.Fatalf("OnError calls: want 1, got %d: %+v", len(*events), *events)
+	}
+	if (*events)[0].Kind != "stt_route_fail" {
+		t.Errorf("Kind: want stt_route_fail, got %q", (*events)[0].Kind)
+	}
+	if (*events)[0].HTTPStatus != http.StatusServiceUnavailable {
+		t.Errorf("HTTPStatus: want 503, got %d", (*events)[0].HTTPStatus)
+	}
+
+	if len(*calls) != 1 {
+		t.Fatalf("OnRequestFailed calls: want 1, got %d: %v", len(*calls), *calls)
+	}
+	if (*calls)[0] != errTypeSTTError {
+		t.Errorf("errorType: want %q, got %q", errTypeSTTError, (*calls)[0])
+	}
+}
+
+func TestStreamingHandler_ClientGoneAfterSuccess_NotCountedAsFailure(t *testing.T) {
+	// Not parallel-safe: mutates core.OnError / core.OnRequestFailed.
+	events, restoreErr := withCapturedOnError(t)
+	defer restoreErr()
+	calls, restoreFailed := withCapturedOnRequestFailed(t)
+	defer restoreFailed()
+
+	srv, _ := startStreamingServer(t, "transcribed", http.StatusOK)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+
+	_ = conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
+	done, _ := json.Marshal(map[string]string{"action": "done"})
+	_ = conn.Write(ctx, websocket.MessageText, done)
+	// Walk away immediately instead of reading the result, racing the
+	// server's final conn.Write. Whichever side of the race is hit, the
+	// invariant under test holds: a successful transcription must never
+	// count as a failed request just because the client left.
+	conn.CloseNow()
+
+	time.Sleep(200 * time.Millisecond)
+
+	for _, c := range *calls {
+		if c == errTypeSTTError {
+			t.Errorf("OnRequestFailed(%q) fired after a successful transcription — a client that walked away must not inflate the failure rate: %v", errTypeSTTError, *calls)
+		}
+	}
+	for _, ev := range *events {
+		if ev.Kind == "ws_write" && ev.Hint != "client gone before result write" {
+			t.Errorf("unexpected ws_write hint: %q", ev.Hint)
+		}
 	}
 }

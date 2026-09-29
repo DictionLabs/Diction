@@ -106,18 +106,87 @@ func TestModelForLanguage_HealthFallback_DefaultDown(t *testing.T) {
 	}
 }
 
-func TestModelForLanguage_HealthFallback_TurboDown(t *testing.T) {
-	// large-v3-turbo is down, non-EU language → fall back to canary (better than nothing).
-	g := &Gateway{
-		defaultModel:  "canary-v2",
-		fallbackModel: "large-v3-turbo",
-		health:        newHealthState(),
+// languageCapableTestGateway builds a Gateway with real Backend entries (as
+// opposed to the bare-struct Gateways above), so backendServes/qualifies has
+// something to resolve. canary-v2 declares the 25 EU languages and requires
+// an explicit code (mirrors DefaultBackends()); large-v3-turbo declares no
+// Languages (nil = serves everything), matching Whisper's real coverage.
+func languageCapableTestGateway() *Gateway {
+	return &Gateway{
+		backends: []Backend{
+			{Name: "canary-v2", Aliases: []string{"canary-v2"}, Languages: langSet(euLanguages), NeedsExplicitLanguage: true},
+			{Name: "large-v3-turbo", Aliases: []string{"large-v3-turbo"}},
+		},
+		defaultModel:          "canary-v2",
+		fallbackModel:         "large-v3-turbo",
+		health:                newHealthState(),
+		langCapabilityRouting: true,
 	}
+}
+
+// TestModelForLanguage_HealthFallback_TurboDown previously asserted the bug
+// this plan fixes: with large-v3-turbo down, a non-EU language fell through
+// to canary-v2, which cannot serve it and would return a guaranteed 400 (see
+// .claude/bow/stt-failure-rate-2026-09-13.md — 218 such 400s measured live).
+// The fix: canary-v2 is never offered for a language outside its declared
+// set, so the tier keeps returning the preferred (still-demoted) model
+// instead of a wrong-but-healthy one.
+func TestModelForLanguage_HealthFallback_TurboDown(t *testing.T) {
+	g := languageCapableTestGateway()
+	g.health.set("canary-v2", true)
+	g.health.set("large-v3-turbo", false)
+
+	for _, lang := range []string{"ja", "zh", "ko", "ar"} {
+		if got := g.ModelForLanguage(lang); got != "large-v3-turbo" {
+			t.Errorf("ModelForLanguage(%q) = %q, want large-v3-turbo (canary-v2 cannot serve this language even though it is healthy)", lang, got)
+		}
+	}
+}
+
+// TestModelForLanguage_HealthFallback_TurboDown_PolishStillFallsBack proves
+// the capability check is a filter, not a blanket "never fall back": Polish
+// is EU-set (nonEUModelOverrides routes it to turbo normally), and canary-v2
+// genuinely does serve it, so with turbo down the fallback to canary must
+// still fire.
+func TestModelForLanguage_HealthFallback_TurboDown_PolishStillFallsBack(t *testing.T) {
+	g := languageCapableTestGateway()
+	g.health.set("canary-v2", true)
+	g.health.set("large-v3-turbo", false)
+
+	if got := g.ModelForLanguage("pl"); got != "canary-v2" {
+		t.Errorf("ModelForLanguage(pl) = %q, want canary-v2 (it does serve Polish)", got)
+	}
+}
+
+// TestModelForLanguage_HealthFallback_TurboDown_AutoNeverGoesToCanary proves
+// language=auto is treated as requiring native language ID: canary cannot
+// perform its own LID (NeedsExplicitLanguage), so even though it is healthy
+// and turbo is not, auto must not be routed to it. This is what prevents the
+// literal "auto" sentinel from reaching canary and 400ing (measured 54 times
+// before this fix).
+func TestModelForLanguage_HealthFallback_TurboDown_AutoNeverGoesToCanary(t *testing.T) {
+	g := languageCapableTestGateway()
+	g.health.set("canary-v2", true)
+	g.health.set("large-v3-turbo", false)
+
+	if got := g.ModelForLanguage("auto"); got != "large-v3-turbo" {
+		t.Errorf("ModelForLanguage(auto) = %q, want large-v3-turbo (canary cannot do its own language ID)", got)
+	}
+}
+
+// TestModelForLanguage_CapabilityRouting_KillSwitch asserts the
+// DICTION_LANG_CAPABILITY_ROUTING=false rollback path: with capability
+// routing disabled, behaviour reverts to health-only fallback (the old,
+// buggy-for-non-EU-languages behaviour), so the revert is known to work
+// before it is ever needed.
+func TestModelForLanguage_CapabilityRouting_KillSwitch(t *testing.T) {
+	g := languageCapableTestGateway()
+	g.langCapabilityRouting = false
 	g.health.set("canary-v2", true)
 	g.health.set("large-v3-turbo", false)
 
 	if got := g.ModelForLanguage("ja"); got != "canary-v2" {
-		t.Errorf("got %q, want canary-v2 (health fallback)", got)
+		t.Errorf("ModelForLanguage(ja) with capability routing off = %q, want canary-v2 (old health-only behaviour)", got)
 	}
 }
 

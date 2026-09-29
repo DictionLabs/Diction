@@ -286,6 +286,27 @@ func TestDefaultBackends_NonEmpty(t *testing.T) {
 	}
 }
 
+// TestDefaultBackends_LargeV3TurboForwardsDeepdml guards against the 2026-08-13 drift where
+// ForwardModel was pointed at DictionLabs/whisper-large-v3-turbo-ct2 (a mirror repo that was
+// missing preprocessor_config.json, crashing every transcription with a mel-bin mismatch —
+// see .claude/bow/error-stt-stt_backend_5xx.md and .claude/plans/turbo-mel-mismatch-fix-plan.md).
+// deepdml/faster-whisper-large-v3-turbo-ct2 is the always-correctly-configured, pre-warmed
+// resource; CanonicalID stays the DictionLabs id for /v1/models branding, which is intentional
+// and independent of ForwardModel.
+func TestDefaultBackends_LargeV3TurboForwardsDeepdml(t *testing.T) {
+	for _, b := range DefaultBackends() {
+		if b.Name != "large-v3-turbo" {
+			continue
+		}
+		want := "deepdml/faster-whisper-large-v3-turbo-ct2"
+		if b.ForwardModel != want {
+			t.Errorf("large-v3-turbo ForwardModel: want %q, got %q", want, b.ForwardModel)
+		}
+		return
+	}
+	t.Error("large-v3-turbo backend not found in DefaultBackends")
+}
+
 // --- NewGateway ---
 
 func TestNewGateway_CreatesWithBackends(t *testing.T) {
