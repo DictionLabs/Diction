@@ -342,7 +342,14 @@ func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, int
 	// verbatim (KeyboardSessionBridge.applyEditResult), so a model that echoes it would type it
 	// into the document. Strip on every intent: it can only appear if we or the model put it
 	// there. Same guard as the cloud's context-edit path.
-	return strings.ReplaceAll(result, cursorMarker, ""), nil
+	result = strings.ReplaceAll(result, cursorMarker, "")
+	if intent == "edit" || intent == "edit-selected" {
+		return result, nil
+	}
+	// A spoken "new paragraph" / "new line" ending the dictation becomes a trailing break that
+	// processWithPrompt's TrimSpace erases; restore it from the transcript. Identity when the
+	// model kept the phrase as words.
+	return core.ApplySpokenTrailingBreak(text, result, tc.After), nil
 }
 
 // cursorEditUserMsg builds the message for a cursor edit: the text around the cursor is the
