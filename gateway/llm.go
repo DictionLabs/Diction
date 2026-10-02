@@ -230,12 +230,9 @@ func (c llmConfig) postProcessor() func(ctx context.Context, transcript, context
 // (KeyboardCommands.swift), and the cloud build has sent it in production for a long time.
 const cursorMarker = "‸"
 
-// Context caps. Measured in runes, never bytes: slicing a byte count through a multibyte
-// character produces mojibake, and this data is routinely Czech, Polish, Japanese or emoji.
-const (
-	maxToneRunes   = 500
-	maxCustomWords = 50
-)
+// Cap on My Words entries. Tone is deliberately uncapped: the cloud caps it for cost, but
+// here it is the self-hoster's own LLM and their own budget.
+const maxCustomWords = 50
 
 // customWord is one My Words entry.
 //
@@ -417,7 +414,7 @@ func cleanupUserMsg(tc transcriptionContext, text string) string {
 	// Tone says how to write, Profile says who the user is. One block: two overlapping
 	// concepts are harder for a small model to juggle than one.
 	if tone := joinNonEmpty("\n", tc.Tone, tc.Profile); tone != "" {
-		blocks = append(blocks, "Tone: "+truncateRunes(tone, maxToneRunes))
+		blocks = append(blocks, "Tone: "+tone)
 	}
 
 	userMsg := text
@@ -449,16 +446,6 @@ func formatCustomWords(words []customWord) string {
 		rendered = append(rendered, w.Word)
 	}
 	return strings.Join(rendered, ", ")
-}
-
-// truncateRunes caps a string by rune count. Byte slicing would split a multibyte character
-// and hand the model mojibake.
-func truncateRunes(s string, max int) string {
-	runes := []rune(s)
-	if len(runes) <= max {
-		return s
-	}
-	return string(runes[:max])
 }
 
 // joinNonEmpty joins only the parts that carry something, so an absent half never leaves a

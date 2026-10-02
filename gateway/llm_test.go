@@ -877,6 +877,19 @@ func TestProcessWithIntent_CleanupContext(t *testing.T) {
 	}
 }
 
+// The self-hoster's own LLM, their own cost: a long Tone (the app's Default tone holds up to
+// 1000 characters, migrated Writing Style text more) reaches it whole, not cut at a cloud cap.
+func TestProcessWithIntent_CleanupLongToneNotTruncated(t *testing.T) {
+	long := strings.Repeat("é", 1500) + "END"
+	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "the transcript", `{"tone":"`+long+`"}`, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(userMsg, "Tone: "+long) {
+		t.Errorf("long tone must reach the LLM whole, got %d chars", len(userMsg))
+	}
+}
+
 // The regression that reached a real device: prose blocks in the cleanup message get emitted
 // as the answer, and the user's dictation disappears.
 //

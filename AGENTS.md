@@ -142,7 +142,7 @@ context fields (all optional; `context` itself is a JSON *string*, not an object
   selected        string    the user's selection, for intent=edit-selected
   customWords     array     user vocabulary. Objects [{"word":"Diction"}] or plain
                             strings ["Diction"] are both accepted. Cap 50.
-  tone            string    how the user wants to be written for. Cap 500 chars.
+  tone            string    how the user wants to be written for. Uncapped.
   profile         string    who the user is. Merged with `tone` into one block.
   sessionContext  [string]  accepted and IGNORED by the cleanup prompt (see note below).
   clipboard       string    accepted and IGNORED by the cleanup prompt (see note below).

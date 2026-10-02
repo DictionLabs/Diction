@@ -547,10 +547,8 @@ byte-for-byte the request earlier releases sent:
 | Line | Source | Cap |
 |------|--------|-----|
 | `Custom words: a, b (also heard as: c)` | the user's My Words list | 50 entries |
-| `Tone: ...` | the user's Tone preset and About You description, merged | 500 characters |
+| `Tone: ...` | the user's Tone preset and About You description, merged | none |
 | `(Language: xx)` | the transcript's language, when concrete | — |
-
-Caps are counted in characters, not bytes, so non-Latin scripts are never cut mid-character.
 
 **What it deliberately does NOT send, and why you should not add it.** The client also supplies
 the text around the cursor, the earlier transcripts of the session, and the clipboard. The
