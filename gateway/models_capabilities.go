@@ -8,7 +8,7 @@ import (
 // withCapabilities wraps a ModelsHandler to inject a top-level "capabilities"
 // object into the /v1/models JSON response (R4, R18).
 //
-// Shape: {"capabilities":{"llm":bool,"text_process":bool,"text_suggest":bool,"text_predict":bool,...}}.
+// Shape: {"capabilities":{"llm":bool,"text_process":bool,"text_suggest":bool,...}}.
 // Additive: existing data[] and providers[] are untouched, so every existing
 // client and the shipped GatewayProbe keep working without changes.
 //
@@ -61,7 +61,6 @@ func withCapabilities(base http.HandlerFunc, flagsFor func(*http.Request) capabi
 			"llm":            flags.llmEnabled,
 			"text_process":   flags.textRoutes,
 			"text_suggest":   flags.textRoutes,
-			"text_predict":   flags.textRoutes,
 			"text_summarize": flags.textRoutes,
 			// Formatting rides inside /v1/text/process as a context flag rather
 			// than on its own route, so it is advertised separately: a client can

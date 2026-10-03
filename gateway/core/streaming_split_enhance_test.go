@@ -234,6 +234,7 @@ func TestSplitEnhance_EditIntentNeverEmitsRawFrame(t *testing.T) {
 }
 
 func TestSplitEnhance_LLMErrorStillSendsFailedFrame(t *testing.T) {
+	signals := captureCleanupSignals(t)
 	failing := func(context.Context, string, string, string) (string, string, error) {
 		return "", "", errors.New("llm down")
 	}
@@ -248,11 +249,13 @@ func TestSplitEnhance_LLMErrorStillSendsFailedFrame(t *testing.T) {
 	if enhanced.Status != "failed" || enhanced.Text != "" {
 		t.Errorf("enhanced frame = %+v, want status=failed with no text", enhanced)
 	}
+	signals.assertSilentSkip(t, EnhanceSkipError)
 }
 
 // A closure that outlives its own deadline behaves like any other error: the client
 // still gets its one enhanced frame.
 func TestSplitEnhance_TimeoutStillSendsFailedFrame(t *testing.T) {
+	signals := captureCleanupSignals(t)
 	slow := func(ctx context.Context, _, _, _ string) (string, string, error) {
 		deadlined, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
 		defer cancel()
@@ -270,13 +273,16 @@ func TestSplitEnhance_TimeoutStillSendsFailedFrame(t *testing.T) {
 	if enhanced.Status != "failed" {
 		t.Errorf("enhanced frame = %+v, want status=failed after timeout", enhanced)
 	}
+	signals.assertSilentSkip(t, EnhanceSkipTimeout)
 }
 
 // The deletion guard is shared with the realtime socket. An enhancement that drops
 // most of the words must be rejected, leaving the user with the raw text they can see.
 func TestSplitEnhance_DeletionGuardRejectsTruncation(t *testing.T) {
-	srv := startSplitServer(t, "one two three four five six seven eight nine ten",
-		echoEnhance("one two"), echoEnhance("one two"))
+	signals := captureCleanupSignals(t)
+	// Not number words: a run of those may legitimately collapse into digits.
+	srv := startSplitServer(t, "alpha bravo charlie delta echo foxtrot golf hotel india juliet",
+		echoEnhance("alpha bravo"), echoEnhance("alpha bravo"))
 
 	frames := dialAndFinish(t, srv, "model=small&language=en&enhance=true&split_enhance=true")
 	if len(frames) != 2 {
@@ -287,6 +293,7 @@ func TestSplitEnhance_DeletionGuardRejectsTruncation(t *testing.T) {
 	if enhanced.Status != "failed" {
 		t.Errorf("enhanced frame = %+v, want the deletion guard to reject it", enhanced)
 	}
+	signals.assertSilentSkip(t, EnhanceSkipRejected)
 }
 
 // Influx must not double-count a split session: one dictation, one `requests` row.

@@ -877,6 +877,19 @@ func TestProcessWithIntent_CleanupContext(t *testing.T) {
 	}
 }
 
+// The self-hoster's own LLM, their own cost: a long Tone (the app's Default tone holds up to
+// 1000 characters, migrated Writing Style text more) reaches it whole, not cut at a cloud cap.
+func TestProcessWithIntent_CleanupLongToneNotTruncated(t *testing.T) {
+	long := strings.Repeat("é", 1500) + "END"
+	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "the transcript", `{"tone":"`+long+`"}`, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(userMsg, "Tone: "+long) {
+		t.Errorf("long tone must reach the LLM whole, got %d chars", len(userMsg))
+	}
+}
+
 // The regression that reached a real device: prose blocks in the cleanup message get emitted
 // as the answer, and the user's dictation disappears.
 //
@@ -972,5 +985,31 @@ func TestProcessWithIntent_MalformedCustomWordKeepsRestOfContext(t *testing.T) {
 		if !strings.Contains(userMsg, want) {
 			t.Errorf("one bad custom word cost more than itself: want %q in %q", want, userMsg)
 		}
+	}
+}
+
+// A dictation ending in a spoken break keeps the break the model's answer lost to TrimSpace;
+// a model that kept the phrase as words, and edit intents, are left alone.
+func TestProcessWithIntent_RestoresTrailingSpokenBreak(t *testing.T) {
+	cases := []struct {
+		name, reply, text, contextJSON, intent, want string
+	}{
+		{"cleanup drops trailing new paragraph", "Buy milk.", "buy milk new paragraph", "", "", "Buy milk.\n\n"},
+		{"cleanup drops trailing new line", "Buy milk.", "buy milk new line", "", "", "Buy milk.\n"},
+		{"text after cursor already starts a paragraph", "Buy milk.", "buy milk new paragraph", `{"after":"\n\nNext"}`, "", "Buy milk."},
+		{"model kept the phrase as content", "I added a new paragraph", "i added a new paragraph", "", "", "I added a new paragraph"},
+		{"no spoken command", "Buy milk.", "buy milk", "", "", "Buy milk."},
+		{"edit intent untouched", "Buy milk.", "buy milk new paragraph", `{"before":"x"}`, "edit", "Buy milk."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, out, err := captureUserMsg(t, parityTestConfig(), tc.reply, tc.text, tc.contextJSON, tc.intent)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if out != tc.want {
+				t.Errorf("want %q, got %q", tc.want, out)
+			}
+		})
 	}
 }

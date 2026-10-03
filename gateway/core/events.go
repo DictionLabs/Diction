@@ -45,6 +45,13 @@ type ErrorEvent struct {
 	QwertyVisible         int64  // kbkill_heartbeat_stale: 1=visible, 2=hidden, 0=unknown
 	AppearFpMB            int64  // kbkill_heartbeat_stale: phys_footprint at viewWillAppear-end
 	CrashStack            string // kbkill_metrickit_crash: leaf-first binary+offset frames, ≤200 chars, empty when stack unavailable
+	AttributedTo          string // kbkill_metrickit_crash|_hang: closed enum keyboard|app|unknown — which process the diagnostic belongs to
+	ThreadSel             string // kbkill_metrickit_crash: closed enum attributed|aggregated|ownBinary|firstNonParked|arbitrary — how CrashStack's thread was chosen, i.e. how far to trust it
+	ExceptionType         int64  // kbkill_metrickit_crash: Mach exception type — diagnoses a crash even when CrashStack is unusable
+	ExceptionCode         int64  // kbkill_metrickit_crash: Mach exception code; 0 is a real value but reads as unset, same convention as the other optional numerics
+	UptimeSeconds         int64  // kbkill_onscreen_kill|kbkill_hidden_exit: seconds the killed process had run
+	FPHighWaterMB         int64  // kbkill_onscreen_kill|kbkill_hidden_exit: highest phys_footprint the killed process reached
+	HeadroomMB            int64  // kbkill_onscreen_kill|kbkill_hidden_exit: task_vm_info.limit_bytes_remaining at last beat; -1 = unavailable
 	ErrorDesc             string // coreml_ane_inference_failed[_after_recovery]: redacted underlying CoreML message, ≤200 chars
 	OSVersion             string // ANE kinds: OS version string, e.g. "Version 26.0 (Build 23A340)", ≤64 chars
 	AppBuild              string // ANE kinds: CFBundleVersion, e.g. "531", ≤16 chars
@@ -61,3 +68,17 @@ var OnError func(ctx context.Context, e ErrorEvent)
 // sets ErrorType. Callers must invoke this on every error-return path where the
 // `requests` measurement would otherwise record success=true.
 var OnRequestFailed func(ctx context.Context, errorType string)
+
+// OnEnhanceSkipped records that a transcribe-intent Writing Tools pass did not land —
+// the user got the raw transcript, silently. Not an error: the private gateway main()
+// stamps the reason (EnhanceSkip* vocabulary) on the request's own `requests` row as
+// `enhance_skipped`. Nil by default — community builds leave it nil. Edit intents never
+// use it: their failure is still an error the user is told about.
+var OnEnhanceSkipped func(ctx context.Context, reason string)
+
+// ReportEnhanceSkipped is the nil-safe call for OnEnhanceSkipped.
+func ReportEnhanceSkipped(ctx context.Context, reason string) {
+	if OnEnhanceSkipped != nil {
+		OnEnhanceSkipped(ctx, reason)
+	}
+}

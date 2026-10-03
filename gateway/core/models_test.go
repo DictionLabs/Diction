@@ -318,6 +318,38 @@ func TestModelsHandler_EmptyProvider_DefaultsToWhisper(t *testing.T) {
 	}
 }
 
+// The text capabilities follow llmEnabled. Clients decode each key by name, so the existing keys
+// stay exactly as they are. text_predict was removed with /v1/text/predict (2026-09-29): an iOS
+// build that still reads it treats its absence as unable.
+func TestModelsHandler_TextCapabilities(t *testing.T) {
+	for _, llm := range []bool{false, true} {
+		g := testGateway()
+		g.llmEnabled = llm
+		req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+		rr := httptest.NewRecorder()
+		g.ModelsHandler()(rr, req)
+
+		var resp struct {
+			Capabilities map[string]bool `json:"capabilities"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		want := map[string]bool{
+			"llm": llm, "text_process": llm, "text_suggest": llm,
+			"pairing": false, "key_rotation": false,
+		}
+		if len(resp.Capabilities) != len(want) {
+			t.Errorf("llm=%v: capabilities = %v, want exactly %v", llm, resp.Capabilities, want)
+		}
+		for k, v := range want {
+			if got, ok := resp.Capabilities[k]; !ok || got != v {
+				t.Errorf("llm=%v: capabilities[%q] = %v (present %v), want %v", llm, k, got, ok, v)
+			}
+		}
+	}
+}
+
 func TestModelsHandler_PairingCapabilities(t *testing.T) {
 	cases := []struct {
 		name                 string

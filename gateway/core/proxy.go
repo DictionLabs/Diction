@@ -417,6 +417,24 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 		}
 		target, backend := g.resolveBackend(model)
 		if target == nil {
+			// Set the routing header before returning so this row carries the
+			// backend it wanted rather than landing in the unknown bucket —
+			// mirrors the WS path's pre-upgrade 503 handling. See
+			// gateway/KindGuide.md "stt_route_fail".
+			w.Header().Set("X-Diction-Route-Model", model)
+			if OnError != nil {
+				OnError(r.Context(), ErrorEvent{
+					Source:     "stt",
+					Kind:       "stt_route_fail",
+					Endpoint:   "/v1/audio/transcriptions",
+					Provider:   model,
+					HTTPStatus: http.StatusBadRequest,
+					Hint:       "no healthy backend for this language",
+				})
+			}
+			if OnRequestFailed != nil {
+				OnRequestFailed(r.Context(), errTypeSTTError)
+			}
 			http.Error(w, `{"error":"backend unavailable"}`, http.StatusBadRequest)
 			return
 		}
@@ -473,6 +491,12 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 			proxyBody = converted
 			proxyContentType = newCT
 			audioDurationMs = durationMs
+		}
+
+		// Record audio duration regardless of what happens next — success and
+		// failure both need it, and OnTranscription below only fires on success.
+		if g.OnAudioReceived != nil {
+			g.OnAudioReceived(r.Context(), audioDurationMs)
 		}
 
 		// Capture E2E client key before proxy (X-Diction-E2E header carries client ephemeral X25519 pubkey)
@@ -587,29 +611,32 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 						resp.Header.Set("X-Diction-LLM-Ms", fmt.Sprintf("%d", llmMs))
 						if err != nil {
 							isEditIntent := intent == "edit" || intent == "edit-selected"
-							hint := "post-process failed; returning raw transcript"
 							if isEditIntent {
-								hint = "edit intent post-process failed; returning status=failed"
-							}
-							log.Printf("post-process error (%s): %v", hint, err)
-							if OnError != nil {
-								OnError(resp.Request.Context(), ErrorEvent{
-									Source:     "stt",
-									Kind:       "stt_post_process",
-									Endpoint:   "/v1/audio/transcriptions",
-									Provider:   proxyBackend.Name,
-									HTTPStatus: resp.StatusCode,
-									InputChars: len(transcript),
-									LatencyMs:  time.Since(llmStart).Milliseconds(),
-									Hint:       hint,
-								})
-							}
-							if isEditIntent {
+								hint := "edit intent post-process failed; returning status=failed"
+								log.Printf("post-process error (%s): %v", hint, err)
+								if OnError != nil {
+									OnError(resp.Request.Context(), ErrorEvent{
+										Source:     "stt",
+										Kind:       "stt_post_process",
+										Endpoint:   "/v1/audio/transcriptions",
+										Provider:   proxyBackend.Name,
+										HTTPStatus: resp.StatusCode,
+										InputChars: len(transcript),
+										LatencyMs:  time.Since(llmStart).Milliseconds(),
+										Hint:       hint,
+									})
+								}
 								// Return failure signal; don't insert the spoken instruction as content.
 								// Old clients hit their empty-text no-op guard — non-destructive.
 								transcript = ""
 								mode = intent
 								status = "failed"
+							} else {
+								// Clean up did not land in time: the raw transcript goes out exactly
+								// as if Clean up were off — no status, no error event. The skip is
+								// recorded on the request's own row instead.
+								log.Printf("post-process skipped; returning raw transcript: %v", err)
+								ReportEnhanceSkipped(resp.Request.Context(), EnhanceSkipReason(resp.Request.Context(), err))
 							}
 						} else {
 							transcript = resultText
@@ -721,14 +748,21 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 		// Re-rewrite the multipart body for the retry backend. The original
 		// rewrite used the primary backend's NeedsWAV/ForwardModel; the retry
 		// backend may have different settings. We use the original `body` so
-		// the rewrite is clean. Auto-detect injection (verbose_json, language
-		// override) is intentionally omitted — we're in degraded fallback mode,
-		// not optimizing auto-detect tiers.
+		// the rewrite is clean. InjectVerboseJSON stays omitted on purpose —
+		// degraded mode does not need detected-language recording — but the
+		// language field itself is not an optimization to skip: mirroring
+		// attempt 1's StripLanguage/LanguageOverride decision (`:454-455`)
+		// here is what stops the client's literal "auto" sentinel — which no
+		// backend accepts — from reaching the retry backend. Before this fix
+		// that leak caused 54 guaranteed 400s on canary-v2 during the 2026-09
+		// incident; see .claude/bow/stt-failure-rate-2026-09-13.md.
 		if boundary != "" {
 			converted, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{
-				ConvertToWAV:  retryBackend.NeedsWAV,
-				ForwardModel:  retryBackend.ForwardModel,
-				WhisperPrompt: whisperPrompt,
+				ConvertToWAV:     retryBackend.NeedsWAV,
+				ForwardModel:     retryBackend.ForwardModel,
+				WhisperPrompt:    whisperPrompt,
+				StripLanguage:    detectActive && adResult.UpstreamLanguage == "",
+				LanguageOverride: adResult.UpstreamLanguage,
 			})
 			if err != nil {
 				log.Printf("Multipart rewrite for retry backend %s failed: %v — using original body", retryBackend.Name, err)

@@ -93,8 +93,9 @@ func TestOnError_FiresOnMultipartRewriteFailure(t *testing.T) {
 }
 
 // TestOnError_FiresOnPostProcessError — the transcription handler must invoke
-// OnError (if installed) when post-process returns an error. Exercises the
-// `if OnError != nil` branch added in proxy.go.
+// OnError (if installed) when an edit intent's post-process returns an error. A
+// transcribe intent's cleanup failure is silent instead (see
+// TestTranscriptionHandler_NonEditPostProcessFailureKeepsRawFallback).
 func TestOnError_FiresOnPostProcessError(t *testing.T) {
 	prev := OnError
 	defer func() { OnError = prev }()
@@ -127,7 +128,7 @@ func TestOnError_FiresOnPostProcessError(t *testing.T) {
 	}
 
 	body, ct := buildMultipart(t, map[string]string{"model": "small"}, "audio.m4a", "fake-audio")
-	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions?enhance=true", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions?enhance=true&intent=edit", bytes.NewReader(body))
 	req.Header.Set("Content-Type", ct)
 	rr := httptest.NewRecorder()
 	g.TranscriptionHandlerWithPostProcess(postProcess)(rr, req)

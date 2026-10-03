@@ -43,6 +43,10 @@ const (
 // main package; core/ cannot import it.
 const errTypeSTTError = "stt_error"
 
+// errTypeNoAudio mirrors ErrTypeNoAudio in gateway/metrics.go. See that
+// constant's doc comment.
+const errTypeNoAudio = "no_audio"
+
 // opusSubprotocol is the WebSocket subprotocol used for Ogg/Opus negotiation.
 // The client offers this in the Upgrade request; the server echoes it only when
 // it can actually honour Opus decoding. Self-hosters on older gateways never
@@ -332,9 +336,10 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			stripUpstreamLanguage bool
 			detectActive          = IsAutoDetect(language)
 			adResult              AutoDetectResult
+			// Hoisted so a backend failure can re-run auto-detect routing for the retry.
+			adCtx AutoDetectContext
 		)
 		if detectActive {
-			var adCtx AutoDetectContext
 			if g.DeviceHashFromContext != nil {
 				adCtx.DeviceHash = g.DeviceHashFromContext(r.Context())
 			}
@@ -352,6 +357,25 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		}
 		target, backend := g.resolveBackend(model)
 		if target == nil || (!backend.SkipHealthCheck && !g.health.get(model)) {
+			// Set the routing header before returning (normally done further
+			// below) so this row carries the backend it *wanted* rather than
+			// landing in the unknown bucket — this was, until now, the single
+			// largest silent failure branch. See gateway/KindGuide.md
+			// "stt_route_fail".
+			w.Header().Set("X-Diction-Route-Model", model)
+			if OnError != nil {
+				OnError(r.Context(), ErrorEvent{
+					Source:     "stt",
+					Kind:       "stt_route_fail",
+					Endpoint:   "/v1/audio/stream",
+					Provider:   model,
+					HTTPStatus: http.StatusServiceUnavailable,
+					Hint:       "no healthy backend for this language",
+				})
+			}
+			if OnRequestFailed != nil {
+				OnRequestFailed(r.Context(), errTypeSTTError)
+			}
 			http.Error(w, `{"error":"backend unavailable"}`, http.StatusServiceUnavailable)
 			return
 		}
@@ -401,6 +425,12 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			return
 		}
 		defer conn.CloseNow()
+
+		// socketOpenedAt marks a successful upgrade. Used only by the no-audio
+		// branch below to distinguish a user abort (sub-second, zero frames)
+		// from a broken mic session (full recording length) — see ws_no_audio
+		// in gateway/KindGuide.md.
+		socketOpenedAt := time.Now()
 
 		// coder/websocket defaults Read to 32 KiB per message. That default was
 		// never hit by our own client (PCM chunks are ~682 B every 20-30 ms), but
@@ -487,6 +517,14 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 				defer func() { <-sem }()
 			case <-waitTimer.C:
 				log.Printf("ws: Opus semaphore saturated; rejecting connection")
+				if OnError != nil {
+					OnError(ctx, ErrorEvent{
+						Source:   "streaming",
+						Kind:     "ws_busy",
+						Endpoint: "/v1/audio/stream",
+						Hint:     "opus decode semaphore saturated after 5s",
+					})
+				}
 				if OnRequestFailed != nil {
 					OnRequestFailed(ctx, errTypeSTTError)
 				}
@@ -505,6 +543,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			maxPCM           = g.maxBodySize
 			contextRead      bool
 			audioBytesRx     int64
+			framesRx         int    // binary frames received — see ws_no_audio
 			containerFile    string // "audio.ogg" or "audio.webm" — set on first sniff
 			containerSniffed bool
 
@@ -605,8 +644,18 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			}
 
 			if msgType == websocket.MessageBinary {
+				framesRx++
 				audioBytesRx += int64(len(data))
 				if audioBytesRx > maxPCM {
+					if OnError != nil {
+						OnError(ctx, ErrorEvent{
+							Source:   "streaming",
+							Kind:     "ws_audio_too_large",
+							Reason:   "compressed",
+							Endpoint: "/v1/audio/stream",
+							Hint:     "received audio exceeded maxPCM before decode",
+						})
+					}
 					if OnRequestFailed != nil {
 						OnRequestFailed(ctx, errTypeSTTError)
 					}
@@ -654,6 +703,14 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 						stdin, serr := cmd.StdinPipe()
 						if serr != nil {
 							log.Printf("ws ffmpeg stdin pipe: %v", serr)
+							if OnError != nil {
+								OnError(ctx, ErrorEvent{
+									Source:   "streaming",
+									Kind:     "opus_decode",
+									Endpoint: "/v1/audio/stream",
+									Hint:     "ffmpeg stdin pipe failed",
+								})
+							}
 							CloseWSWithTimeout(conn, websocket.StatusInternalError, "ffmpeg error", 2*time.Second)
 							if OnRequestFailed != nil {
 								OnRequestFailed(ctx, errTypeSTTError)
@@ -663,6 +720,14 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 						stdout, serr := cmd.StdoutPipe()
 						if serr != nil {
 							log.Printf("ws ffmpeg stdout pipe: %v", serr)
+							if OnError != nil {
+								OnError(ctx, ErrorEvent{
+									Source:   "streaming",
+									Kind:     "opus_decode",
+									Endpoint: "/v1/audio/stream",
+									Hint:     "ffmpeg stdout pipe failed",
+								})
+							}
 							CloseWSWithTimeout(conn, websocket.StatusInternalError, "ffmpeg error", 2*time.Second)
 							if OnRequestFailed != nil {
 								OnRequestFailed(ctx, errTypeSTTError)
@@ -671,6 +736,14 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 						}
 						if serr = cmd.Start(); serr != nil {
 							log.Printf("ws ffmpeg start: %v", serr)
+							if OnError != nil {
+								OnError(ctx, ErrorEvent{
+									Source:   "streaming",
+									Kind:     "opus_decode",
+									Endpoint: "/v1/audio/stream",
+									Hint:     "ffmpeg start failed",
+								})
+							}
 							CloseWSWithTimeout(conn, websocket.StatusInternalError, "ffmpeg error", 2*time.Second)
 							if OnRequestFailed != nil {
 								OnRequestFailed(ctx, errTypeSTTError)
@@ -768,6 +841,15 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// ~16 kb/s that would be ~28 h of audio → ~3 GB decoded, so this is
 		// not merely theoretical.
 		if isOpus && !usePassthrough && int64(pcmBuf.Len()) > maxPCM {
+			if OnError != nil {
+				OnError(ctx, ErrorEvent{
+					Source:   "streaming",
+					Kind:     "ws_audio_too_large",
+					Reason:   "decoded",
+					Endpoint: "/v1/audio/stream",
+					Hint:     "decoded PCM exceeded maxPCM",
+				})
+			}
 			if OnRequestFailed != nil {
 				OnRequestFailed(ctx, errTypeSTTError)
 			}
@@ -776,8 +858,23 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		}
 
 		if pcmBuf.Len() == 0 && opusInputBuf.Len() == 0 {
+			// See socketOpenedAt above: LatencyMs/InputChars are repurposed here
+			// as socket-open duration and frame count, the only signal that
+			// separates a user abort (sub-second, zero frames) from a broken
+			// mic session (full recording length, or frames that decoded to
+			// nothing). Documented in gateway/KindGuide.md under ws_no_audio.
+			if OnError != nil {
+				OnError(ctx, ErrorEvent{
+					Source:     "streaming",
+					Kind:       "ws_no_audio",
+					Endpoint:   "/v1/audio/stream",
+					Hint:       "socket closed with zero audio bytes",
+					LatencyMs:  time.Since(socketOpenedAt).Milliseconds(),
+					InputChars: framesRx,
+				})
+			}
 			if OnRequestFailed != nil {
-				OnRequestFailed(ctx, errTypeSTTError)
+				OnRequestFailed(ctx, errTypeNoAudio)
 			}
 			CloseWSWithTimeout(conn, wsCloseNoAudio, "no audio received", 2*time.Second)
 			return
@@ -813,6 +910,14 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			var wavBuf bytes.Buffer
 			if err := WriteWAVHeader(&wavBuf, pcmBuf.Len()); err != nil {
 				log.Printf("ws wav header: %v", err)
+				if OnError != nil {
+					OnError(ctx, ErrorEvent{
+						Source:   "stt",
+						Kind:     "wav_encode",
+						Endpoint: "/v1/audio/stream",
+						Hint:     "WAV header write failed",
+					})
+				}
 				if OnRequestFailed != nil {
 					OnRequestFailed(ctx, errTypeSTTError)
 				}
@@ -824,6 +929,12 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			audioDurationMs = int64(pcmBuf.Len()) * 1000 / pcmBytesPerSecond
 		}
 
+		// Record audio duration regardless of what happens next — success and
+		// failure both need it, and OnTranscription below only fires on success.
+		if g.OnAudioReceived != nil {
+			g.OnAudioReceived(ctx, audioDurationMs)
+		}
+
 		whisperPrompt := buildWhisperPrompt(contextJSON)
 		sttStart := time.Now()
 		text, err := g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt)
@@ -833,32 +944,20 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		}
 		if err != nil {
 			log.Printf("ws proxy: %v", err)
-			kind, hint, status := classifyBackendFailure(err)
-			if kind == kindSTTBackend5xx {
-				// Parity with /v1/audio/transcriptions: a 5xx means the backend
-				// itself is sick, so take it out of rotation instead of sending
-				// the next dictation into the same fault. Transient by design —
-				// startHealthChecker re-probes every 120 s and restores it.
-				g.health.set(backend.Name, false)
+			retry := streamRetryInput{
+				model: model, language: language, detectActive: detectActive,
+				adResult: adResult, adCtx: adCtx, payload: payload,
+				usePassthrough: usePassthrough, upstreamLanguage: upstreamLanguage,
+				whisperPrompt: whisperPrompt,
 			}
-			if OnError != nil {
-				OnError(ctx, ErrorEvent{
-					Source:     "stt",
-					Kind:       kind,
-					Endpoint:   "/v1/audio/stream",
-					Provider:   backend.Name,
-					HTTPStatus: status,
-					Hint:       hint,
-				})
+			// stt_ms includes the retry, same as the HTTP path's `whisperMs`.
+			var retryMs int64
+			var ok bool
+			if text, backend, retryMs, ok = g.handleStreamBackendFailure(ctx, err, backend, retry); !ok {
+				CloseWSWithTimeout(conn, wsCloseFailed, "transcription failed", 2*time.Second)
+				return
 			}
-			// A client that walked away is not a backend fault and must not
-			// inflate the failure rate — the HTTP path already excludes it via
-			// statusClientClosed; this is the same rule for the socket path.
-			if OnRequestFailed != nil && kind != kindSTTUpstreamCanceled {
-				OnRequestFailed(ctx, errTypeSTTError)
-			}
-			CloseWSWithTimeout(conn, wsCloseFailed, "transcription failed", 2*time.Second)
-			return
+			sttMs += retryMs
 		}
 
 		// Report the successful transcription on the same hook the HTTP path uses,
@@ -893,7 +992,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		}
 
 		// Apply post-processing if provided (e.g. ?enhance=true)
-		var mode string
+		var mode, status string
 		if postProcess != nil && enhanceEnabled && text != "" {
 			intent := intentParam
 			if resultText, resultMode, err := postProcess(ctx, text, enhanceContextJSON, intent); err == nil {
@@ -902,17 +1001,13 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			} else {
 				log.Printf("ws post-process: %v", err)
 				isEditIntent := intent == "edit" || intent == "edit-selected"
-				hint := "streaming post-process failed; returning raw"
-				if isEditIntent {
-					hint = "edit intent post-process failed; returning status=failed"
-				}
-				if OnError != nil {
+				if isEditIntent && OnError != nil {
 					OnError(ctx, ErrorEvent{
 						Source:     "stt",
 						Kind:       "stt_post_process",
 						Endpoint:   "/v1/audio/stream",
 						InputChars: len(text),
-						Hint:       hint,
+						Hint:       "edit intent post-process failed; returning status=failed",
 					})
 				}
 				if isEditIntent {
@@ -930,16 +1025,29 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 					CloseWSWithTimeout(conn, websocket.StatusNormalClosure, "", 2*time.Second)
 					return
 				}
-				// Non-edit: raw transcript fallback is still acceptable (cleanup, not edit).
+				// Non-edit: Clean up did not land in time. The raw transcript goes out
+				// exactly as if Clean up were off — no status, no error event; the skip is
+				// recorded on the request's own row.
+				ReportEnhanceSkipped(ctx, EnhanceSkipReason(ctx, err))
 			}
 		}
 
-		result, _ := json.Marshal(streamResult{Text: text, Mode: mode})
+		result, _ := json.Marshal(streamResult{Text: text, Mode: mode, Status: status})
 		if err := conn.Write(ctx, websocket.MessageText, result); err != nil {
 			log.Printf("ws write result: %v", err)
-			if OnRequestFailed != nil {
-				OnRequestFailed(ctx, errTypeSTTError)
+			if OnError != nil {
+				OnError(ctx, ErrorEvent{
+					Source:   "streaming",
+					Kind:     "ws_write",
+					Endpoint: "/v1/audio/stream",
+					Hint:     "client gone before result write",
+				})
 			}
+			// Not OnRequestFailed: the transcription succeeded and only the
+			// client walked away before the write. Same rule this handler
+			// already applies to kindSTTUpstreamCanceled — "a client that
+			// walked away is not a backend fault and must not inflate the
+			// failure rate". This row is not counted as a failed dictation.
 			return
 		}
 

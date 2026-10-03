@@ -53,6 +53,46 @@ var nonEUModelOverrides = map[string]bool{
 	"pl": true,
 }
 
+// backendServes reports whether the named backend can serve the given
+// language. An unresolvable model name is never a candidate. Auto-detect
+// (lang == AutoDetectSentinel) requires the backend to perform its own
+// language ID — NeedsExplicitLanguage backends (Canary) fail this. A backend
+// with a nil Languages set is assumed to serve everything (the Whisper
+// models, and any third-party custom backend whose coverage we don't know).
+//
+// Added 2026-09 so ModelForLanguage's health fallbacks stop offering a
+// backend guaranteed to reject the request — see Backend.Languages doc and
+// .claude/bow/stt-failure-rate-2026-09-13.md.
+func (g *Gateway) backendServes(model, lang string) bool {
+	_, backend := g.resolveBackend(model)
+	if backend == nil {
+		return false
+	}
+	if IsAutoDetect(lang) {
+		return !backend.NeedsExplicitLanguage
+	}
+	if backend.Languages == nil {
+		return true
+	}
+	return backend.Languages[strings.TrimSpace(strings.ToLower(lang))]
+}
+
+// qualifies reports whether model is both healthy and (when capability
+// routing is enabled) able to serve lang. This is the single gate every
+// fallback branch of ModelForLanguage must pass through — the tier's final
+// preferred-model return deliberately does not use it, so a language with no
+// qualifying candidate still gets a real error from the right backend
+// instead of silently substituting a wrong one.
+func (g *Gateway) qualifies(model, lang string) bool {
+	if !g.health.get(model) {
+		return false
+	}
+	if !g.langCapabilityRouting {
+		return true
+	}
+	return g.backendServes(model, lang)
+}
+
 // ModelForLanguage returns the best model for the given language code.
 //
 // Routing layers (when all models are configured), evaluated in order:
@@ -70,6 +110,15 @@ var nonEUModelOverrides = map[string]bool{
 // If englishModel is not configured, tiers 3+4 collapse to defaultModel.
 // If fallbackModel is not configured, all traffic goes to defaultModel.
 // Health fallback: unhealthy preferred → try next tier. Both unhealthy → preferred anyway.
+//
+// Every fallback candidate in tiers 2, 4 and 5 must also pass qualifies()
+// (healthy AND capable of the language), not health alone. This was added
+// 2026-09 after large-v3-turbo's mel-bin bug (see turbo-mel-mismatch-fix-plan.md)
+// left it unhealthy for ~23h; tier 5's health-only fallback sent every
+// zh/ja/ko/ar/tr/sr dictation to canary-v2, which only covers 25 EU languages
+// and returned 400 "Unsupported language" 218 times. The check is gated
+// behind DICTION_LANG_CAPABILITY_ROUTING (default on) as a rollback path.
+// See .claude/bow/stt-failure-rate-2026-09-13.md.
 //
 // See .claude/plans/cohere-transcribe-gateway-routing-plan.md and
 // .claude/COHERE_TRANSCRIBE_EVAL_RESULTS.md for the measured decisions behind
@@ -98,10 +147,10 @@ func (g *Gateway) ModelForLanguage(lang string) string {
 
 	// Tier 2: non-EU override (e.g. Polish → whisper-turbo)
 	if nonEUModelOverrides[effectiveLang] {
-		if g.health.get(g.fallbackModel) {
+		if g.qualifies(g.fallbackModel, effectiveLang) {
 			return g.fallbackModel
 		}
-		if g.health.get(g.defaultModel) {
+		if g.qualifies(g.defaultModel, effectiveLang) {
 			return g.defaultModel
 		}
 		return g.fallbackModel
@@ -117,20 +166,32 @@ func (g *Gateway) ModelForLanguage(lang string) string {
 
 	// Tier 4: EU languages (including English when no englishModel, or as fallback)
 	if lang == "" || euLanguages[lang] {
-		if g.health.get(g.defaultModel) {
+		if g.qualifies(g.defaultModel, effectiveLang) {
 			return g.defaultModel
 		}
-		if g.health.get(g.fallbackModel) {
+		if g.qualifies(g.fallbackModel, effectiveLang) {
 			return g.fallbackModel
 		}
 		return g.defaultModel
 	}
 
-	// Tier 5: Non-EU languages
-	if g.health.get(g.fallbackModel) {
+	// Tier 5: Non-EU languages. This is the tier that caused the 2026-09
+	// incident: while large-v3-turbo was demoted, health-only fallback sent
+	// zh/ja/ko/ar/tr/sr to canary-v2, which returned 400 "Unsupported
+	// language" 218 times — canary's coverage is the same 25 EU languages as
+	// tier 4, so it was never a real alternative for a non-EU language. The
+	// qualifies() gate below is what fixes that: a candidate here must
+	// actually serve the language, not merely be reachable. When nothing
+	// qualifies the tier still returns fallbackModel (the preferred model for
+	// non-EU traffic) unconditionally — a real 5xx/400 from the right backend
+	// is more honest than a guaranteed 400 from the wrong one, and it keeps
+	// the demote-and-retry path meaningful. See
+	// .claude/bow/stt-failure-rate-2026-09-13.md and
+	// DICTION_LANG_CAPABILITY_ROUTING for the rollback path.
+	if g.qualifies(g.fallbackModel, effectiveLang) {
 		return g.fallbackModel
 	}
-	if g.health.get(g.defaultModel) {
+	if g.qualifies(g.defaultModel, effectiveLang) {
 		return g.defaultModel
 	}
 	return g.fallbackModel

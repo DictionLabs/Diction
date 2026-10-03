@@ -724,7 +724,6 @@ func buildMux() (http.Handler, string, error) {
 	))
 	mux.HandleFunc("/v1/text/process", textMW(handleTextProcess(llm)))
 	mux.HandleFunc("/v1/text/suggest", textMW(handleTextSuggest(llm)))
-	mux.HandleFunc("/v1/text/predict", textMW(handlePredict(llm)))
 	mux.HandleFunc("/v1/text/summarize", textMW(handleTextSummarize(llm)))
 	if keyStore != nil {
 		pairing.RegisterRoutes(mux, keyStore)

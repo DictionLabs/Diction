@@ -49,7 +49,8 @@ func EnhancedAcceptable(raw, enhanced string) bool {
 	if strings.TrimSpace(enhanced) == "" {
 		return false
 	}
-	rawWords := len(strings.Fields(raw))
+	// Cleanup is meant to drop "new paragraph" and to write "seventy six twenty" as "7620".
+	rawWords := len(strings.Fields(raw)) - SpokenCommandWordCount(raw) - SpokenNumberWordDiscount(raw)
 	if rawWords < 8 {
 		return true
 	}
@@ -232,7 +233,8 @@ func postDeliveryOrInline(
 //
 // The contract the client depends on: after the raw frame, **exactly one** enhanced
 // frame always follows — a result, or status="failed" on any error, rejection or
-// timeout. A client that opted in must never be left waiting for a frame that cannot
+// timeout. A "failed" frame is not an error: the pass simply did not land in time, and
+// it is recorded as an enhance skip on the request's row, never as an error event. A client that opted in must never be left waiting for a frame that cannot
 // come, so every failure path below writes the failed frame rather than returning.
 func (g *Gateway) writeSplitEnhanceFrames(ctx context.Context, conn *websocket.Conn, in splitEnhanceInput) {
 	raw, _ := json.Marshal(streamResult{Text: in.raw})
@@ -248,20 +250,16 @@ func (g *Gateway) writeSplitEnhanceFrames(ctx context.Context, conn *websocket.C
 	text, mode, err := in.enhance(ctx, in.raw, in.contextJSON, in.intent)
 	switch {
 	case err != nil:
+		// Not an error event: a cleanup that does not land in time is silent (the user
+		// keeps the raw final they already have). Recorded on the request's own row.
 		log.Printf("ws split enhance: %v", err)
-		if OnError != nil {
-			OnError(ctx, ErrorEvent{
-				Source:     "stt",
-				Kind:       "stt_post_process",
-				Endpoint:   "/v1/audio/stream",
-				InputChars: len(in.raw),
-				Hint:       "split enhance failed; client keeps raw",
-			})
-		}
+		ReportEnhanceSkipped(ctx, EnhanceSkipReason(ctx, err))
 	case !EnhancedAcceptable(in.raw, text):
 		// Deletion guard rejected it. The user already has the raw text on screen,
-		// so "failed" here means "keep it" — never a silent truncation.
+		// so "failed" here means "keep it" — never a silent truncation. Not retried:
+		// cleanup runs at temperature 0, so a second pass mostly deletes the same words.
 		log.Printf("ws split enhance: rejected, raw=%d chars enhanced=%d chars", len(in.raw), len(text))
+		ReportEnhanceSkipped(ctx, EnhanceSkipRejected)
 	default:
 		frame = EnhancedFrame{Type: "enhanced", Text: text, Mode: mode}
 	}
