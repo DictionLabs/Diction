@@ -7,6 +7,25 @@ description: What's new in each Diction release. Full changelog for every App St
 
 # Release Notes
 
+## Diction 14.0
+
+- The keyboard now suggests your next word and finishes the one you're typing, in English, German, French, Spanish, Italian and Portuguese. It all happens on your iPhone. Nothing you type is sent anywhere.
+- Autocorrect catches swapped letters, missed spaces and contractions, and it keeps the first letter you typed.
+- Fewer wrong keys. A tap that starts on the space bar stays a space, and fast taps no longer land on the key next door.
+- We revisited the look and feel of the typing keyboard. Keys press like the iOS keyboard, and the layout is calmer while you type.
+- The Diction Bar shrinks beside your suggestions, with Undo, Redo and Save to My Words one tap away.
+- Drag the handle to pick one of three keyboard heights: full, one row, or just the Diction Bar.
+- The keyboard stays quick all day. No flicker when you come back to an app, and no slowdown after heavy use.
+- Our best on-device model for 25 European languages is now free. On Diction One, Home offers it as an offline backup, so dictation keeps working when you lose signal.
+- Format by voice on Diction One. Say "new paragraph", "new line" or a punctuation mark while you dictate, and it lands in your text.
+- Diction Live is a single option now and picks the best engine for your language. English Live makes far fewer mistakes.
+- My Words is more reliable, even with several names in one dictation, and phrases now work on-device too.
+- Setup is shorter, with no more hunting for the globe key.
+- A simpler Home menu, a Default tone for every app, and your own accent and Diction Bar colors.
+- If your own server can't be reached, on-device takes over in seconds.
+- Fixes for Live dictations landing in the wrong app, words split mid-sentence, a blank keyboard, and a stuck "Preparing" bar.
+- Various polish across the keyboard and settings.
+
 ## Diction 13.0
 
 - Pairing a self-hosted server is now a QR code, not a manual key. Scan it from your terminal and you're connected. Keys rotate on their own from there.

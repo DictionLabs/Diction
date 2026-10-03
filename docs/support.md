@@ -14,7 +14,7 @@ Setting up Diction takes under a minute:
 1. **Open the Diction app** and grant microphone permission when prompted.
 2. Go to **Settings > General > Keyboard > Keyboards > Add New Keyboard** and select **Diction**.
 3. Tap **Diction** in the keyboard list and enable **Allow Full Access** (required for transcription).
-4. Open any app with a text field, tap the **globe icon** to switch to Diction, and tap the mic.
+4. Come back to Diction. It switches your keyboard to Diction for you, so open any app with a text field and tap the mic. If a different keyboard shows up, tap the **globe icon** to switch.
 
 ::: tip
 The Diction app must be running in the background for the keyboard to work. Launch it once and it stays ready. After a period of inactivity, you may need to open the app again.
