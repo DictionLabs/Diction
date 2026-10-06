@@ -9,9 +9,9 @@ description: Diction privacy policy. The Diction app has zero analytics and zero
 
 Want to understand how Diction is designed to protect your data? [Read our Privacy First page.](/privacy-first)
 
-*Last updated: March 2026*
+*Last updated: October 2026*
 
-Diction is a speech-to-text keyboard for iOS. Your privacy is the foundation of how Diction is built, not a feature we bolt on later.
+Diction is a keyboard for iOS with speech-to-text built in. Your privacy is the foundation of how Diction is built, not a feature we bolt on later.
 
 The Diction **app** contains **zero analytics and zero tracking code**. No data is collected, transmitted, or sold by the app. Your App Store privacy label reads "Data Not Collected." That is accurate.
 
@@ -62,6 +62,7 @@ Diction stores the following locally on your iPhone, accessible only to the app 
 - **Your settings**: selected mode, language, server endpoint (if self-hosted)
 - **Subscription status**: whether you hold an active Diction One subscription (managed entirely by Apple)
 - **Downloaded speech models**: for on-device transcription, stored in the app's local container
+- **Words the keyboard learns**: the words you correct back, so autocorrect stops changing them
 
 None of this data syncs to iCloud or any external service. Removing the app deletes all local data.
 
@@ -70,7 +71,7 @@ None of this data syncs to iCloud or any external service. Removing the app dele
 Diction requests **Full Access** for the keyboard extension. iOS requires this permission for any keyboard that needs network access. Here is exactly what Full Access enables, and what it does not:
 
 - **Network access**: required to send audio to your server or Diction One for transcription
-- **No keylogging**: Diction has no QWERTY keyboard and no text input to record
+- **No keylogging**: what you type on the QWERTY keys is never sent anywhere. The keyboard only remembers the words you correct back, and that list stays on your device
 - **No clipboard access**: Diction does not read your clipboard
 - **No contacts access**: Diction does not access your contacts, photos, or any other personal data
 

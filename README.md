@@ -771,7 +771,7 @@ Works with the Node SDK, LangChain, Flowise, n8n, or any tool that expects OpenA
 - **AI cleanup enabled**: The transcript (plain text, no audio) goes to your configured LLM. If you use Ollama locally, nothing leaves your machine.
 - **Diction One (cloud)**: Audio is transcribed and immediately discarded. Not stored, not used for training.
 - **Zero third-party SDKs** in the app. No analytics, no tracking, no telemetry.
-- **Full Access** is required by iOS for any keyboard that makes network requests. Diction has no QWERTY input - the only data that leaves the app is the audio recording, sent to the endpoint you configured.
+- **Full Access** is required by iOS for any keyboard that makes network requests. What you type on the QWERTY keys never leaves your phone. The app sends your dictation audio, plus the text around your cursor when you edit by voice, and only to the endpoint you configured.
 
 Read the full [Privacy Policy](https://diction.one/privacy).
 

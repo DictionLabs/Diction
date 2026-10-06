@@ -8,7 +8,7 @@ keywords: "voice keyboard features iphone, ios dictation features, speech to tex
 
 # Features
 
-Diction is a voice keyboard for iPhone. One mic button. No QWERTY. Tap, speak, text appears wherever your cursor is. Here is everything it can do.
+Diction is a keyboard for iPhone with voice built in. Tap the mic, speak, and text appears wherever your cursor is. When you can't talk, switch to the QWERTY keys. Here is everything it can do.
 
 ## <Icon name="chat" /> [Context-Aware Text Editing](/features/context-aware)
 

@@ -50,7 +50,7 @@ The Diction app contains no analytics and no tracking code. No usage data, no de
 
 This website uses Google Analytics. The app does not.
 
-Diction has no QWERTY keyboard. There is nothing to type into it, and therefore nothing to log.
+Diction has a QWERTY keyboard, and typing on it never touches the network. The keyboard remembers the words you correct back so autocorrect stops changing them, and that list stays on your phone.
 
 ## What you can verify
 

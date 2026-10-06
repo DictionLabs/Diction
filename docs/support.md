@@ -147,7 +147,7 @@ You run a speech-to-text server on your own hardware. Diction connects to it ove
 <summary>Why does it need Full Access?</summary>
 <div>
 
-iOS requires Full Access for any keyboard extension that uses the network. Diction needs it to send audio to your server or Diction One for transcription. Diction has no QWERTY keys to log, does not read your clipboard, and does not access contacts or any other personal data.
+iOS requires Full Access for any keyboard extension that uses the network. Diction needs it to send audio to your server or Diction One for transcription. What you type on the QWERTY keys never leaves your phone. Diction does not read your clipboard, and does not access contacts or any other personal data.
 
 </div>
 </details>

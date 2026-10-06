@@ -198,7 +198,7 @@ gtag('config', 'G-PCV64Y7GFM');`,
             name: 'Why does the keyboard need Full Access?',
             acceptedAnswer: {
               '@type': 'Answer',
-              text: 'iOS requires Full Access for any keyboard extension that uses the network. Diction needs it to send audio for transcription. Diction has no QWERTY keys to log, does not read your clipboard, and does not access contacts.',
+              text: 'iOS requires Full Access for any keyboard extension that uses the network. Diction needs it to send audio for transcription. What you type on the QWERTY keys never leaves your phone. Diction does not read your clipboard, and does not access contacts.',
             },
           },
           {
