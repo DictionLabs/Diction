@@ -5,9 +5,9 @@
     <img src="assets/logo-dark.png" alt="Diction" height="50">
   </picture>
   <br><br>
-  <strong>The iOS keyboard for voice and AI.</strong>
+  <strong>The iPhone keyboard<br>with voice and AI you can self-host.</strong>
   <br><br>
-  Dictate, compose, and edit - by voice, in any app.<br>On-device, cloud, or self-hosted. Open-source gateway.
+  A full QWERTY that learns your words.<br>On-device, cloud, or your own server.
 </p>
 
 <table align="center"><tr>
@@ -45,9 +45,20 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/DictionLabs/Diction/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge" alt="License: MIT"></a>
-  <a href="https://codecov.io/gh/DictionLabs/Diction"><img src="https://img.shields.io/codecov/c/github/DictionLabs/Diction?style=for-the-badge&label=coverage" alt="Coverage"></a>
-  <a href="https://huggingface.co/DictionLabs"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-DictionLabs-ffcc4d?style=for-the-badge" alt="Hugging Face"></a>
+  <a href="https://apps.apple.com/app/id6759807364"><img src="https://img.shields.io/itunes/v/6759807364?label=App%20Store&style=flat-square" alt="App Store"></a>
+  <a href="https://github.com/DictionLabs/Diction/releases/latest"><img src="https://img.shields.io/github/v/release/DictionLabs/Diction?label=gateway&style=flat-square" alt="Latest gateway release"></a>
+  <a href="https://github.com/DictionLabs/Diction/blob/main/LICENSE"><img src="https://img.shields.io/github/license/DictionLabs/Diction?style=flat-square" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/DictionLabs/Diction/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/DictionLabs/Diction/test.yml?branch=main&label=tests&style=flat-square" alt="Gateway tests"></a>
+  <a href="https://codecov.io/gh/DictionLabs/Diction"><img src="https://img.shields.io/codecov/c/github/DictionLabs/Diction?label=coverage&style=flat-square" alt="Coverage"></a>
+  <a href="https://hub.docker.com/r/dictionlabs/gateway"><img src="https://img.shields.io/docker/pulls/dictionlabs/gateway?label=docker%20pulls&style=flat-square" alt="Docker pulls"></a>
+</p>
+
+<p align="center">
+  <a href="https://hub.docker.com/r/dictionlabs/gateway"><img src="https://img.shields.io/docker/image-size/dictionlabs/gateway?label=image&style=flat-square" alt="Gateway image size"></a>
+  <a href="https://huggingface.co/DictionLabs"><img src="https://img.shields.io/badge/Hugging_Face-DictionLabs-ffcc4d?logo=huggingface&logoColor=black&style=flat-square" alt="Hugging Face"></a>
 </p>
 
 <p align="center"><strong>Contributors</strong></p>
