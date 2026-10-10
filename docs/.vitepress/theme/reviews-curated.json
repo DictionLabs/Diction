@@ -1,0 +1,46 @@
+[
+  {
+    "author": "Tester123445",
+    "title": "Einfach perfekt.",
+    "excerpt": "Even apart from self-hosting, Diction is the best keyboard I have used so far. The combination of a full keyboard and an excellent dictation function is a real productivity gain.",
+    "translated": "German",
+    "storefront": "de"
+  },
+  {
+    "author": "carryonxd",
+    "title": "Perfect dictation even for my speech impediment.",
+    "excerpt": "I have a speech impediment... this app understands me far more clearly than Apple's built-in dictation ever has. Being able to use it completely free, unlimited, and offline means a lot to me.",
+    "storefront": "us"
+  },
+  {
+    "author": "sudo-super-su",
+    "title": "Better than Wispr Flow highly recommend",
+    "excerpt": "I used to be a Whisperflow user, and I just got sick and tired of having to context-switch and leave my app, and I feel like with this app, it's a lot more frictionless.",
+    "storefront": "us"
+  },
+  {
+    "author": "OMGitsMiniMe",
+    "title": "Perfect dictation even for my southern accent!",
+    "excerpt": "Works amazing. Especially on job sites with equipment running in the background... It looks very professional when texting with clients because it corrects my bad grammar and corrects some of my Southern accent.",
+    "storefront": "us"
+  },
+  {
+    "author": "dkshaw",
+    "title": "Goodbye Siri Dictation",
+    "excerpt": "Until diction arrived my workflow was to dictate on mobile using ChatGPT, copy it, then go into the app and paste my text... now with diction I self host whisper and I can seamlessly dictate. Love it.",
+    "storefront": "us"
+  },
+  {
+    "author": "CheneyYan",
+    "title": "非常推荐的一个软件。",
+    "excerpt": "If you have a Mac, you can set up the backend very easily... The front end is already a very polished interface... And you can control your own privacy.",
+    "translated": "Chinese",
+    "storefront": "au"
+  },
+  {
+    "author": "Zilbertas",
+    "title": "Great, works offline!",
+    "excerpt": "Finally, a voice keyboard that actually understands me... It works flawlessly across all my apps, and having the option to run it completely offline is a huge bonus.",
+    "storefront": "lt"
+  }
+]

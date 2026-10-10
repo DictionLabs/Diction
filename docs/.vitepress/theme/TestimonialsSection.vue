@@ -1,180 +1,242 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { data as reviews } from './reviews.data.js'
+import reviews from './reviews-curated.json'
 
-const visibleReviews = computed(() => reviews.slice(0, 4))
+interface CuratedReview {
+  author: string
+  title: string
+  excerpt: string
+  translated?: string
+  storefront: string
+}
+
 const APP_STORE_REVIEWS_URL = 'https://apps.apple.com/app/id6759807364?see-all=reviews'
 
-const expanded = ref(new Set())
-function toggle(event: Event, author: string) {
-  event.preventDefault()
-  event.stopPropagation()
-  if (expanded.value.has(author)) expanded.value.delete(author)
-  else expanded.value.add(author)
+const list = reviews as CuratedReview[]
+// First entry is the featured quote; the rest fill the grid.
+const featured = list[0]
+const others = list.slice(1)
+
+function initial(author: string): string {
+  return (author.trim().charAt(0) || 'A').toUpperCase()
 }
+
+// Avatars cycle through the three accents so the grid does not read as one block.
+const TONES = ['blue', 'violet', 'orange'] as const
+const tone = (i: number) => TONES[i % TONES.length]
 </script>
 
 <template>
-  <section v-if="visibleReviews.length > 0" class="testimonials">
-    <div class="testimonials-inner">
-      <p class="testimonials-label">From the App Store</p>
-      <h2 class="testimonials-heading">Straight from real users.</h2>
-      <div class="testimonials-grid">
+  <section v-if="list.length > 0" class="ld-section testimonials">
+    <div class="ld-container">
+
+      <div class="t-head" v-reveal>
+        <h2 class="ld-h2">Loved by the people who use it.</h2>
+        <a :href="APP_STORE_REVIEWS_URL" target="_blank" rel="noopener" class="rating">
+          <span class="rating-score">4.9</span>
+          <span class="rating-side">
+            <span class="stars" aria-hidden="true">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
+            <span class="rating-where">Read the reviews on the App Store <span aria-hidden="true">→</span></span>
+          </span>
+        </a>
+      </div>
+
+      <div class="t-layout">
         <a
-          v-for="review in visibleReviews"
-          :key="review.author"
+          v-if="featured"
           :href="APP_STORE_REVIEWS_URL"
           target="_blank"
           rel="noopener"
-          class="testimonial-card"
+          class="ld-card hover t-card featured"
+          v-reveal
         >
-          <div class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-          <span class="review-title">{{ review.title }}</span>
-          <p class="review-body" :class="{ clamped: !expanded.has(review.author) }">{{ review.body }}</p>
-          <button
-            v-if="review.body.length > 280"
-            class="review-toggle"
-            @click="toggle($event, review.author)"
-          >
-            {{ expanded.has(review.author) ? 'Show less' : 'Read more' }}
-          </button>
-          <div class="review-footer">
-            <Icon name="user-circle" class="review-author-icon" />
-            <span class="review-author">{{ review.author }}</span>
+          <span class="quote-mark" aria-hidden="true">&ldquo;</span>
+          <blockquote class="quote">&ldquo;{{ featured.excerpt }}&rdquo;</blockquote>
+          <div class="author">
+            <span class="avatar" :class="tone(0)" aria-hidden="true">{{ initial(featured.author) }}</span>
           </div>
         </a>
+
+        <div class="t-grid ld-stagger" v-reveal="{ delay: 120 }">
+          <a
+            v-for="(review, i) in others"
+            :key="review.author"
+            :href="APP_STORE_REVIEWS_URL"
+            target="_blank"
+            rel="noopener"
+            class="ld-card hover t-card"
+          >
+            <blockquote class="quote">&ldquo;{{ review.excerpt }}&rdquo;</blockquote>
+            <div class="author">
+              <span class="avatar" :class="tone(i + 1)" aria-hidden="true">{{ initial(review.author) }}</span>
+            </div>
+          </a>
+        </div>
       </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-.testimonials {
-  padding: 5rem 1.5rem;
-  background: var(--vp-c-bg-soft);
-}
-
-.testimonials-inner {
-  max-width: 1152px;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.testimonials-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--vp-c-text-3);
-  margin: 0 0 0.75rem;
-}
-
-.testimonials-heading {
-  font-family: 'FiraSans', sans-serif;
-  font-weight: 400;
-  font-style: italic;
-  font-size: clamp(1.75rem, 3.5vw, 2.25rem);
-  color: var(--vp-c-text-1);
-  margin: 0 0 3rem;
-  border: none;
-  letter-spacing: normal;
-}
-
-.testimonials-grid {
+/* ---------- Header ---------- */
+/* Heading left (wraps if it must), the rating always on the right. */
+.t-head {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.25rem;
-  text-align: left;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 1rem 3rem;
+  margin-bottom: clamp(2rem, 4vw, 3rem);
 }
-
-.testimonial-card {
-  background: var(--vp-c-bg);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 14px;
-  padding: 1.5rem;
+/* The rating is the proof for the heading, so it is set big on purpose. */
+.rating {
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(0.75rem, 2vw, 1.25rem);
+  color: var(--vp-c-text-1);
+  text-decoration: none !important;
+}
+.rating-score {
+  font-size: clamp(4.5rem, 10vw, 8rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 0.85;
+}
+.rating-side {
   display: flex;
   flex-direction: column;
-  gap: 0.875rem;
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-  text-decoration: none;
-  color: inherit;
+  gap: 0.4rem;
 }
-
-.testimonial-card:hover {
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
-}
-
-.dark .testimonial-card:hover {
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-}
-
 .stars {
-  color: #FF9F0A;
-  font-size: 1rem;
-  letter-spacing: 0.1em;
+  color: var(--ld-violet-blue);
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+/* Looks like a link, so it is obvious the rating opens the reviews. */
+.rating-where {
+  font-size: clamp(0.95rem, 1.3vw, 1.1rem);
+  font-weight: 600;
+  color: var(--ld-violet-blue);
+}
+.rating:hover .rating-where {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 760px) {
+  .t-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
-.review-body {
-  font-size: 0.95rem;
-  color: var(--vp-c-text-2);
-  line-height: 1.65;
+/* ---------- Layout ---------- */
+.t-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.t-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+@media (min-width: 640px) {
+  .t-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 960px) {
+  .t-layout {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 1.25rem;
+  }
+  .t-grid {
+    gap: 1.25rem;
+  }
+}
+
+/* ---------- Cards ---------- */
+.t-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.375rem 1.375rem 1.25rem;
+  color: inherit;
+  text-decoration: none !important;
+}
+.quote {
   margin: 0;
-  flex: 1;
-  white-space: pre-line;
+  padding: 0;
+  border: none;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--vp-c-text-1);
+  text-wrap: pretty;
 }
 
-.review-body.clamped {
-  display: -webkit-box;
-  -webkit-line-clamp: 6;
-  -webkit-box-orient: vertical;
+/* ---------- Featured quote block ---------- */
+.featured {
+  padding: clamp(1.75rem, 3vw, 2.5rem) clamp(1.375rem, 3vw, 2.25rem) 1.5rem;
+  gap: 1rem;
   overflow: hidden;
 }
-
-.review-toggle {
-  align-self: flex-start;
-  background: none;
-  border: none;
-  padding: 0;
-  margin: -0.5rem 0 0;
-  font-size: 0.8rem;
-  font-weight: 600;
+.featured .quote-mark {
+  position: absolute;
+  top: 0.9rem;
+  left: 0.75rem;
+  font-size: clamp(8rem, 12vw, 10rem);
+  font-weight: 700;
+  line-height: 1;
   color: var(--vp-c-brand-1);
-  cursor: pointer;
+  opacity: 0.14;
+  pointer-events: none;
+  user-select: none;
+}
+@media (min-width: 960px) {
+  .featured {
+    position: sticky;
+    top: calc(var(--vp-nav-height, 64px) + 24px);
+  }
+}
+.featured .quote {
+  font-size: clamp(1.25rem, 2vw, 1.5rem);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.featured .quote {
+  position: relative;
 }
 
-.review-toggle:hover {
-  text-decoration: underline;
-}
-
-.review-footer {
+/* ---------- Author row ---------- */
+.author {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--vp-c-divider);
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 0.25rem;
 }
-
-.review-author-icon {
-  color: var(--vp-c-text-3);
-  font-size: 1.1em;
-  flex-shrink: 0;
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 50%;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
 }
-
-.review-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--vp-c-text-1);
+.avatar.violet {
+  background: var(--ld-violet-soft);
+  color: var(--ld-violet);
 }
-
-.review-author {
-  font-size: 0.8rem;
-  color: var(--vp-c-text-3);
-}
-
-@media (max-width: 640px) {
-  .testimonials {
-    padding: 3.5rem 1.25rem;
-  }
+.avatar.orange {
+  background: var(--ld-orange-soft);
+  color: var(--ld-orange);
 }
 </style>

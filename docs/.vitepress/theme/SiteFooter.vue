@@ -4,8 +4,7 @@
       <div class="footer-columns">
         <div class="footer-col footer-brand">
           <a href="/" class="brand-link">
-            <img src="/app-icon.png" alt="Diction" class="brand-icon" width="40" height="40" />
-            <span class="brand-name">Diction</span>
+            <span class="brand-name">Diction Labs</span>
           </a>
           <p class="brand-tagline">Voice keyboard for iPhone.</p>
           <div class="social-icons">
@@ -17,6 +16,9 @@
             </a>
             <a href="https://www.reddit.com/r/dictionapp" target="_blank" rel="noopener" aria-label="Reddit">
               <img src="/icon-reddit.svg" alt="" width="20" height="20" class="social-icon" />
+            </a>
+            <a href="https://huggingface.co/DictionLabs" target="_blank" rel="noopener" aria-label="Hugging Face">
+              <img src="/icon-huggingface.svg" alt="" width="20" height="20" class="social-icon" />
             </a>
           </div>
         </div>
@@ -37,6 +39,7 @@
           <ul>
             <li><a href="/support"><img src="/icon-lifebuoy.svg" alt="" class="link-icon" />Support</a></li>
             <li><a href="https://github.com/DictionLabs/Diction" target="_blank" rel="noopener"><img src="/icon-github.svg" alt="" class="link-icon" />GitHub</a></li>
+            <li><a href="https://huggingface.co/DictionLabs" target="_blank" rel="noopener"><img src="/icon-huggingface.svg" alt="" class="link-icon" />Hugging Face</a></li>
             <li><a href="https://www.reddit.com/r/dictionapp" target="_blank" rel="noopener"><img src="/icon-reddit.svg" alt="" class="link-icon" />Reddit</a></li>
             <li><a href="https://x.com/diction_one" target="_blank" rel="noopener"><img src="/icon-x.svg" alt="" class="link-icon" />X / Twitter</a></li>
           </ul>
@@ -67,21 +70,21 @@ const year = new Date().getFullYear();
 :root {
   --footer-bg: #f6f8fa;
   --footer-border: var(--vp-c-divider);
-  --footer-heading: #1a1a1a;
-  --footer-link: #4a4a4a;
+  --footer-heading: var(--ld-navy-800);
+  --footer-link: var(--ld-navy-500);
   --footer-link-hover: var(--diction-blue);
-  --footer-divider: #d1d5db;
-  --footer-muted: #6e6e6e;
+  --footer-divider: var(--ld-navy-200);
+  --footer-muted: var(--ld-navy-400);
 }
 
 .dark {
-  --footer-bg: #141416;
+  --footer-bg: var(--ld-navy-950);
   --footer-border: rgba(255, 255, 255, 0.06);
-  --footer-heading: #e8e8e8;
-  --footer-link: #a0a0a0;
+  --footer-heading: var(--ld-navy-100);
+  --footer-link: var(--ld-navy-300);
   --footer-link-hover: #4DA3FF;
   --footer-divider: rgba(255, 255, 255, 0.08);
-  --footer-muted: #707070;
+  --footer-muted: var(--ld-navy-450);
 }
 </style>
 
@@ -118,7 +121,8 @@ const year = new Date().getFullYear();
 .brand-name {
   font-family: 'BigShouldersInlineText', sans-serif;
   font-weight: 800;
-  font-size: 24px;
+  font-size: 30px;
+  line-height: 1.2;
   color: var(--footer-heading);
   letter-spacing: 0.5px;
 }
