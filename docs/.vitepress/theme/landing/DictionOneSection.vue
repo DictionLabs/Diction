@@ -7,14 +7,8 @@
 
 const APP_STORE = 'https://apps.apple.com/app/id6759807364'
 
-const features = [
-  'Our most accurate speech models',
-  'Words appear live as you talk',
-  'Writing Tools: clean up, format, edit by voice',
-  'Say "new paragraph" or "comma" and it happens',
-  'Transcripts encrypted with AES-256-GCM',
-  'Nothing to install or run',
-]
+// Short on purpose: one clean signal per line.
+const features = ['Live transcription', 'Every Writing Tool', 'No word limits', 'Audio never stored']
 
 interface Price {
   key: string
@@ -39,19 +33,16 @@ const prices: Price[] = [
 </script>
 
 <template>
-  <section id="diction-one" class="ld-section soft one">
+  <section id="pricing" class="ld-section soft one">
     <div class="ld-container">
-      <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-violet"><b class="ld-idx">05</b>Diction One</span>
-        <span class="ld-mono">Free trial included</span>
-      </div>
 
       <div class="one-grid">
         <div class="one-text" v-reveal>
-          <h2 class="ld-h2">The best Diction, with nothing to set up.</h2>
+          <h2 class="ld-h2 big in-col">Diction Cloud.<br />Hard to beat.</h2>
           <p class="ld-lead">
-            Diction One runs on our servers. You get our most accurate models and every Writing Tool,
-            on any iPhone, from the first tap.
+            We run the GPU servers ourselves. Your voice is transcribed there and thrown away, never
+            stored. Running the hardware also keeps costs down, which is how the price stays fair and
+            below what most dictation apps charge.
           </p>
           <ul class="one-list">
             <li v-for="f in features" :key="f">
@@ -78,9 +69,9 @@ const prices: Price[] = [
 
           <a class="ld-btn brand one-cta" :href="APP_STORE" target="_blank" rel="noopener">
             <img src="/apple-logo.svg" alt="" />
-            Start free trial
+            Get the app
           </a>
-          <p class="one-fine">Cancel anytime. US prices; your local price is shown in the app.</p>
+          <p class="one-fine">Free trial in the app. Cancel anytime. US prices, your local price is in the app.</p>
         </div>
       </div>
     </div>
@@ -88,6 +79,10 @@ const prices: Price[] = [
 </template>
 
 <style scoped>
+/* The nav's "Pricing" link lands here; keep the heading clear of the fixed bar. */
+#pricing {
+  scroll-margin-top: var(--vp-nav-height);
+}
 .one-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

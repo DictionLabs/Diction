@@ -47,13 +47,8 @@ function isIcon(item: Item): item is { icon: string } {
 
 <template>
   <section class="ld-section apps-marquee">
-    <div class="ld-container" v-reveal>
-      <div class="ld-label-row marquee-head">
-        <span class="ld-mono ld-accent ld-blue"><b class="ld-idx">01</b>Works everywhere you type</span>
-        <span class="ld-mono">Any app, any text field</span>
-      </div>
-    </div>
-
+    <!-- Rows run inside the content column, fading out at its edges -->
+    <div class="ld-container">
     <div class="marquee-row" v-reveal="{ delay: 80 }">
       <div class="marquee-track">
         <div v-for="copy in 2" :key="copy" class="marquee-copy" :aria-hidden="copy === 2 ? 'true' : undefined">
@@ -91,6 +86,7 @@ function isIcon(item: Item): item is { icon: string } {
         </div>
       </div>
     </div>
+    </div>
   </section>
 </template>
 
@@ -98,21 +94,17 @@ function isIcon(item: Item): item is { icon: string } {
 .apps-marquee {
   padding-block: 3rem;
 }
-.apps-marquee .ld-container {
-  margin-bottom: 2rem;
-}
-.apps-marquee .marquee-head {
-  margin-bottom: 1.75rem;
-}
 
 .marquee-row {
   overflow: hidden;
   width: 100%;
-  -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
-  mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+  /* room for the icon shadows, which overflow: hidden would clip */
+  padding-block: 6px;
+  -webkit-mask-image: linear-gradient(to right, transparent, black 16%, black 84%, transparent);
+  mask-image: linear-gradient(to right, transparent, black 16%, black 84%, transparent);
 }
 .marquee-row + .marquee-row {
-  margin-top: 1.25rem;
+  margin-top: 0.75rem;
 }
 
 .marquee-track {

@@ -286,10 +286,12 @@ gtag('config', 'G-PCV64Y7GFM');`,
     },
 
     nav: [
+      // activeMatch never matches: an in-page anchor should not look like the current page
+      { text: 'Pricing', link: '/#pricing', activeMatch: '^/pricing-never$' },
       { text: 'Docs', link: '/features/' },
       { text: 'Support', link: '/support' },
       {
-        text: 'Download',
+        text: 'Get the app',
         link: 'https://apps.apple.com/app/id6759807364',
       },
     ],

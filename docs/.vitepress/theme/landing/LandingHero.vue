@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import HeroFigure from './HeroFigure.vue'
 const APP_STORE = 'https://apps.apple.com/app/id6759807364'
 
 // Media slot. Set `video` to a path like '/hero.mp4' to swap the placeholder photo
@@ -12,26 +13,20 @@ const media = {
   poster: '/placeholder/hero-wide.jpg',
 }
 
-const readouts = [
-  { k: 'Runs on', v: 'iPhone / your server / our cloud' },
-  { k: 'Writing Tools', v: 'fillers, grammar, formatting' },
-  { k: 'Server', v: 'open source' },
-]
-
 </script>
 
 <template>
   <section class="ld-section ink ld-grid-bg hero">
     <div class="ld-container">
       <h1 class="ld-h1 hero-h1" v-reveal="{ delay: 60 }">
-        The intelligent<br /><span class="hero-h1-line2">voice keyboard for iPhone.</span>
+        Say it. Send it.
       </h1>
 
       <div class="hero-row" v-reveal="{ delay: 140 }">
         <p class="ld-lead hero-lead">
-          Say it in any app and get text you can send as it is. No ums, no typos,
-          no retyping. It’s a full keyboard too, so it’s the only one you need.
-          Free on your iPhone and on your own server.
+          The intelligent voice keyboard for iPhone. Speak in any app and get text
+          you can send as it is. Free on your iPhone and on your server, or use
+          Diction Cloud.
         </p>
         <div class="hero-cta">
           <a class="ld-btn hero-btn-primary" :href="APP_STORE" target="_blank" rel="noopener">
@@ -68,15 +63,7 @@ const readouts = [
             playsinline
           />
         </template>
-        <img v-else class="hero-media-el" :src="media.poster" alt="" />
-        <div class="hero-media-shade" aria-hidden="true"></div>
-        <span class="hero-media-tag ld-mono">Placeholder / real recording goes here</span>
-        <ul class="hero-readouts">
-          <li v-for="r in readouts" :key="r.k" class="ld-readout">
-            <span class="hero-readout-k">{{ r.k }}</span>
-            <b>{{ r.v }}</b>
-          </li>
-        </ul>
+        <HeroFigure v-else />
       </div>
 
     </div>
@@ -93,10 +80,8 @@ const readouts = [
 
 
 .hero-h1 {
-  /* Sized so the second line always fits the container on one line. In Libre
-     Franklin 700 at -0.035em it measures 11.74x the font size; the container is
-     the viewport minus 40px of padding, capped at 1152px (1152 / 11.74 = 98px). */
-  font-size: clamp(2.75rem, calc((100vw - 40px) / 11.9), 6rem);
+  /* Four words, so it can run larger than the old two-line headline. */
+  font-size: clamp(3.5rem, 11vw, 8.5rem);
   line-height: 0.98;
   letter-spacing: -0.035em;
   max-width: 22ch;
@@ -123,14 +108,15 @@ const readouts = [
 }
 /* Scaled to sit under a display headline, not a body paragraph. */
 .hero-cta .ld-btn {
-  min-height: 58px;
-  padding: 0 30px;
-  font-size: 1.0625rem;
+  min-height: 62px;
+  padding: 0 32px;
+  font-size: 1.1875rem;
+  font-weight: 600;
   gap: 12px;
 }
 .hero-cta .ld-btn img {
-  width: 21px;
-  height: 21px;
+  width: 26px;
+  height: 26px;
 }
 
 .hero-btn-primary {
@@ -139,6 +125,10 @@ const readouts = [
 }
 .hero-btn-primary img {
   filter: brightness(0);
+  /* The Apple glyph is narrow; at the GitHub mark's size it reads smaller. */
+  width: 28px !important;
+  height: 28px !important;
+  margin-top: -3px;
 }
 .hero-btn-primary:hover {
   background: #e9e9ec;
@@ -160,6 +150,10 @@ const readouts = [
   border-radius: 16px;
   overflow: hidden;
   background: var(--ld-navy-900);
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -194,28 +188,6 @@ const readouts = [
   background: color-mix(in srgb, var(--ld-navy-900) 66%, transparent);
   color: rgba(255, 255, 255, 0.75);
   backdrop-filter: blur(6px);
-}
-
-.hero-readouts {
-  position: absolute;
-  left: 20px;
-  right: 20px;
-  bottom: 18px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 2.5rem;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.hero-readouts .ld-readout {
-  color: rgba(255, 255, 255, 0.6);
-}
-.hero-readout-k {
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.7rem;
 }
 
 .hero-media-el.portrait {
@@ -255,20 +227,8 @@ const readouts = [
   }
   .hero-cta .ld-btn {
     width: 100%;
-    min-height: 54px;
-    font-size: 1rem;
-  }
-  .hero-readouts {
-    flex-direction: column;
-    gap: 0.55rem;
-  }
-  .hero-readouts .ld-readout {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.15rem;
-  }
-  .hero-readout-k {
-    white-space: nowrap;
+    min-height: 56px;
+    font-size: 1.0625rem;
   }
 }
 </style>

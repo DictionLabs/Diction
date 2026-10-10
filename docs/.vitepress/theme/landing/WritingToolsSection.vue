@@ -69,8 +69,6 @@ const grammar = ref(false)
 const formatting = ref(false)
 const tone = ref<'casual' | 'formal'>('casual')
 
-const wordCount = sentences.reduce((n, s) => n + s.length, 0)
-
 interface Run {
   text: string
   changed: boolean
@@ -126,11 +124,6 @@ const blocks = computed<Block[]>(() => {
   return out
 })
 
-const fillersRemoved = computed(() =>
-  fillers.value ? sentences.flat().filter((t) => t.f === '').length : 0,
-)
-const fixes = computed(() => blocks.value.reduce((n, b) => n + b.runs.filter((r) => r.changed).length, 0))
-const listItems = computed(() => blocks.value.filter((b) => b.kind === 'li').length)
 const stateKey = computed(
   () => `${fillers.value ? 1 : 0}${grammar.value ? 1 : 0}${formatting.value ? 1 : 0}${tone.value}`,
 )
@@ -212,15 +205,21 @@ const tiles = [
   },
   {
     label: 'Formatting',
-    line: 'Lists, numbers, dates, paragraphs',
+    line: 'Lists, numbers, dates, paragraphs. Or say "new paragraph"',
     before: 'one two three',
     after: '1. 2. 3.',
   },
   {
-    label: 'By voice',
-    line: 'Say "new paragraph", "new line" or "exclamation mark"',
-    before: 'thanks exclamation mark',
-    after: 'Thanks!',
+    label: 'My Words',
+    line: 'Your names, brands and jargon, spelled your way',
+    before: 'new yen',
+    after: 'Nguyen',
+  },
+  {
+    label: 'Voice commands',
+    line: 'Tell it what to change in text that is already there',
+    before: 'Hi team · "translate to Spanish"',
+    after: 'Hola equipo',
   },
 ]
 </script>
@@ -228,16 +227,12 @@ const tiles = [
 <template>
   <section class="ld-section soft wt-section" ref="root">
     <div class="ld-container">
-      <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-violet"><b class="ld-idx">03</b>Writing Tools</span>
-        <span class="ld-mono">Your server or ours</span>
-      </div>
 
       <div class="ld-head wt-head" v-reveal>
         <h2 class="ld-h2">Exactly what you said. Cleaned up.</h2>
         <p class="ld-lead">
           Fast, accurate transcription, then the cleanup you would do by hand: fillers gone, grammar fixed,
-          lists formatted.
+          lists formatted, your names spelled right. And when the text is already there, just say what to change.
         </p>
       </div>
 
@@ -245,7 +240,6 @@ const tiles = [
         <!-- Left pane header -->
         <div class="wt-pane-head wt-left-head">
           <span class="ld-mono wt-transcript-label">Transcript</span>
-          <span class="ld-mono wt-meta">as spoken · {{ wordCount }} words</span>
         </div>
 
         <!-- Right pane header: controls -->
@@ -347,14 +341,6 @@ const tiles = [
               </p>
             </template>
           </div>
-          <div class="wt-status ld-mono" aria-live="polite">
-            <template v-if="!fillersRemoved && !fixes && !listItems">unchanged</template>
-            <template v-else>
-              <span v-if="fillersRemoved">{{ fillersRemoved }} fillers removed</span>
-              <span v-if="fixes">{{ fixes }} {{ fixes === 1 ? 'edit' : 'edits' }}</span>
-              <span v-if="listItems">list of {{ listItems }}</span>
-            </template>
-          </div>
         </div>
       </div>
 
@@ -370,11 +356,6 @@ const tiles = [
         </div>
       </div>
 
-      <div class="ld-rule wt-foot-rule" v-reveal></div>
-      <p class="ld-small wt-foot" v-reveal>
-        <span>Part of Diction One. Free on your own server with your own language model.</span>
-        <a href="/features/writing-tools">About Writing Tools</a>
-      </p>
     </div>
   </section>
 </template>
@@ -630,7 +611,7 @@ const tiles = [
 /* ---------- Tiles ---------- */
 .wt-tiles {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 1rem;
   margin-top: 1.25rem;
 }
@@ -681,32 +662,14 @@ const tiles = [
 }
 
 /* ---------- Footer ---------- */
-.wt-foot-rule {
-  margin-top: clamp(2.5rem, 5vw, 4rem);
-}
 
-.wt-foot {
-  margin-top: 1rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 1rem;
-  justify-content: space-between;
-}
 
-.wt-foot a {
-  color: var(--ld-violet);
-  font-weight: 500;
-  white-space: nowrap;
-}
 
-.wt-foot a:hover {
-  text-decoration: underline;
-}
 
 /* ---------- Mobile ---------- */
 @media (max-width: 1100px) {
   .wt-tiles {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
 }
 
@@ -746,9 +709,6 @@ const tiles = [
   }
   .wt-tiles {
     grid-template-columns: 1fr;
-  }
-  .wt-foot {
-    flex-direction: column;
   }
 }
 

@@ -197,6 +197,16 @@
   color: var(--vp-c-text-1);
   text-wrap: balance;
 }
+/* Short, punchy titles ("Your voice. Your choice.") run big. In a half-width
+   column they get a lower cap so they still break cleanly. */
+.ld-h2.big {
+  font-size: clamp(2.75rem, 7.5vw, 5.75rem);
+  letter-spacing: -0.045em;
+  line-height: 0.98;
+}
+.ld-h2.big.in-col {
+  font-size: clamp(2.5rem, 4.8vw, 3.9rem);
+}
 .ld-h3 {
   font-size: clamp(1.25rem, 2.2vw, 1.5rem);
   font-weight: 650;

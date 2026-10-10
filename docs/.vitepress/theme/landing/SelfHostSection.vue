@@ -9,6 +9,11 @@ const props = defineProps<{ video?: string }>()
 // "Connecting the app"). Every output line is copied from a real first run of
 // the public docker-compose.yml on a clean Docker host (Compose v5, 2026-09-19).
 // Only the pairing key is made up.
+// Clone, start, pair. A clone (not a piped file) leaves docker-compose.yml on
+// disk for PUBLIC_URL / LLM edits, and the folder name keeps the project and
+// network named "diction" (Compose lowercases it).
+const CMD_CLONE = 'git clone --depth 1 https://github.com/DictionLabs/Diction && cd Diction'
+const CLONE_LINES = ["Cloning into 'Diction'..."]
 const CMD_UP = 'docker compose --profile parakeet up -d'
 const UP_LINES = [
   '[+] up 15/15',
@@ -95,6 +100,9 @@ const terminalEl = ref<HTMLElement | null>(null)
 const videoEl = ref<HTMLVideoElement | null>(null)
 
 // 0: typing up, 1: up output, 2: typing auth, 3: auth output, 4: done
+const typedClone = ref('')
+const cloneLines = ref<string[]>([])
+const upStarted = ref(false)
 const typedUp = ref('')
 const upLines = ref<string[]>([])
 const authStarted = ref(false)
@@ -117,6 +125,9 @@ function sleep(ms: number) {
 }
 
 function resetState() {
+  typedClone.value = ''
+  cloneLines.value = []
+  upStarted.value = false
   typedUp.value = ''
   upLines.value = []
   authStarted.value = false
@@ -128,6 +139,9 @@ function resetState() {
 }
 
 function showFinalState() {
+  typedClone.value = CMD_CLONE
+  cloneLines.value = [...CLONE_LINES]
+  upStarted.value = true
   typedUp.value = CMD_UP
   upLines.value = [...UP_LINES]
   authStarted.value = true
@@ -140,10 +154,12 @@ function showFinalState() {
 }
 
 async function typeInto(target: typeof typedUp, text: string) {
+  // Long commands type faster so the one-liner does not drag.
+  const step = text.length > 80 ? 9 : 22
   for (let i = 1; i <= text.length; i++) {
     if (disposed) return
     target.value = text.slice(0, i)
-    await sleep(22)
+    await sleep(step)
   }
 }
 
@@ -152,6 +168,14 @@ async function playSequence() {
   resetState()
   playing.value = true
 
+  await typeInto(typedClone, CMD_CLONE)
+  await sleep(380)
+  if (disposed) return
+  cloneLines.value = [...CLONE_LINES]
+  await sleep(600)
+  if (disposed) return
+  upStarted.value = true
+  await sleep(200)
   await typeInto(typedUp, CMD_UP)
   await sleep(420)
   for (const line of UP_LINES) {
@@ -233,17 +257,16 @@ onUnmounted(() => {
 <template>
   <section class="ld-section soft selfhost-section">
     <div class="ld-container">
-      <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-violet"><b class="ld-idx">08</b>Self-host</span>
-        <span class="ld-mono">MIT licensed · Docker</span>
-      </div>
 
       <div class="split">
         <div class="col-text" v-reveal>
-          <h2 class="ld-h2">Already run a speech model or an LLM at home? Plug it into your keyboard.</h2>
-          <p class="ld-lead">One Docker command, scan the QR, done. Free, no account, no limits.</p>
+          <h2 class="ld-h2 big in-col">Your GPU.<br />Your keyboard.</h2>
+          <p class="ld-lead">Plug in a speech model or LLM you run at home. Clone, start, scan the QR. Free, no account, no limits.</p>
           <div class="ld-actions">
-            <a class="ld-btn brand" href="/features/self-hosting-setup">Self-hosting guide</a>
+            <a class="ld-btn brand" href="/features/self-hosting-setup">
+              <img class="icon-white" src="/icon-book-open.svg" alt="" />
+              Self-hosting guide
+            </a>
             <a class="ld-btn alt" href="https://github.com/DictionLabs/Diction" target="_blank" rel="noopener">
               <img src="/github-mark.svg" alt="" />
               Source
@@ -267,6 +290,13 @@ onUnmounted(() => {
 
             <div v-else class="terminal-body">
               <div class="term-line prompt">
+                <span class="prompt-sign">$</span>
+                <span class="term-command">{{ typedClone }}</span>
+                <span v-if="!upStarted && !finished" class="term-caret" aria-hidden="true" />
+              </div>
+              <div v-for="(line, i) in cloneLines" :key="'c' + i" class="term-line output">{{ line }}</div>
+
+              <div v-if="upStarted" class="term-line prompt second">
                 <span class="prompt-sign">$</span>
                 <span class="term-command">{{ typedUp }}</span>
                 <span v-if="!authStarted && !finished" class="term-caret" aria-hidden="true" />
@@ -302,6 +332,10 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* Heroicons are filled with currentColor, which an <img> cannot inherit. */
+.icon-white {
+  filter: brightness(0) invert(1);
+}
 .split {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -409,6 +443,11 @@ onUnmounted(() => {
   white-space: pre;
   overflow-x: auto;
   scrollbar-width: none;
+}
+/* The one-line install is long; let typed commands wrap instead of scrolling. */
+.term-line.prompt {
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 .term-line::-webkit-scrollbar {
   display: none;

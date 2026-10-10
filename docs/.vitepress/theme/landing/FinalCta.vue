@@ -8,7 +8,7 @@ const APP_STORE_URL = 'https://apps.apple.com/app/id6759807364'
       <div class="cta-copy ld-stagger" v-reveal>
         <h2 class="ld-h1 cta-h1">Your keyboard is waiting.</h2>
         <p class="ld-lead cta-lead">
-          Free on your iPhone and on your own server. Works in every app.
+          Free on your iPhone and on your server. Works in every app.
         </p>
         <div class="ld-actions cta-actions">
           <a class="ld-btn brand" :href="APP_STORE_URL" target="_blank" rel="noopener">

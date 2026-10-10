@@ -13,9 +13,9 @@ interface Layer {
 // last one at the bottom and raises them bottom-first.
 const layers: Layer[] = [
   { id: 'keys', label: 'Keys' },
-  { id: 'ac', label: 'Autocorrect engine' },
-  { id: 'stt', label: 'Speech models' },
+  { id: 'ac', label: 'Typing intelligence' },
   { id: 'wt', label: 'Writing Tools' },
+  { id: 'stt', label: 'Speech AI' },
   { id: 'enc', label: 'Encryption' },
 ]
 
@@ -63,16 +63,22 @@ interface Tile {
 // implementation detail: the /website rule is outcome, not engineering.
 const tiles: Tile[] = [
   {
+    layer: 'keys',
+    label: 'Keys',
+    title: 'Keys that learn your aim',
+    body: 'The keyboard learns where your thumb actually lands, so fewer wrong letters get through in the first place.',
+  },
+  {
     layer: 'ac',
-    label: 'Autocorrect',
-    title: 'Our own autocorrect engine',
-    body: 'Written from scratch, not borrowed from iOS, so we can tune it to how you type. Your names and jargon stay as you wrote them.',
+    label: 'Typing intelligence',
+    title: 'Knows what you meant to type',
+    body: 'Autocorrect, word completion and next-word suggestions, written from scratch instead of borrowed from iOS. It learns your names and jargon, and it all runs on the phone.',
   },
   {
     layer: 'stt',
-    label: 'Speech models',
-    title: 'Models we tune ourselves',
-    body: 'Open speech models we convert and tune to run fast on iPhone, offline, and on servers. All public, so you can see exactly what runs.',
+    label: 'Speech AI',
+    title: 'Models tuned in-house',
+    body: 'Diction Labs quantizes and fine-tunes the models behind every word, so speech AI runs fast on iPhone, offline, and on servers. Published on Hugging Face.',
     href: 'https://huggingface.co/DictionLabs',
     cta: 'On Hugging Face →',
   },
@@ -81,13 +87,6 @@ const tiles: Tile[] = [
     label: 'Encryption',
     title: 'Encrypted on every transcript',
     body: 'Sealed with AES-256-GCM and a fresh key for every request before it leaves the server. Your words never travel unprotected.',
-  },
-  {
-    label: 'Open source',
-    title: 'A server you can read',
-    body: 'The server behind self-hosting is MIT-licensed on GitHub. Read it, run it on your own hardware, change it.',
-    href: 'https://github.com/DictionLabs/Diction',
-    cta: 'On GitHub →',
   },
 ]
 
@@ -100,13 +99,9 @@ const pad = (n: number) => String(n).padStart(2, '0')
 <template>
   <section class="ld-section ink ld-grid-bg labs">
     <div class="ld-container">
-      <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-violet"><b class="ld-idx">06</b>Diction Labs</span>
-        <span class="ld-mono">Research, models, measurement</span>
-      </div>
 
       <div class="labs-head" v-reveal="{ delay: 60 }">
-        <h2 class="ld-h2">Built from the keys down.</h2>
+        <h2 class="ld-h2">A keyboard that understands you.<br />Built from the ground up.</h2>
       </div>
 
       <div class="labs-grid">
@@ -114,7 +109,7 @@ const pad = (n: number) => String(n).padStart(2, '0')
           class="labs-fig"
           v-reveal="{ delay: 80 }"
           role="img"
-          aria-label="The Diction keyboard in five layers: keys, autocorrect engine, speech models, Writing Tools, encryption."
+          aria-label="The Diction keyboard in five layers: keys, typing intelligence, Writing Tools, speech AI, encryption."
         >
           <div class="labs-stage">
             <div class="labs-3d">
@@ -214,7 +209,7 @@ const pad = (n: number) => String(n).padStart(2, '0')
 
 .labs-head {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem 4rem;
   align-items: end;
   margin-bottom: clamp(2.5rem, 5vw, 4rem);

@@ -30,19 +30,13 @@ const tracks = computed(() => rows.map((row) => [...row.greetings, ...row.greeti
 </script>
 
 <template>
-  <section class="ld-section soft lang-section">
-    <div class="ld-container" v-reveal>
-      <div class="ld-label-row">
-        <span class="ld-mono ld-accent ld-blue"><b class="ld-idx">07</b>99 languages</span>
-        <span class="ld-mono">Pick yours, or auto-detect</span>
-      </div>
-    </div>
+  <section class="ld-section lang-section">
     <div class="ld-container ld-center ld-head" v-reveal>
-      <h2 class="ld-h2">Speak in your language. Or switch halfway.</h2>
-      <p class="ld-lead">Pick your language, or turn on auto-detect and just talk.</p>
+      <h2 class="ld-h2 big">Speak in your language.</h2>
     </div>
 
-    <div class="lang-rows" v-reveal="{ delay: 160 }">
+    <!-- Rows run inside the content column, fading out at its edges, like the app icons -->
+    <div class="ld-container lang-rows" v-reveal="{ delay: 160 }">
       <div v-for="(row, ri) in rows" :key="ri" class="lang-row">
         <div
           class="lang-track"
@@ -74,14 +68,16 @@ const tracks = computed(() => rows.map((row) => [...row.greetings, ...row.greeti
 .lang-rows {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.5rem;
   margin-top: clamp(2.5rem, 5vw, 3.5rem);
 }
 
 .lang-row {
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
-  mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent);
+  /* room for the chip shadows, which overflow: hidden would clip */
+  padding-block: 6px;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 16%, #000 84%, transparent);
+  mask-image: linear-gradient(to right, transparent, #000 16%, #000 84%, transparent);
 }
 
 .lang-track {

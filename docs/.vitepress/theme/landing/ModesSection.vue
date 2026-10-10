@@ -39,8 +39,8 @@ const plans: Plan[] = [
     num: '01',
     label: 'On-device',
     name: 'On your iPhone',
-    price: 'Free',
-    promise: 'Speech models run on the phone. Nothing leaves it.',
+    price: 'Free forever',
+    promise: 'Speech AI runs on the phone. Nothing leaves it.',
     logos: [
       { icon: '/icon-nvidia.svg', label: 'NVIDIA' },
       { text: 'Whisper', label: 'Whisper' },
@@ -55,8 +55,8 @@ const plans: Plan[] = [
     num: '02',
     label: 'Self-hosted',
     name: 'On your server',
-    price: 'Free',
-    promise: 'Run your own speech model or LLM? Plug it into the keyboard.',
+    price: 'Free forever',
+    promise: 'Running a speech model or LLM at home? Plug it into the keyboard.',
     logos: [
       { icon: '/github-mark.svg', label: 'GitHub' },
       { icon: '/icon-docker.svg', label: 'Docker' },
@@ -68,17 +68,16 @@ const plans: Plan[] = [
   {
     key: 'cloud',
     num: '03',
-    label: 'Cloud',
+    label: 'Diction Cloud',
     name: 'Diction One',
-    price: 'Subscription',
-    priceNote: 'free trial included',
-    promise: 'Our servers, our most accurate models, zero setup.',
+    price: 'Free trial',
+    promise: 'Nothing to set up. The best speech AI and every Writing Tool, from the first tap.',
     logos: [
       { icon: '/icon-cloud.svg', label: 'Cloud' },
       { text: 'Diction', wordmark: true, label: 'Diction' },
     ],
     chips: [{ text: 'most accurate' }, { text: 'live transcription' }, { text: 'writing tools', violet: true }],
-    cta: 'Start free trial',
+    cta: 'Get the app',
     href: 'https://apps.apple.com/app/id6759807364',
     featured: true,
   },
@@ -88,14 +87,9 @@ const plans: Plan[] = [
 <template>
   <section class="ld-section ld-grid-bg modes-section">
     <div class="ld-container">
-      <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-blue"><b class="ld-idx">04</b>Where it runs</span>
-        <span class="ld-mono">Free on-device and self-hosted</span>
-      </div>
 
       <div class="modes-head" v-reveal="{ delay: 60 }">
-        <h2 class="ld-h2">Your voice. Your choice.</h2>
-        <p class="ld-lead">On your iPhone, on your own server, or on ours. Switch any time.</p>
+        <h2 class="ld-h2 big">Your voice. Your choice.</h2>
       </div>
 
       <div class="modes-grid ld-stagger" v-reveal="{ delay: 120 }">
@@ -105,15 +99,9 @@ const plans: Plan[] = [
           class="ld-card hover plan"
           :class="{ featured: p.featured }"
         >
-          <p class="ld-item plan-index">
-            <span class="ld-item-num">{{ p.num }}</span>
-            <span>{{ p.label }}</span>
-          </p>
-          <h3 class="plan-name">{{ p.name }}</h3>
-
-          <div class="plan-price">
-            <span class="plan-price-value">{{ p.price }}</span>
-            <span v-if="p.priceNote" class="plan-price-note">{{ p.priceNote }}</span>
+          <div class="plan-head">
+            <h3 class="plan-name">{{ p.label }}</h3>
+            <span class="plan-tag">{{ p.price }}</span>
           </div>
 
           <p class="plan-promise">{{ p.promise }}</p>
@@ -164,10 +152,6 @@ const plans: Plan[] = [
           </a>
         </article>
       </div>
-
-      <p class="ld-small modes-foot" v-reveal="{ delay: 160 }">
-        Same keyboard in all three. Switch any time.
-      </p>
     </div>
   </section>
 </template>
@@ -175,6 +159,8 @@ const plans: Plan[] = [
 <style scoped>
 .modes-section {
   background-color: var(--vp-c-bg);
+  /* It follows the app-icon strip directly, so it needs no full section gap. */
+  padding-top: clamp(1.5rem, 3vw, 2.5rem);
 }
 
 /* ---- Header: headline left, lead right ---- */
@@ -233,47 +219,61 @@ const plans: Plan[] = [
 }
 
 /* ---- Name, price, promise ---- */
-.plan-index {
-  margin-bottom: 0.75rem;
-}
-/* The featured card inverts against the page theme, so its blue does too. */
-.plan.featured .plan-index {
-  --ld-item-color: #4da3ff;
-}
-.dark .plan.featured .plan-index {
-  --ld-item-color: #007aff;
-}
+/* One title per card, in the voice blue, sized like a heading. */
 .plan-name {
-  font-size: clamp(1.35rem, 1.8vw, 1.6rem);
+  font-size: clamp(1.6rem, 2.3vw, 2rem);
   font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-  color: var(--pl-fg);
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--ld-violet-blue);
 }
-.plan-price {
+.plan.featured .plan-name {
+  color: #4da3ff;
+}
+.dark .plan.featured .plan-name {
+  color: #007aff;
+}
+/* Title on the left, a price tag on the right: a pointed end with a hole. */
+.plan-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
-  margin-top: 1rem;
 }
-.plan-price-value {
-  font-size: clamp(1.75rem, 2.4vw, 2.125rem);
-  font-weight: 700;
-  letter-spacing: -0.035em;
-  line-height: 1;
-  color: var(--pl-fg);
+.plan-tag {
+  --tag-bg: color-mix(in srgb, var(--ld-violet-blue) 12%, transparent);
+  --tag-fg: var(--ld-violet-blue);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 14px 0 24px;
+  border-radius: 0 7px 7px 0;
+  background: var(--tag-bg);
+  color: var(--tag-fg);
+  font-size: 0.9375rem;
+  font-weight: 650;
+  white-space: nowrap;
+  clip-path: polygon(13px 0, 100% 0, 100% 100%, 13px 100%, 0 50%);
 }
-.plan-price-note {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  line-height: 1.4;
-  color: var(--pl-fg3);
+.plan-tag::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--pl-bg, var(--vp-c-bg));
+}
+.plan.featured .plan-tag {
+  --tag-bg: rgba(77, 163, 255, 0.18);
+  --tag-fg: #6db3ff;
 }
 .plan-promise {
-  margin-top: 0.75rem;
+  margin-top: 1rem;
   font-size: 1rem;
   line-height: 1.5;
   color: var(--pl-fg2);
@@ -397,14 +397,6 @@ const plans: Plan[] = [
 }
 .plan-btn.ghost:hover {
   border-color: var(--pl-fg3);
-}
-
-/* ---- Footer line ---- */
-.modes-foot {
-  margin-top: clamp(2rem, 4vw, 3rem);
-  padding-top: 1rem;
-  border-top: 1px solid var(--vp-c-divider);
-  color: var(--vp-c-text-2);
 }
 
 /* ---- Tablet ---- */

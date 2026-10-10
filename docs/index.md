@@ -1,5 +1,6 @@
 ---
 layout: page
+pageClass: landing
 sidebar: false
 aside: false
 outline: false
@@ -10,7 +11,6 @@ description: A full iPhone keyboard with one-tap dictation and writing tools bui
 <script setup>
 import LandingHero from './.vitepress/theme/landing/LandingHero.vue'
 import AppsMarquee from './.vitepress/theme/landing/AppsMarquee.vue'
-import StorySection from './.vitepress/theme/landing/StorySection.vue'
 import WritingToolsSection from './.vitepress/theme/landing/WritingToolsSection.vue'
 import ModesSection from './.vitepress/theme/landing/ModesSection.vue'
 import DictionOneSection from './.vitepress/theme/landing/DictionOneSection.vue'
@@ -25,14 +25,13 @@ import FinalCta from './.vitepress/theme/landing/FinalCta.vue'
 <div class="ld-page">
 <LandingHero />
 <AppsMarquee />
-<StorySection />
-<WritingToolsSection />
 <ModesSection />
-<DictionOneSection />
-<LabsSection />
 <LanguagesSection />
+<WritingToolsSection />
+<LabsSection />
 <SelfHostSection />
 <TestimonialsSection />
+<DictionOneSection />
 <FaqSection />
 <FinalCta />
 </div>

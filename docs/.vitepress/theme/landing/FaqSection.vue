@@ -1,47 +1,71 @@
 <script setup lang="ts">
+// Written for the two people who land here: a self-hoster and someone leaving
+// another dictation app. Every answer must stay true for the App Store build.
 const faqs = [
   {
     q: 'Is Diction free?',
-    a: 'On-device and self-hosted are free with no word limits. Diction One cloud is a subscription with a free trial. See pricing in the app.',
+    a: 'On your iPhone and on your server, yes. Free forever, no word limits, no account. Diction Cloud is the paid option at $5.99 a month or $59.99 a year, and you can try it free first.',
+  },
+  {
+    q: 'Does it work in every app?',
+    a: 'Pretty much anywhere you can type: Messages, Mail, Slack, Notes, your browser. Two exceptions come from iOS itself. Password fields always get the system keyboard, and a few apps block custom keyboards.',
   },
   {
     q: 'Does it work offline?',
-    a: 'On-device mode does, once the speech model is downloaded. Cloud and self-hosted need a network.',
-  },
-  {
-    q: 'Why does the keyboard need Full Access?',
-    a: 'iOS requires it for any keyboard that uses the network. Diction uses it to send audio for transcription and nothing else.',
-  },
-  {
-    q: 'Which languages?',
-    a: '99 for dictation. Pick yours, or turn on auto-detect. 25 European languages use our most accurate engine.',
+    a: 'Yes, in on-device mode. Download a speech AI once and dictate on a plane, in a tunnel, anywhere. Diction Cloud and self-hosted need a connection, because that is where the speech AI runs.',
   },
   {
     q: 'Is my voice stored?',
-    a: 'No. On-device never leaves the phone. Self-hosted goes only to your server. Diction One processes audio and discards it.',
+    a: 'No. On-device, your voice never leaves the phone. Self-hosted, it goes to your server and nowhere else. On Diction Cloud it is transcribed and thrown away.',
+  },
+  {
+    q: 'Why does the keyboard need Full Access?',
+    a: 'iOS asks for it before any keyboard can use the network, and Diction needs the network to reach the speech AI. That is all it is used for.',
+  },
+  {
+    q: 'Which languages does it speak?',
+    a: '99 for dictation, with auto-detect if you switch between them. 25 European languages get the most accurate engine.',
+  },
+  {
+    q: 'Will it get my name right?',
+    a: 'Add it to My Words once, along with your colleagues, brands and jargon, and Diction spells them your way from then on.',
+  },
+  {
+    q: 'Can I edit text by voice?',
+    a: 'Yes. Hold the mic and say what you want: "make it a list", "translate it to Spanish", "remove the last sentence". The text that is already there changes.',
   },
   {
     q: 'What is self-hosting?',
-    a: 'You run the open-source server on your own hardware and point the app at it. One Docker command.',
+    a: 'You run the Diction server on a machine you control, and the app sends your voice there instead of the cloud. It is open source, it runs in Docker, and pairing is one QR scan.',
+  },
+  {
+    q: 'Do I need a GPU to self-host?',
+    a: 'It helps. An NVIDIA GPU gives the fastest results. No GPU? The smaller Whisper models run fine on a CPU.',
+  },
+  {
+    q: 'Can Writing Tools use an LLM I run at home?',
+    a: 'Yes. Point the server at any OpenAI-compatible endpoint, like Ollama, and Writing Tools run on it, free.',
+  },
+  {
+    q: 'Is there an Android or Mac app?',
+    a: 'Not yet. Diction is iPhone first, and that is where the work goes right now.',
+  },
+  {
+    q: 'How do I cancel?',
+    a: 'The same way as any App Store subscription, in your Apple ID settings. On-device and self-hosted keep working, free, after you cancel.',
   },
 ]
 </script>
 
 <template>
   <section class="ld-section faq-landing">
-    <div class="ld-container">
-      <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-violet"><b class="ld-idx">10</b>FAQ</span>
-        <span class="ld-mono">Short answers</span>
-      </div>
-    </div>
     <div class="ld-container narrow">
       <div class="ld-head ld-center" v-reveal>
-        <h2 class="ld-h2">Good questions.</h2>
+        <h2 class="ld-h2 big">Good questions.</h2>
       </div>
 
       <div class="faq-list" v-reveal="{ delay: 80 }">
-        <details v-for="faq in faqs" :key="faq.q" class="faq-item">
+        <details v-for="(faq, i) in faqs" :key="faq.q" class="faq-item" :open="i === 0">
           <summary class="faq-summary">
             <span class="faq-q">{{ faq.q }}</span>
             <span class="faq-icon" aria-hidden="true">
@@ -72,12 +96,20 @@ const faqs = [
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;
-  padding: 1.375rem 0;
+  padding: 1.6rem 0;
   cursor: pointer;
   list-style: none;
-  font-size: 1.0625rem;
-  font-weight: 600;
+  font-family: 'Libre Franklin', var(--vp-font-family-base);
+  font-size: clamp(1.2rem, 1.9vw, 1.5rem);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
   color: var(--vp-c-text-1);
+  transition: color 0.2s ease;
+}
+.faq-summary:hover,
+.faq-item[open] .faq-summary {
+  color: var(--ld-violet-blue);
 }
 .faq-summary::-webkit-details-marker {
   display: none;
@@ -86,20 +118,28 @@ const faqs = [
   content: '';
 }
 
+/* Plus in a circle; turns into a minus when open. */
 .faq-icon {
   position: relative;
-  width: 18px;
-  height: 18px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--vp-c-divider);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+.faq-item[open] .faq-icon {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ld-violet-blue) 12%, transparent);
 }
 .faq-icon .bar {
   position: absolute;
   inset: 0;
   margin: auto;
-  width: 100%;
+  width: 14px;
   height: 2px;
   border-radius: 2px;
-  background: var(--vp-c-text-2);
+  background: currentColor;
   transition: transform 0.25s var(--ld-ease);
 }
 .faq-icon .bar-v {
@@ -123,10 +163,11 @@ const faqs = [
 }
 .faq-body-inner p,
 .faq-body p {
-  margin: 0 0 1.375rem;
-  padding-right: 2.5rem;
+  margin: 0 0 1.75rem;
+  padding-right: 3.5rem;
+  max-width: 44rem;
   color: var(--vp-c-text-2);
-  font-size: 0.9375rem;
+  font-size: clamp(1.05rem, 1.4vw, 1.1875rem);
   line-height: 1.6;
 }
 
@@ -140,8 +181,11 @@ const faqs = [
 
 @media (max-width: 640px) {
   .faq-summary {
-    font-size: 1rem;
-    padding: 1.125rem 0;
+    padding: 1.25rem 0;
+  }
+  .faq-icon {
+    width: 30px;
+    height: 30px;
   }
 }
 </style>

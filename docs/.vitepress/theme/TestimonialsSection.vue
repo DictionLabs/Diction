@@ -28,15 +28,15 @@ const tone = (i: number) => TONES[i % TONES.length]
 <template>
   <section v-if="list.length > 0" class="ld-section testimonials">
     <div class="ld-container">
-      <div class="ld-label-row" v-reveal>
-        <span class="ld-mono ld-accent ld-blue"><b class="ld-idx">09</b>From the App Store</span>
-      </div>
 
       <div class="t-head" v-reveal>
-        <h2 class="ld-h2">People who switched.</h2>
+        <h2 class="ld-h2">Loved by the people who use it.</h2>
         <a :href="APP_STORE_REVIEWS_URL" target="_blank" rel="noopener" class="rating">
-          <span class="stars" aria-hidden="true">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
-          <span class="ld-readout"><b>4.9</b> on the App Store</span>
+          <span class="rating-score">4.9</span>
+          <span class="rating-side">
+            <span class="stars" aria-hidden="true">&#9733;&#9733;&#9733;&#9733;&#9733;</span>
+            <span class="rating-where">Read the reviews on the App Store <span aria-hidden="true">→</span></span>
+          </span>
         </a>
       </div>
 
@@ -78,34 +78,53 @@ const tone = (i: number) => TONES[i % TONES.length]
 
 <style scoped>
 /* ---------- Header ---------- */
+/* Heading left (wraps if it must), the rating always on the right. */
 .t-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1rem 2rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 1rem 3rem;
   margin-bottom: clamp(2rem, 4vw, 3rem);
 }
+/* The rating is the proof for the heading, so it is set big on purpose. */
 .rating {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 10px;
-  color: var(--vp-c-text-2);
+  gap: clamp(0.75rem, 2vw, 1.25rem);
+  color: var(--vp-c-text-1);
   text-decoration: none !important;
-  transition: border-color 0.2s;
 }
-.rating:hover {
-  border-color: var(--vp-c-text-3);
+.rating-score {
+  font-size: clamp(4.5rem, 10vw, 8rem);
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 0.85;
+}
+.rating-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
 }
 .stars {
   color: var(--ld-violet-blue);
-  font-size: 0.9375rem;
-  letter-spacing: 0.08em;
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  letter-spacing: 0.04em;
   line-height: 1;
+}
+/* Looks like a link, so it is obvious the rating opens the reviews. */
+.rating-where {
+  font-size: clamp(0.95rem, 1.3vw, 1.1rem);
+  font-weight: 600;
+  color: var(--ld-violet-blue);
+}
+.rating:hover .rating-where {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 760px) {
+  .t-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ---------- Layout ---------- */
