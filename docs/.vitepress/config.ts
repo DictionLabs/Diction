@@ -32,6 +32,9 @@ export default defineConfig({
   title: SITE_NAME,
   titleTemplate: `:title | ${SITE_NAME}`,
   description: DEFAULT_DESCRIPTION,
+  // Clean URLs everywhere (links, sitemap) so they match the canonical tags.
+  // Caddy serves /page from page.html and 301s old .html URLs.
+  cleanUrls: true,
   sitemap: { hostname: SITE_URL },
   lastUpdated: true,
 
@@ -83,10 +86,9 @@ export default defineConfig({
   head: [
     // Preconnect for performance
     ['link', { rel: 'preconnect', href: 'https://www.googletagmanager.com' }],
-    // Display face for the landing page's big headings (.ld-h1 / .ld-h2).
-    ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
-    ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
-    ['link', { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@600;700&display=swap' }],
+    // Self-hosted display faces (see custom.css). Preloaded so headings don't swap late.
+    ['link', { rel: 'preload', href: '/fonts/LibreFranklin-latin-var.woff2', as: 'font', type: 'font/woff2', crossorigin: '' }],
+    ['link', { rel: 'preload', href: '/fonts/BigShouldersInlineText-ExtraBold.woff2', as: 'font', type: 'font/woff2', crossorigin: '' }],
     ['link', { rel: 'dns-prefetch', href: 'https://www.googletagmanager.com' }],
     // Google Analytics 4
     ['script', { async: '', src: 'https://www.googletagmanager.com/gtag/js?id=G-PCV64Y7GFM' }],

@@ -56,7 +56,7 @@ function isIcon(item: Item): item is { icon: string } {
             <img
               v-if="isIcon(item)"
               class="marquee-icon"
-              :src="`/app-icons/${item.icon}.png`"
+              :src="`/app-icons/${item.icon}.webp`"
               :alt="copy === 1 ? item.icon : ''"
               width="56"
               height="56"
@@ -75,7 +75,7 @@ function isIcon(item: Item): item is { icon: string } {
             <img
               v-if="isIcon(item)"
               class="marquee-icon"
-              :src="`/app-icons/${item.icon}.png`"
+              :src="`/app-icons/${item.icon}.webp`"
               :alt="copy === 1 ? item.icon : ''"
               width="56"
               height="56"

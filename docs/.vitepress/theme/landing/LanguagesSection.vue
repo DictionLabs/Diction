@@ -104,6 +104,9 @@ const tracks = computed(() => rows.map((row) => [...row.greetings, ...row.greeti
   box-shadow: var(--ld-shadow-sm);
   font-size: clamp(1.5rem, 3.4vw, 2.5rem);
   font-weight: 600;
+  /* System face: the greetings span Greek, Cyrillic and Latin Extended, and Inter
+     would pull three extra font files (~150 KB) just for this marquee. */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   letter-spacing: -0.01em;
   color: var(--vp-c-text-1);
   white-space: nowrap;
