@@ -12,6 +12,7 @@ description: A full iPhone keyboard with one-tap dictation and writing tools bui
 import LandingHero from './.vitepress/theme/landing/LandingHero.vue'
 import AppsMarquee from './.vitepress/theme/landing/AppsMarquee.vue'
 import WritingToolsSection from './.vitepress/theme/landing/WritingToolsSection.vue'
+import KeyboardShots from './.vitepress/theme/landing/KeyboardShots.vue'
 import ModesSection from './.vitepress/theme/landing/ModesSection.vue'
 import DictionOneSection from './.vitepress/theme/landing/DictionOneSection.vue'
 import LabsSection from './.vitepress/theme/landing/LabsSection.vue'
@@ -25,6 +26,7 @@ import FinalCta from './.vitepress/theme/landing/FinalCta.vue'
 <div class="ld-page">
 <LandingHero />
 <AppsMarquee />
+<KeyboardShots />
 <ModesSection />
 <LanguagesSection />
 <WritingToolsSection />
