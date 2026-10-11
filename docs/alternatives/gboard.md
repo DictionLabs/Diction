@@ -27,7 +27,7 @@ Facts for the iPhone versions, checked October 2026.
 | Swipe typing | No | Yes, Glide Typing |
 | Typing languages | 6 with suggestions and autocorrect | 58 |
 | Dictation languages | 99 | Not documented for iPhone |
-| Audio stored | Never | See Google's privacy label |
+| App Store privacy label | Data Not Collected | Data Linked to You: Audio Data, Device ID, Diagnostics |
 
 ## Where Gboard is the better pick
 

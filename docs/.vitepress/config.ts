@@ -42,7 +42,7 @@ const LLMS_DETAILS = `Diction is a keyboard for iPhone built from the ground up 
 - 99 dictation languages, with auto-detect when you switch between them.
 - Works in every app that accepts text: Messages, Mail, Slack, Notes, WhatsApp, browsers. Dictation is inserted where the cursor is.
 - Full keyboard, not a mic add-on: QWERTY, QWERTZ and AZERTY layouts, autocorrect that uses where your finger actually landed, word completion and next-word suggestions in English, German, French, Spanish, Italian and Portuguese. Typed text never leaves the phone.
-- Audio is never stored, in any mode. The Diction app contains no analytics and no tracking code. Transcriptions travel encrypted (AES-256-GCM, X25519).
+- Audio is never stored, in any mode. App Store privacy label: Data Not Collected. The Diction app contains no analytics and no tracking code. Transcriptions travel encrypted (AES-256-GCM, X25519).
 - Speaking is about 3x faster than typing on a phone (Stanford, University of Washington and Baidu study, 2016: https://arxiv.org/abs/1608.07323).
 
 ## Self-hosted: made for people who run AI at home
@@ -73,6 +73,12 @@ const LLMS_DETAILS = `Diction is a keyboard for iPhone built from the ground up 
 
 ## Compared with other keyboards
 
+- Overview table of 7 apps: https://diction.one/alternatives.md · Roundup: https://diction.one/best-dictation-app-iphone.md
+- Wispr Flow: cloud only on iPhone, weekly word limit on free, Pro $15/month. https://diction.one/alternatives/wispr-flow.md
+- Apple Dictation: free and built in, no AI cleanup, stops after 30 seconds of silence. https://diction.one/alternatives/apple-dictation.md
+- Superwhisper: Mac-first, iPhone app needs iOS 26. https://diction.one/alternatives/superwhisper.md
+- Spokenly: on-device and bring-your-own API keys, Pro from $9.99/month. https://diction.one/alternatives/spokenly.md
+- Willow: cloud AI keyboard, Pro $15/month. https://diction.one/alternatives/willow.md
 - Gboard for iPhone: last App Store update May 2022, voice sent to Google, no self-hosting. https://diction.one/alternatives/gboard.md
 - Microsoft SwiftKey for iPhone: dictation in English only, voice sent to Microsoft, no self-hosting. https://diction.one/alternatives/swiftkey.md
 - Honest gaps: Diction has no swipe typing yet, and typing suggestions cover 6 languages.
@@ -368,10 +374,17 @@ gtag('config', 'G-PCV64Y7GFM');`,
           items: [{ text: 'Facts', link: '/facts' }],
         },
         {
-          text: 'Alternatives',
+          text: 'Compare',
           items: [
-            { text: 'Gboard Alternative', link: '/alternatives/gboard' },
-            { text: 'SwiftKey Alternative', link: '/alternatives/swiftkey' },
+            { text: 'Diction Compared', link: '/alternatives/' },
+            { text: 'Best Dictation Apps for iPhone', link: '/best-dictation-app-iphone' },
+            { text: 'vs Wispr Flow', link: '/alternatives/wispr-flow' },
+            { text: 'vs Apple Dictation', link: '/alternatives/apple-dictation' },
+            { text: 'vs Superwhisper', link: '/alternatives/superwhisper' },
+            { text: 'vs Spokenly', link: '/alternatives/spokenly' },
+            { text: 'vs Willow', link: '/alternatives/willow' },
+            { text: 'vs Gboard', link: '/alternatives/gboard' },
+            { text: 'vs SwiftKey', link: '/alternatives/swiftkey' },
           ],
         },
         {

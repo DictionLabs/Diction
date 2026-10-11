@@ -26,7 +26,7 @@ Facts for the iPhone versions, checked October 2026.
 | Account | None needed for on-device and self-hosted | Optional, Microsoft account for backup and sync |
 | Typing autocorrect and suggestions | Yes, computed on your iPhone | Yes |
 | Swipe typing | No | Yes |
-| Audio stored | Never | See Microsoft's privacy label |
+| App Store privacy label | Data Not Collected | Data Linked to You: Email Address, User ID, Device ID |
 
 ## Where SwiftKey is the better pick
 
