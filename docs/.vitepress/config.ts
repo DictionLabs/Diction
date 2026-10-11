@@ -1,13 +1,27 @@
 import { defineConfig } from 'vitepress';
 import llmstxt from 'vitepress-plugin-llms';
+import { faqs } from './theme/landing/faq';
 
 const SITE_URL = 'https://diction.one';
 const SITE_NAME = 'Diction';
 const SITE_TITLE = 'Diction - Voice Keyboard for iPhone';
 const DEFAULT_DESCRIPTION =
-  'Voice keyboard for iPhone with open-source server. Tap the mic, speak, text appears. On-device, self-hosted, or cloud. Zero tracking, no word limits, 99 languages.';
+  'iPhone keyboard built for voice. Dictate in any app or type on a full QWERTY keyboard. Free on-device and self-hosted speech to text, or Diction Cloud. No word limits.';
 const DEFAULT_KEYWORDS =
-  'voice keyboard, speech to text, dictation, iPhone keyboard, whisper, self-hosted, on-device, transcription, open source, privacy, voice to text, dictate, offline dictation';
+  'voice keyboard, speech to text iPhone, dictation keyboard, iPhone keyboard, self-hosted speech to text, self-hosted whisper, offline dictation, on-device transcription, Gboard alternative, SwiftKey alternative, Wispr Flow alternative, QWERTY keyboard, autocorrect, open source server';
+// The summary every AI agent reads first in /llms.txt. Facts only, same as the site.
+const LLMS_DETAILS = `Key facts:
+
+- Diction is a third-party keyboard for iPhone, written from the ground up for voice. It is also a full QWERTY typing keyboard with layouts per language, on-device autocorrect, word completion and next-word suggestions.
+- Dictate in any app: tap the mic in the Diction Bar above the keys, speak, and clean text is inserted at the cursor.
+- Three places to run speech to text, picked in the app:
+  - On-device: free, offline, audio never leaves the iPhone. Every on-device model is free.
+  - Self-hosted: free. Open-source server on GitHub (DictionLabs/Diction), started with docker compose, paired by QR code. Works with any OpenAI-compatible speech endpoint (Whisper included) and any OpenAI-compatible LLM (Ollama included) for Writing Tools. No account, no limits.
+  - Diction Cloud: subscription ($5.99/month or $59.99/year in the US, free trial). Speech is transcribed on GPU servers Diction runs itself. Live transcription and every Writing Tool included.
+- Writing Tools: removes filler words, fixes grammar and punctuation, formats lists and paragraphs, spells your names via My Words, and edits existing text by voice ("make it shorter", "translate to Spanish").
+- 99 dictation languages. No word limits. Audio is never stored in any mode. The Diction app contains no analytics and no tracking code.
+- Made by Diction Labs. App Store: https://apps.apple.com/app/id6759807364 · Server: https://github.com/DictionLabs/Diction · Models: https://huggingface.co/DictionLabs
+- Fact sheet: https://diction.one/facts.md`;
 const OG_IMAGE = `${SITE_URL}/og-image.png`;
 
 function getBreadcrumbList(relativePath: string, title: string): string {
@@ -26,7 +40,15 @@ function getBreadcrumbList(relativePath: string, title: string): string {
 
 export default defineConfig({
   vite: {
-    plugins: [llmstxt()],
+    plugins: [
+      llmstxt({
+        customTemplateVariables: {
+          title: 'Diction: iPhone keyboard for voice and typing',
+          description: DEFAULT_DESCRIPTION,
+          details: LLMS_DETAILS,
+        },
+      }),
+    ],
   },
 
   title: SITE_NAME,
@@ -133,20 +155,49 @@ gtag('config', 'G-PCV64Y7GFM');`,
         releaseNotes: 'https://github.com/DictionLabs/Diction/releases',
         keywords:
           'voice keyboard, speech to text, dictation, self-hosted, whisper, iOS keyboard, transcription, privacy',
-        offers: {
-          '@type': 'Offer',
-          price: '0',
-          priceCurrency: 'USD',
-          availability: 'https://schema.org/InStock',
-        },
+        featureList: [
+          'Full QWERTY keyboard written from the ground up, with layouts per language',
+          'On-device autocorrect, word completion and next-word suggestions',
+          'Voice dictation in every app from the Diction Bar above the keys',
+          'Free on-device speech to text, works offline',
+          'Free self-hosted speech to text with an open-source Docker server, paired by QR code',
+          'Bring any OpenAI-compatible speech or LLM endpoint, Whisper and Ollama included',
+          'Diction Cloud: speech to text on GPU servers Diction runs itself, Live transcription',
+          'Writing Tools: filler removal, grammar, formatting, voice commands, My Words',
+          '99 dictation languages, no word limits, audio never stored',
+          'No analytics or tracking code in the app',
+        ],
+        offers: [
+          {
+            '@type': 'Offer',
+            name: 'On-device and self-hosted',
+            price: '0',
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+          },
+          {
+            '@type': 'Offer',
+            name: 'Diction Cloud monthly',
+            price: '5.99',
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+          },
+          {
+            '@type': 'Offer',
+            name: 'Diction Cloud annual',
+            price: '59.99',
+            priceCurrency: 'USD',
+            availability: 'https://schema.org/InStock',
+          },
+        ],
         author: {
           '@type': 'Organization',
-          name: 'Diction',
+          name: 'Diction Labs',
           url: 'https://diction.one',
         },
         maintainer: {
           '@type': 'Organization',
-          name: 'Diction',
+          name: 'Diction Labs',
           url: 'https://diction.one',
         },
       }),
@@ -158,80 +209,11 @@ gtag('config', 'G-PCV64Y7GFM');`,
       JSON.stringify({
         '@context': 'https://schema.org',
         '@type': 'FAQPage',
-        mainEntity: [
-          {
-            '@type': 'Question',
-            name: 'Is Diction really free?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'On-device and self-hosted modes are completely free with no word limits, no daily caps, and no restrictions. Diction One cloud requires a paid subscription with a free trial included.',
-            },
-          },
-          {
-            '@type': 'Question',
-            name: 'What languages does Diction support?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Diction supports 99 languages via Whisper. The on-device model handles most languages well. Cloud and self-hosted modes use larger models for even better accuracy.',
-            },
-          },
-          {
-            '@type': 'Question',
-            name: 'Is my voice data stored?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Never. On-device mode processes audio in memory and discards it immediately. Self-hosted mode sends audio only to your server. Diction One cloud processes and discards - no recordings retained, no model training.',
-            },
-          },
-          {
-            '@type': 'Question',
-            name: 'What is self-hosting?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'You run a Whisper speech-to-text server on your own hardware - a home server, NAS, or cloud VM. Diction connects to it directly. Your audio never touches any third-party service. One Docker Compose command to start.',
-            },
-          },
-          {
-            '@type': 'Question',
-            name: 'How do I set up Diction?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Open the app, grant mic permission, add Diction as a keyboard in iOS Settings, enable Full Access, and you are ready. Full setup takes under a minute.',
-            },
-          },
-          {
-            '@type': 'Question',
-            name: 'Why does the keyboard need Full Access?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'iOS requires Full Access for any keyboard extension that uses the network. Diction needs it to send audio for transcription. What you type on the QWERTY keys never leaves your phone. Diction does not read your clipboard, and does not access contacts.',
-            },
-          },
-          {
-            '@type': 'Question',
-            name: 'How is Diction different from Apple Dictation?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Diction uses Whisper for higher accuracy, supports 99 languages, has no time limits, and lets you choose where audio is processed - on device, your server, or cloud. Apple Dictation has a 60-second limit and processes audio on Apple servers.',
-            },
-          },
-          {
-            '@type': 'Question',
-            name: 'What are Writing Tools?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'After transcription, Diction can optionally clean up your text: removing filler words like "um" and "uh", fixing grammar, adding punctuation, and polishing the result. Writing Tools also understand voice commands to rewrite, translate, or edit text. Only the text is sent for processing, never the audio.',
-            },
-          },
-          {
-            '@type': 'Question',
-            name: 'Does Diction work offline?',
-            acceptedAnswer: {
-              '@type': 'Answer',
-              text: 'Yes. On-device mode works completely offline once the model is downloaded. No internet connection needed. Cloud and self-hosted modes require network access to reach the transcription server.',
-            },
-          },
-        ],
+        mainEntity: faqs.map(({ q, a }) => ({
+          '@type': 'Question',
+          name: q,
+          acceptedAnswer: { '@type': 'Answer', text: a },
+        })),
       }),
     ],
     // Structured data - WebSite with SearchAction
@@ -261,10 +243,17 @@ gtag('config', 'G-PCV64Y7GFM');`,
       JSON.stringify({
         '@context': 'https://schema.org',
         '@type': 'Organization',
-        name: SITE_NAME,
+        name: 'Diction Labs',
+        alternateName: SITE_NAME,
         url: SITE_URL,
         logo: `${SITE_URL}/app-icon.png`,
-        sameAs: ['https://github.com/DictionLabs/Diction', 'https://x.com/diction_one', 'https://www.reddit.com/r/dictionapp'],
+        sameAs: [
+          'https://github.com/DictionLabs',
+          'https://huggingface.co/DictionLabs',
+          'https://apps.apple.com/app/id6759807364',
+          'https://x.com/diction_one',
+          'https://www.reddit.com/r/dictionapp',
+        ],
       }),
     ],
     // Static Open Graph (fallbacks - dynamic ones override these)
@@ -300,6 +289,10 @@ gtag('config', 'G-PCV64Y7GFM');`,
 
     sidebar: {
       '/': [
+        {
+          text: 'Diction at a Glance',
+          items: [{ text: 'Facts', link: '/facts' }],
+        },
         {
           text: 'Features',
           items: [
