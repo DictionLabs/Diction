@@ -5,7 +5,7 @@ description: Looking for a SwiftKey alternative on iPhone? Diction is a full key
 
 # SwiftKey alternative for iPhone
 
-Microsoft SwiftKey is a solid typing keyboard on iPhone, and it is still maintained. Where it falls short is voice: dictation is English only, and your audio goes to Microsoft. If you dictate, in any language, or you want to keep your voice on your own hardware, Diction is built for that.
+Microsoft SwiftKey is a solid typing keyboard on iPhone, and it is still maintained. Where it falls short is voice: dictation is English only, and your audio goes to Microsoft. If you dictate, in any language, or you want to keep your voice on hardware you control, Diction is built for that.
 
 Diction is a full QWERTY keyboard, written from the ground up, with voice built in. Tap the mic above the keys in any app, speak, and clean text lands at your cursor. You decide where your voice is turned into text: on your iPhone, on your server, or on Diction Cloud.
 
