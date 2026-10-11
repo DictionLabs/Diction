@@ -73,6 +73,40 @@ Diction is not a dictation add-on bolted onto the system keyboard. It is a full 
 - People who need dictation offline or without sending audio to a third party
 - People who want one keyboard for both typing and voice
 
+## Common questions
+
+### What is the best free dictation keyboard for iPhone?
+
+If you want dictation in every app without paying, Diction is free on-device and self-hosted, with no account, no word limits and 99 languages. It is a full keyboard too, so you do not switch keyboards to type.
+
+### Can I use my own Whisper server for dictation on iPhone?
+
+Yes. Run the open-source Diction server with `docker compose up`, scan the QR code in the app, and the Diction keyboard sends your voice to your server from any app. Any OpenAI-compatible speech-to-text endpoint works, Whisper included.
+
+### Is there an iPhone keyboard that works with Ollama?
+
+Yes. Self-hosted Diction runs its Writing Tools on any OpenAI-compatible LLM, Ollama included, to clean up dictation and edit text by voice. Free, on your hardware.
+
+### Is there an offline dictation app for iPhone?
+
+Diction's on-device mode transcribes on the iPhone with no internet connection, free, in 99 languages. Audio never leaves the phone.
+
+### Is Diction a good Gboard alternative on iPhone?
+
+For dictation, yes: Gboard for iPhone has not been updated since May 2022 and sends voice to Google, while Diction lets you keep speech on the phone or your server. Gboard still has swipe typing and more typing languages. See [Gboard alternative](/alternatives/gboard).
+
+### Is Diction a good SwiftKey alternative on iPhone?
+
+For dictation, yes: SwiftKey dictates in English only, Diction in 99 languages, on the phone, your server or Diction Cloud. SwiftKey still has swipe typing. See [SwiftKey alternative](/alternatives/swiftkey).
+
+### Does Diction remove filler words like um and uh?
+
+Yes. Writing Tools remove filler words and false starts, fix grammar and punctuation, and format lists, on Diction Cloud or on your server with your LLM.
+
+### Does Diction store my voice recordings?
+
+No. Audio is never stored in any mode. On-device it never leaves the phone, self-hosted it goes only to your server, and on Diction Cloud it is discarded after transcription.
+
 ## Made by
 
 Diction Labs. The iPhone app is on the App Store. The server is open source on GitHub. Models are published on Hugging Face: https://huggingface.co/DictionLabs

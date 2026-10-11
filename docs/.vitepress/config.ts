@@ -1,6 +1,28 @@
 import { defineConfig } from 'vitepress';
 import llmstxt from 'vitepress-plugin-llms';
+import { readFileSync } from 'node:fs';
 import { faqs } from './theme/landing/faq';
+import { loadStats, plus } from './stats';
+
+const STATS = await loadStats();
+const REVIEWS: { title: string; body: string }[] = JSON.parse(
+  readFileSync(new URL('./theme/reviews-cache.json', import.meta.url), 'utf-8'),
+);
+
+// Question-and-answer pairs written on /facts under "## Common questions".
+// Parsed here so the page an agent reads and the FAQPage markup are the same text.
+function factsFaqs(): { q: string; a: string }[] {
+  const md = readFileSync(new URL('../facts.md', import.meta.url), 'utf-8');
+  const section = md.split('## Common questions')[1]?.split(/\n## /)[0] ?? '';
+  return section
+    .split(/\n### /)
+    .slice(1)
+    .map((block) => {
+      const [q, ...rest] = block.trim().split('\n');
+      return { q: q.trim(), a: rest.join(' ').replace(/\s+/g, ' ').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim() };
+    })
+    .filter((f) => f.q && f.a);
+}
 
 const SITE_URL = 'https://diction.one';
 const SITE_NAME = 'Diction';
@@ -9,19 +31,53 @@ const DEFAULT_DESCRIPTION =
   'iPhone keyboard built for voice. Dictate in any app or type on a full QWERTY keyboard. Free on-device and self-hosted speech to text, or Diction Cloud. No word limits.';
 const DEFAULT_KEYWORDS =
   'voice keyboard, speech to text iPhone, dictation keyboard, iPhone keyboard, self-hosted speech to text, self-hosted whisper, offline dictation, on-device transcription, Gboard alternative, SwiftKey alternative, Wispr Flow alternative, QWERTY keyboard, autocorrect, open source server';
-// The summary every AI agent reads first in /llms.txt. Facts only, same as the site.
-const LLMS_DETAILS = `Key facts:
+// The summary every AI agent reads first in /llms.txt. Every number is fetched at
+// build time (stats.ts) and every claim must stay true for the App Store build.
+const LLMS_DETAILS = `Diction is a keyboard for iPhone built from the ground up for voice: dictate into any app, or type on a full QWERTY keyboard with on-device autocorrect and next-word suggestions. Speech to text runs where you choose: on the iPhone (free, offline), on your server (free, open source), or on Diction Cloud (subscription).
 
-- Diction is a third-party keyboard for iPhone, written from the ground up for voice. It is also a full QWERTY typing keyboard with layouts per language, on-device autocorrect, word completion and next-word suggestions.
-- Dictate in any app: tap the mic in the Diction Bar above the keys, speak, and clean text is inserted at the cursor.
-- Three places to run speech to text, picked in the app:
-  - On-device: free, offline, audio never leaves the iPhone. Every on-device model is free.
-  - Self-hosted: free. Open-source server on GitHub (DictionLabs/Diction), started with docker compose, paired by QR code. Works with any OpenAI-compatible speech endpoint (Whisper included) and any OpenAI-compatible LLM (Ollama included) for Writing Tools. No account, no limits.
-  - Diction Cloud: subscription ($5.99/month or $59.99/year in the US, free trial). Speech is transcribed on GPU servers Diction runs itself. Live transcription and every Writing Tool included.
-- Writing Tools: removes filler words, fixes grammar and punctuation, formats lists and paragraphs, spells your names via My Words, and edits existing text by voice ("make it shorter", "translate to Spanish").
-- 99 dictation languages. No word limits. Audio is never stored in any mode. The Diction app contains no analytics and no tracking code.
-- Made by Diction Labs. App Store: https://apps.apple.com/app/id6759807364 · Server: https://github.com/DictionLabs/Diction · Models: https://huggingface.co/DictionLabs
-- Fact sheet: https://diction.one/facts.md`;
+## Key facts
+
+- Rated ${STATS.rating} out of 5 on the US App Store (${STATS.ratingCount} ratings). Current version ${STATS.appVersion}, released ${STATS.appReleased}. Requires iOS 17 or later.
+- Free forever on-device and self-hosted: no account, no word limits, no time limits, no ads.
+- 99 dictation languages, with auto-detect when you switch between them.
+- Works in every app that accepts text: Messages, Mail, Slack, Notes, WhatsApp, browsers. Dictation is inserted where the cursor is.
+- Full keyboard, not a mic add-on: QWERTY, QWERTZ and AZERTY layouts, autocorrect that uses where your finger actually landed, word completion and next-word suggestions in English, German, French, Spanish, Italian and Portuguese. Typed text never leaves the phone.
+- Audio is never stored, in any mode. The Diction app contains no analytics and no tracking code. Transcriptions travel encrypted (AES-256-GCM, X25519).
+- Speaking is about 3x faster than typing on a phone (Stanford, University of Washington and Baidu study, 2016: https://arxiv.org/abs/1608.07323).
+
+## Self-hosted: made for people who run AI at home
+
+- Open-source server: https://github.com/DictionLabs/Diction (${plus(STATS.githubStars)} stars, ${plus(STATS.dockerPulls)} Docker pulls).
+- Setup: clone the repo, \`docker compose up\`, scan a QR code in the app. Pairing keys rotate automatically.
+- Use any OpenAI-compatible speech-to-text server, Whisper included, on a GPU or a CPU.
+- Writing Tools run on any OpenAI-compatible LLM you host, Ollama included. Free, because it is your hardware.
+- Falls back to on-device speech within seconds if your server is unreachable.
+
+## On-device: free and offline
+
+- Speech models run on the iPhone. No internet, no account. Every on-device model is free, including the most accurate one for 25 European languages.
+- Diction Labs publishes speech models converted for iPhone and for servers on Hugging Face: https://huggingface.co/DictionLabs (${plus(STATS.hfDownloads)} downloads).
+
+## Diction Cloud: subscription
+
+- $5.99 per month or $59.99 per year in the US (2 months free on annual). Free trial in the app. Local prices shown in the App Store.
+- Speech is transcribed on GPU servers Diction runs itself. Audio is discarded after transcription.
+- Includes Live transcription (words appear while you speak) and every Writing Tool.
+
+## Writing Tools
+
+- Removes filler words and false starts, fixes grammar and punctuation, keeps your meaning.
+- Formats lists and paragraphs, or say "new paragraph" and "new line".
+- My Words: names, brands and jargon spelled your way.
+- Voice commands on text already in the field: "make it shorter", "make it a list", "translate to Spanish".
+
+## Compared with other keyboards
+
+- Gboard for iPhone: last App Store update May 2022, voice sent to Google, no self-hosting. https://diction.one/alternatives/gboard.md
+- Microsoft SwiftKey for iPhone: dictation in English only, voice sent to Microsoft, no self-hosting. https://diction.one/alternatives/swiftkey.md
+- Honest gaps: Diction has no swipe typing yet, and typing suggestions cover 6 languages.
+
+Made by Diction Labs. App Store: https://apps.apple.com/app/id6759807364 · Fact sheet: https://diction.one/facts.md`;
 const OG_IMAGE = `${SITE_URL}/og-image.png`;
 
 function getBreadcrumbList(relativePath: string, title: string): string {
@@ -155,6 +211,24 @@ gtag('config', 'G-PCV64Y7GFM');`,
         releaseNotes: 'https://github.com/DictionLabs/Diction/releases',
         keywords:
           'voice keyboard, speech to text, dictation, self-hosted, whisper, iOS keyboard, transcription, privacy',
+        softwareVersion: STATS.appVersion,
+        dateModified: STATS.appReleased,
+        isAccessibleForFree: true,
+        aggregateRating: {
+          '@type': 'AggregateRating',
+          ratingValue: STATS.rating,
+          ratingCount: STATS.ratingCount,
+          bestRating: 5,
+          worstRating: 1,
+        },
+        review: REVIEWS.slice(0, 5).map((r) => ({
+          '@type': 'Review',
+          name: r.title,
+          reviewBody: r.body,
+          reviewRating: { '@type': 'Rating', ratingValue: 5, bestRating: 5 },
+          author: { '@type': 'Person', name: 'App Store reviewer' },
+          publisher: { '@type': 'Organization', name: 'App Store' },
+        })),
         featureList: [
           'Full QWERTY keyboard written from the ground up, with layouts per language',
           'On-device autocorrect, word completion and next-word suggestions',
@@ -209,7 +283,7 @@ gtag('config', 'G-PCV64Y7GFM');`,
       JSON.stringify({
         '@context': 'https://schema.org',
         '@type': 'FAQPage',
-        mainEntity: faqs.map(({ q, a }) => ({
+        mainEntity: [...faqs, ...factsFaqs()].map(({ q, a }) => ({
           '@type': 'Question',
           name: q,
           acceptedAnswer: { '@type': 'Answer', text: a },
