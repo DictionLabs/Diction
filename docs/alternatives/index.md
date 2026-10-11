@@ -5,7 +5,7 @@ description: How Diction compares with Wispr Flow, Apple Dictation, Superwhisper
 
 # Diction compared
 
-Every page here puts Diction next to another iPhone keyboard or dictation app, with facts from the App Store and each company's own site, checked October 2026. Each page also says where the other app is the better pick.
+Every page here puts Diction next to another iPhone keyboard or dictation app, with facts from the App Store and each company's site, checked October 2026. Each page also says where the other app is the better pick.
 
 | App | Free tier | Self-hosted server | Full typing keyboard | App Store privacy label |
 |---|---|---|---|---|
