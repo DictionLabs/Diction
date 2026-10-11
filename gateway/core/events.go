@@ -1,6 +1,9 @@
 package core
 
-import "context"
+import (
+	"context"
+	"net/http"
+)
 
 // ErrorEvent is a structured error observation emitted by the gateway.
 //
@@ -81,4 +84,22 @@ func ReportEnhanceSkipped(ctx context.Context, reason string) {
 	if OnEnhanceSkipped != nil {
 		OnEnhanceSkipped(ctx, reason)
 	}
+}
+
+// ResolveIntent lets the private gateway turn a plain-tap request into an Edit
+// (**Auto-edit**, .claude/plans/intent-auto-edit-plan.md). It runs right after STT and
+// before the split-answer decision, because a split answer ships the raw transcript
+// immediately and an Edit must never do that. Given the client-requested intent it
+// returns the intent to use and whether it changed it: ("edit", true) for an Auto-edit,
+// (intent, false) otherwise. Implementations must fail open (any error → unchanged)
+// and bound their own latency. Nil by default — community builds leave it nil, and the
+// Live (realtime) route never calls it.
+var ResolveIntent func(ctx context.Context, r *http.Request, transcript, contextJSON, intent string) (string, bool)
+
+// resolveIntent is the nil-safe call for ResolveIntent.
+func resolveIntent(ctx context.Context, r *http.Request, transcript, contextJSON, intent string) (string, bool) {
+	if ResolveIntent == nil {
+		return intent, false
+	}
+	return ResolveIntent(ctx, r, transcript, contextJSON, intent)
 }

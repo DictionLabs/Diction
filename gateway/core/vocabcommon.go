@@ -3,7 +3,7 @@ package core
 import "strings"
 
 // commonEnglishWords is the 6,000 most frequent words of the keyboard's own shipped English
-// dictionary (ios/DictionKeyboard/Resources/TrieDict/trie_en.dtri), extracted once and written
+// dictionary (ios/DictionKeyboard/Resources/LanguagePacks/en/trie_en.dtri), extracted once and written
 // out literally.
 //
 // It answers the one question phonetic distance cannot. "park" and "Parker" sit exactly as far

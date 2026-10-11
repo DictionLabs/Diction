@@ -1180,8 +1180,41 @@ func TestStreamingHandler_WSReadError_TriggersOnRequestFailed(t *testing.T) {
 	if len(*calls) == 0 {
 		t.Fatal("OnRequestFailed not called on ws_read error")
 	}
-	if (*calls)[0] != errTypeSTTError {
-		t.Errorf("errorType: want %q, got %q", errTypeSTTError, (*calls)[0])
+	// Changed 2026-10: a socket that dies while the client is still sending
+	// audio is the client's doing (backgrounded, lost signal, cancelled), not
+	// the STT backend's: the backend has not been called yet. It gets its own
+	// error_type so backend-health alerting does not page on it.
+	if (*calls)[0] != errTypeClientAbort {
+		t.Errorf("errorType: want %q, got %q", errTypeClientAbort, (*calls)[0])
+	}
+}
+
+func TestStreamingHandler_IdleTimeout_IsClientAbort(t *testing.T) {
+	// Not parallel-safe: mutates core.OnRequestFailed.
+	calls, restore := withCapturedOnRequestFailed(t)
+	defer restore()
+
+	srv, g := startStreamingServer(t, "ok", http.StatusOK)
+	g.streamIdleTimeout = 300 * time.Millisecond
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.CloseNow()
+	_, _, _ = conn.Read(ctx) // send nothing; wait for the idle close
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && len(*calls) == 0 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(*calls) == 0 {
+		t.Fatal("OnRequestFailed not called on idle timeout")
+	}
+	if (*calls)[0] != errTypeClientAbort {
+		t.Errorf("errorType: want %q, got %q", errTypeClientAbort, (*calls)[0])
 	}
 }
 
@@ -1299,6 +1332,9 @@ func TestClassifyWSError_Cases(t *testing.T) {
 		{"going away string", errors.New("going away from server"), wsReasonGoingAway},
 		{"StatusGoingAway string", errors.New("StatusGoingAway received"), wsReasonGoingAway},
 		{"protocol string", errors.New("bad protocol frame"), wsReasonProtocol},
+		// URLSessionWebSocketTask.cancel(with: .abnormalClosure) puts 1006 on the
+		// wire, which RFC 6455 forbids; coder/websocket rejects the payload.
+		{"abnormal closure from iOS", errors.New("failed to get reader: failed to handle control frame opClose: received invalid close payload: invalid status code StatusAbnormalClosure"), wsReasonAbnormalClose},
 		{"unknown", errors.New("something else entirely"), wsReasonUnknown},
 	}
 	for _, tc := range cases {

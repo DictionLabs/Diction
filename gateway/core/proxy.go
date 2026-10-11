@@ -278,7 +278,9 @@ func extractFormField(body []byte, boundary, fieldName string) string {
 // e2eClientKey is the raw X-Diction-E2E header — when set, JSON output is encrypted.
 // "text" + e2eClientKey != "" is rejected upstream in the handler.
 // status is optional ("failed" on edit intent post-process failures, "" otherwise).
-func writeTranscriptionResponse(resp *http.Response, transcript, mode, status, responseFormat, e2eClientKey string) {
+// autoEdit adds "auto_edit": true (metadata like mode, so outside the E2E ciphertext)
+// when the gateway turned a plain tap into an Edit itself (ResolveIntent).
+func writeTranscriptionResponse(resp *http.Response, transcript, mode, status, responseFormat, e2eClientKey string, autoEdit bool) {
 	// Plain text — OpenAI response_format=text. Only reachable when e2eClientKey == "".
 	if responseFormat == "text" {
 		resp.Header.Set("Content-Type", "text/plain; charset=utf-8")
@@ -302,6 +304,9 @@ func writeTranscriptionResponse(resp *http.Response, transcript, mode, status, r
 			if status != "" {
 				result["status"] = status
 			}
+			if autoEdit {
+				result["auto_edit"] = true
+			}
 			newBody, _ := json.Marshal(result)
 			resp.Body = io.NopCloser(bytes.NewReader(newBody))
 			resp.ContentLength = int64(len(newBody))
@@ -322,12 +327,15 @@ func writeTranscriptionResponse(resp *http.Response, transcript, mode, status, r
 	}
 
 	// Plain JSON (default).
-	result := map[string]string{"text": transcript}
+	result := map[string]any{"text": transcript}
 	if mode != "" {
 		result["mode"] = mode
 	}
 	if status != "" {
 		result["status"] = status
+	}
+	if autoEdit {
+		result["auto_edit"] = true
 	}
 	newBody, _ := json.Marshal(result)
 	resp.Body = io.NopCloser(bytes.NewReader(newBody))
@@ -602,11 +610,15 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 
 					// LLM post-processing (if requested)
 					var mode, status string
+					autoEdit := false
 					if postProcess != nil && enhanceEnabled {
-						intent := r.URL.Query().Get("intent")
+						enhanceContextJSON := WithContextLanguage(contextJSON, effectiveLang)
+						// Auto-edit: the private gateway may turn a plain tap into an Edit.
+						intent, auto := resolveIntent(resp.Request.Context(), r, transcript, enhanceContextJSON, r.URL.Query().Get("intent"))
+						autoEdit = auto
 						llmStart := time.Now()
 						resultText, resultMode, err := postProcess(
-							resp.Request.Context(), transcript, WithContextLanguage(contextJSON, effectiveLang), intent)
+							resp.Request.Context(), transcript, enhanceContextJSON, intent)
 						llmMs := time.Since(llmStart).Milliseconds()
 						resp.Header.Set("X-Diction-LLM-Ms", fmt.Sprintf("%d", llmMs))
 						if err != nil {
@@ -644,7 +656,7 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 						}
 					}
 
-					writeTranscriptionResponse(resp, transcript, mode, status, responseFormat, e2eClientKey)
+					writeTranscriptionResponse(resp, transcript, mode, status, responseFormat, e2eClientKey, autoEdit && mode == "edit")
 					return nil
 				},
 				Transport: sttBackendTransport,

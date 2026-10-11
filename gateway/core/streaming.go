@@ -47,6 +47,10 @@ const errTypeSTTError = "stt_error"
 // constant's doc comment.
 const errTypeNoAudio = "no_audio"
 
+// errTypeClientAbort mirrors ErrTypeClientAbort in gateway/metrics.go. See that
+// constant's doc comment.
+const errTypeClientAbort = "client_abort"
+
 // opusSubprotocol is the WebSocket subprotocol used for Ogg/Opus negotiation.
 // The client offers this in the Upgrade request; the server echoes it only when
 // it can actually honour Opus decoding. Self-hosters on older gateways never
@@ -204,6 +208,18 @@ type streamResult struct {
 	Text   string `json:"text"`
 	Mode   string `json:"mode,omitempty"`
 	Status string `json:"status,omitempty"`
+	// AutoEdit marks a result the gateway turned into an Edit itself (ResolveIntent).
+	AutoEdit bool `json:"auto_edit,omitempty"`
+}
+
+// intentFrame tells the client, before the Writing Tools pass runs, that the gateway
+// turned its plain tap into an Edit — so the keyboard can show Edit in progress instead
+// of transcribing. Sent only on an Auto-edit, and only clients that sent `auto_edit=1`
+// can get one, so no older client ever sees this frame type.
+type intentFrame struct {
+	Type   string `json:"type"`   // "intent"
+	Intent string `json:"intent"` // "edit"
+	Source string `json:"source"` // "auto"
 }
 
 // Reason — closed vocabulary for ws_read close classification. Kept in sync
@@ -214,6 +230,7 @@ const (
 	wsReasonIdleTimeout   = "idle_timeout"
 	wsReasonStreamTimeout = "stream_timeout"
 	wsReasonProtocol      = "protocol"
+	wsReasonAbnormalClose = "abnormal_close"
 	wsReasonUnknown       = "unknown"
 )
 
@@ -244,6 +261,10 @@ func ClassifyWSError(err error) string {
 	}
 	s := err.Error()
 	switch {
+	case strings.Contains(s, "StatusAbnormalClosure"):
+		// iOS URLSessionWebSocketTask.cancel(with: .abnormalClosure) sends 1006
+		// on the wire, which coder/websocket rejects as an invalid payload.
+		return wsReasonAbnormalClose
 	case strings.Contains(s, "EOF"):
 		return wsReasonEOF
 	case strings.Contains(s, "StatusGoingAway"), strings.Contains(s, "going away"):
@@ -614,8 +635,10 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 						Hint:     "websocket read failed: " + reason,
 					})
 				}
+				// The backend has not been called yet: whatever ended the
+				// socket happened between the client and us, not in STT.
 				if OnRequestFailed != nil {
-					OnRequestFailed(ctx, errTypeSTTError)
+					OnRequestFailed(ctx, errTypeClientAbort)
 				}
 				if stopped {
 					// Non-idle error: issue our own bounded close.
@@ -638,7 +661,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 					})
 				}
 				if OnRequestFailed != nil {
-					OnRequestFailed(ctx, errTypeSTTError)
+					OnRequestFailed(ctx, errTypeClientAbort)
 				}
 				return
 			}
@@ -980,6 +1003,20 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// `language` is the literal "auto" sentinel, so this is a no-op there — this path
 		// (unlike the HTTP proxy's `effectiveLang`) has no STT-detected language to prefer.
 		enhanceContextJSON := WithContextLanguage(contextJSON, language)
+		// Auto-edit decides here, before the split answer below could ship the transcript
+		// as raw text. Live never reaches this handler.
+		autoEdit := false
+		if postProcess != nil && enhanceEnabled && text != "" {
+			intentParam, autoEdit = resolveIntent(ctx, r, text, enhanceContextJSON, intentParam)
+			if autoEdit {
+				isEdit = true
+				frame, _ := json.Marshal(intentFrame{Type: "intent", Intent: intentParam, Source: "auto"})
+				if err := conn.Write(ctx, websocket.MessageText, frame); err != nil {
+					// The result frame is what matters; a failed write here surfaces there.
+					log.Printf("ws write intent frame: %v", err)
+				}
+			}
+		}
 		if r.URL.Query().Get("split_enhance") == "true" && postProcess != nil &&
 			enhanceEnabled && text != "" && !isEdit {
 			g.writeSplitEnhanceFrames(ctx, conn, splitEnhanceInput{
@@ -1015,7 +1052,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 					// client never inserts the spoken instruction as content.
 					// Old clients (no status parsing) hit their empty-text no-op guard
 					// (KeyboardSessionBridge validateDoneResult:77) — non-destructive.
-					result, _ := json.Marshal(streamResult{Text: "", Mode: intent, Status: "failed"})
+					result, _ := json.Marshal(streamResult{Text: "", Mode: intent, Status: "failed", AutoEdit: autoEdit})
 					if err := conn.Write(ctx, websocket.MessageText, result); err != nil {
 						log.Printf("ws write edit-failed result: %v", err)
 						if OnRequestFailed != nil {
@@ -1032,7 +1069,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			}
 		}
 
-		result, _ := json.Marshal(streamResult{Text: text, Mode: mode, Status: status})
+		result, _ := json.Marshal(streamResult{Text: text, Mode: mode, Status: status, AutoEdit: autoEdit && mode == "edit"})
 		if err := conn.Write(ctx, websocket.MessageText, result); err != nil {
 			log.Printf("ws write result: %v", err)
 			if OnError != nil {
