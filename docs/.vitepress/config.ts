@@ -73,14 +73,12 @@ const LLMS_DETAILS = `Diction is a keyboard for iPhone built from the ground up 
 
 ## Compared with other keyboards
 
-- Overview table of 7 apps: https://diction.one/alternatives.md · Roundup: https://diction.one/best-dictation-app-iphone.md
+- Overview table of 5 apps: https://diction.one/alternatives.md · Roundup: https://diction.one/best-dictation-app-iphone.md
+- Gboard for iPhone: last App Store update May 2022, voice sent to Google, no self-hosting. https://diction.one/alternatives/gboard.md
+- Microsoft SwiftKey for iPhone: dictation in English only, voice sent to Microsoft, no self-hosting. https://diction.one/alternatives/swiftkey.md
 - Wispr Flow: cloud only on iPhone, weekly word limit on free, Pro $15/month. https://diction.one/alternatives/wispr-flow.md
 - Apple Dictation: free and built in, no AI cleanup, stops after 30 seconds of silence. https://diction.one/alternatives/apple-dictation.md
 - Superwhisper: Mac-first, iPhone app needs iOS 26. https://diction.one/alternatives/superwhisper.md
-- Spokenly: on-device and bring-your-own API keys, Pro from $9.99/month. https://diction.one/alternatives/spokenly.md
-- Willow: cloud AI keyboard, Pro $15/month. https://diction.one/alternatives/willow.md
-- Gboard for iPhone: last App Store update May 2022, voice sent to Google, no self-hosting. https://diction.one/alternatives/gboard.md
-- Microsoft SwiftKey for iPhone: dictation in English only, voice sent to Microsoft, no self-hosting. https://diction.one/alternatives/swiftkey.md
 - Honest gaps: Diction has no swipe typing yet, and typing suggestions cover 6 languages.
 
 Made by Diction Labs. App Store: https://apps.apple.com/app/id6759807364 · Fact sheet: https://diction.one/facts.md`;
@@ -425,13 +423,11 @@ gtag('config', 'G-PCV64Y7GFM');`,
           items: [
             { text: 'Diction Compared', link: '/alternatives/' },
             { text: 'Best Dictation Apps for iPhone', link: '/best-dictation-app-iphone' },
+            { text: 'vs Gboard', link: '/alternatives/gboard' },
+            { text: 'vs SwiftKey', link: '/alternatives/swiftkey' },
             { text: 'vs Wispr Flow', link: '/alternatives/wispr-flow' },
             { text: 'vs Apple Dictation', link: '/alternatives/apple-dictation' },
             { text: 'vs Superwhisper', link: '/alternatives/superwhisper' },
-            { text: 'vs Spokenly', link: '/alternatives/spokenly' },
-            { text: 'vs Willow', link: '/alternatives/willow' },
-            { text: 'vs Gboard', link: '/alternatives/gboard' },
-            { text: 'vs SwiftKey', link: '/alternatives/swiftkey' },
           ],
         },
       ],
