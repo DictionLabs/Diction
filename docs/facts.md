@@ -7,7 +7,7 @@ description: Diction at a glance. A full iPhone keyboard built for voice, free o
 
 Diction is a keyboard for iPhone, built from scratch for voice. Tap the mic in any app, speak, and clean text lands where your cursor is. When you'd rather type, it is a full QWERTY keyboard with autocorrect and word suggestions.
 
-You choose where your voice is turned into text: on your iPhone, on your own server, or on Diction Cloud. On-device and self-hosted are free, with no account and no word limits.
+You choose where your voice is turned into text: on your iPhone, on your server, or on Diction Cloud. On-device and self-hosted are free, with no account and no word limits.
 
 ## At a glance
 
@@ -35,7 +35,7 @@ Speech models run on the iPhone. No internet, no account, audio never leaves the
 
 ### Self-hosted, free
 
-Run the open-source Diction server on your own machine, with a GPU or CPU, and point the keyboard at it. Clone the repo, run `docker compose up`, scan the QR code. Bring any OpenAI-compatible speech-to-text endpoint, Whisper included. Writing Tools also run on your server with an LLM you choose, free, because it is your hardware doing the work. No account, no limits, no subscription.
+Run the open-source Diction server on your machine, with a GPU or CPU, and point the keyboard at it. Clone the repo, run `docker compose up`, scan the QR code. Bring any OpenAI-compatible speech-to-text endpoint, Whisper included. Writing Tools also run on your server with an LLM you choose, free, because it is your hardware doing the work. No account, no limits, no subscription.
 
 ### Diction Cloud, subscription
 

@@ -294,6 +294,13 @@ gtag('config', 'G-PCV64Y7GFM');`,
           items: [{ text: 'Facts', link: '/facts' }],
         },
         {
+          text: 'Alternatives',
+          items: [
+            { text: 'Gboard Alternative', link: '/alternatives/gboard' },
+            { text: 'SwiftKey Alternative', link: '/alternatives/swiftkey' },
+          ],
+        },
+        {
           text: 'Features',
           items: [
             { text: 'Overview', link: '/features/' },
