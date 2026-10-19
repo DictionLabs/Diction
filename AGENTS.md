@@ -54,7 +54,8 @@ Content-Type: application/json
     "llm": true,
     "text_process": true,
     "text_suggest": true
-  }
+  },
+  "writing_tools": { "post_delivery_ms": 8000 }
 }
 ```
 
@@ -67,6 +68,12 @@ Content-Type: application/json
 | `text_suggest` | bool | /v1/text/suggest is open (same condition as text_process) |
 | `text_summarize` | bool | /v1/text/summarize is open (same condition as text_process) |
 | `formatting` | bool | the `formatting` context key is honoured on cleanup (llm=true) |
+
+**writing_tools object** (present only when `llm` is true):
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `post_delivery_ms` | int | `DICTION_LIVE_ENHANCE_TIMEOUT_MS`: how long cleanup may run after the raw transcript was sent on a `split_enhance` stream. The iOS app waits this long + 1s (at least 9s, at most 120s; `0` = 120s) before inserting the raw text. |
 
 ### POST /v1/trial
 

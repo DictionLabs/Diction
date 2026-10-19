@@ -20,6 +20,9 @@ type capabilityFlags struct {
 	textRoutes  bool
 	pairing     bool
 	keyRotation bool
+	// postDeliveryMs is DICTION_LIVE_ENHANCE_TIMEOUT_MS: how long the Writing Tools pass
+	// may take after the raw transcript was sent. Advertised so the app waits as long.
+	postDeliveryMs int
 }
 
 func withCapabilities(base http.HandlerFunc, flagsFor func(*http.Request) capabilityFlags) http.HandlerFunc {
@@ -72,6 +75,12 @@ func withCapabilities(base http.HandlerFunc, flagsFor func(*http.Request) capabi
 			"key_rotation": flags.keyRotation,
 		})
 		baseResp["capabilities"] = caps
+		// Numbers do not fit the bool-only capabilities map, so the Writing Tools budget
+		// is its own object. Absent without an LLM: there is nothing to wait for.
+		if flags.llmEnabled {
+			wt, _ := json.Marshal(map[string]int{"post_delivery_ms": flags.postDeliveryMs})
+			baseResp["writing_tools"] = wt
+		}
 
 		// Write augmented response.
 		for k, vv := range rec.header {

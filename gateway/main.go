@@ -685,9 +685,10 @@ func buildMux() (http.Handler, string, error) {
 		// would light up Writing Tools in the app for someone whose every call
 		// then fails. A caller that does present a valid key is upgraded
 		// per-request below.
-		textRoutes:  llm.Enabled && (textRoutesOpen || pairingMode == pairing.ModeRequired),
-		pairing:     keyStore != nil,
-		keyRotation: keyStore != nil && !keyStore.Pinned(),
+		textRoutes:     llm.Enabled && (textRoutesOpen || pairingMode == pairing.ModeRequired),
+		pairing:        keyStore != nil,
+		keyRotation:    keyStore != nil && !keyStore.Pinned(),
+		postDeliveryMs: liveEnhanceTimeoutMs,
 	}
 	// Per-request upgrade: a caller holding a valid pairing key does get the
 	// text routes (withGatewayKey lets it past the guard), so tell it so.

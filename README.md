@@ -539,7 +539,7 @@ See `AGENTS.md` for the full wire format.
 | `LLM_PROMPT_SUMMARY` | No | System prompt for `/v1/text/summarize`. Defaults to the built-in summary prompt. |
 | `TEXT_ROUTES_OPEN` | No | Set to `true` to open `/v1/text/process` and `/v1/text/suggest` when `AUTH_ENABLED=false`. Default `false` (routes return 403 until explicitly opened). |
 | `DICTION_ENHANCE_TIMEOUT_MS` | No | How long the cleanup pass may run **while the user is waiting** — `/v1/audio/transcriptions`, and `/v1/audio/stream` on voice-edit intents. Default `20000` (20s), sized for a local model on CPU. On timeout the raw transcript is returned, so nothing is ever lost. Set `0` for no limit. |
-| `DICTION_LIVE_ENHANCE_TIMEOUT_MS` | No | How long the cleanup pass may run **after** the raw text has already been delivered, on `/v1/audio/stream?split_enhance=true`. Default `8000` (8s). Raising it much past 9s has no effect: the app stops waiting for the enhanced frame at 9s and keeps the raw text. Set `0` for no limit. |
+| `DICTION_LIVE_ENHANCE_TIMEOUT_MS` | No | How long the app waits for the cleanup pass before it inserts the raw transcript instead (`/v1/audio/stream?split_enhance=true`). Default `8000` (8s). Raise it if your LLM is slow and dictations often land uncleaned. The gateway reports the value on `/v1/models` (`writing_tools.post_delivery_ms`) and the app picks it up the next time it checks the server (opening Writing Tools, or the first dictation after an hour); app releases older than this field wait 9s whatever you set. The app waits at least 9s and at most 120s. Set `0` for no limit (the app then waits 120s). |
 
 Both `LLM_BASE_URL` and `LLM_MODEL` must be set or the feature stays off.
 
