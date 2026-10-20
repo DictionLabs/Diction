@@ -612,6 +612,47 @@ func TestLLM_SuggestFixes_NewlineSeparated(t *testing.T) {
 	}
 }
 
+// Gemini and Claude often wrap their JSON in a markdown code fence. Each line of
+// the fence used to come back as its own suggestion (DictionLabs/Diction#24).
+func TestLLM_SuggestFixes_FencedJSON(t *testing.T) {
+	cases := []struct {
+		name  string
+		reply string
+		want  []string
+	}{
+		{"issue 24 reply", "```json\n[\"Hello duniya\", \"Namaste duniya\", \"Hello world (English is fine too)\"]\n```",
+			[]string{"Hello duniya", "Namaste duniya", "Hello world (English is fine too)"}},
+		{"issue 24 multi-line array", "```json\n[\n\"Bing pe search karo\",\n\"Bing pe dhoondo\",\n\"Bing pe jaake dekho\"\n]\n```",
+			[]string{"Bing pe search karo", "Bing pe dhoondo", "Bing pe jaake dekho"}},
+		{"bare fence", "```\n[\"one\",\"two\"]\n```", []string{"one", "two"}},
+		{"no closing fence", "```json\n[\"one\",\"two\"]", []string{"one", "two"}},
+		{"prose before fence", "Here are some options:\n```json\n[\"one\",\"two\"]\n```", []string{"one", "two"}},
+		{"fenced newline list", "```\nfirst option\nsecond option\n```", []string{"first option", "second option"}},
+		{"suggestions object", `{"suggestions":["one","two"]}`, []string{"one", "two"}},
+		{"truncated fenced array", "```json\n[\n\"one\",\n\"two\",\n", []string{"one", "two"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]any{
+					"choices": []map[string]any{{"message": map[string]string{"content": tc.reply}}},
+				})
+			}))
+			defer srv.Close()
+
+			cfg := llmConfig{Enabled: true, BaseURL: srv.URL, Model: "test", PromptSuggest: DefaultPromptSuggest}
+			got, err := cfg.suggestFixes(context.Background(), "Hello world", "", "", nil)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if strings.Join(got, "|") != strings.Join(tc.want, "|") {
+				t.Errorf("want %q, got %q", tc.want, got)
+			}
+		})
+	}
+}
+
 // ── Formatting flag ───────────────────────────────────────────────────────────
 
 // captureSystemPrompt runs processWithIntent against a stub LLM and returns the

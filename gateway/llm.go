@@ -490,19 +490,59 @@ func (c llmConfig) suggestFixes(ctx context.Context, selected, before, after str
 		return []string{}, nil // soft-fail
 	}
 
-	// Try JSON array parse first.
+	// Gemini and Claude often wrap the JSON in a ```json fence.
+	result = stripCodeFence(result)
+
+	// Try JSON array parse first, then the {"suggestions":[...]} object some models return.
 	var items []string
 	if err := json.Unmarshal([]byte(result), &items); err == nil {
 		return items, nil
 	}
+	var obj struct {
+		Suggestions []string `json:"suggestions"`
+	}
+	if err := json.Unmarshal([]byte(result), &obj); err == nil && obj.Suggestions != nil {
+		return obj.Suggestions, nil
+	}
 
-	// Fallback: newline-separated.
-	lines := strings.Split(strings.TrimSpace(result), "\n")
+	// Fallback: newline-separated. A broken (e.g. truncated) JSON array lands here
+	// too, so bracket lines are dropped and `"item",` lines unquoted.
+	lines := strings.Split(result, "\n")
 	out := make([]string, 0, len(lines))
 	for _, l := range lines {
-		if s := strings.TrimSpace(l); s != "" {
-			out = append(out, s)
+		s := strings.TrimSpace(l)
+		switch s {
+		case "", "[", "]", "{", "}":
+			continue
 		}
+		if strings.HasPrefix(s, "```") {
+			continue
+		}
+		var quoted string
+		if json.Unmarshal([]byte(strings.TrimSuffix(s, ",")), &quoted) == nil {
+			s = quoted
+		}
+		out = append(out, s)
 	}
 	return out, nil
+}
+
+// stripCodeFence returns the body of the first markdown code fence in s, or s
+// trimmed when there is none. A missing closing fence runs to the end.
+func stripCodeFence(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(l), "```") {
+			continue
+		}
+		body := lines[i+1:]
+		for j, b := range body {
+			if strings.HasPrefix(strings.TrimSpace(b), "```") {
+				body = body[:j]
+				break
+			}
+		}
+		return strings.TrimSpace(strings.Join(body, "\n"))
+	}
+	return strings.TrimSpace(s)
 }
