@@ -108,7 +108,7 @@
 - **Model-agnostic.** The gateway speaks the OpenAI transcription API spec. Point it at any speech-to-text backend that implements it. Your model, your stack.
 - **On-device option.** On-device models run locally on the iPhone. No gateway needed for that mode.
 - **Encrypted in transit.** AES-256-GCM with X25519 key exchange. Same primitives used by Signal and WireGuard.
-- **No tracking.** No third-party analytics or ad code in the app. Error reports and a daily settings summary never include your words, and you can turn them off.
+- **No tracking.** No third-party analytics or ad code in the app.
 - **Free and unlimited.** Self-hosted and on-device modes have no caps, no rate limits, no expiry.
 
 ## Self-Hosting
@@ -770,7 +770,7 @@ Works with the Node SDK, LangChain, Flowise, n8n, or any tool that expects OpenA
 - **Self-hosted**: Audio goes to your server only. Neither the gateway nor the whisper server persists audio - it's transcribed and discarded.
 - **AI cleanup enabled**: The transcript (plain text, no audio) goes to your configured LLM. If you use Ollama locally, nothing leaves your machine.
 - **Diction One (cloud)**: Audio is transcribed and immediately discarded. Not stored, not used for training.
-- **No third-party analytics, advertising or tracking SDKs** in the app. Error reports and a once-a-day settings summary can be turned off in Support.
+- **No third-party analytics, advertising or tracking SDKs** in the app.
 - **Full Access** is required by iOS for any keyboard that makes network requests. What you type on the QWERTY keys never leaves your phone. The app sends your dictation audio, plus the text around your cursor when you edit by voice, and only to the endpoint you configured.
 
 Read the full [Privacy Policy](https://diction.one/privacy).
