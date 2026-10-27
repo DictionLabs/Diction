@@ -158,8 +158,6 @@ func TestTextSuggest_SoftFail(t *testing.T) {
 // --- /v1/models capabilities ---
 
 func TestModelsCapabilities_LLMDisabled(t *testing.T) {
-	os.Setenv("TRIAL_DB_PATH", t.TempDir()+"/trials.json")
-	defer os.Unsetenv("TRIAL_DB_PATH")
 	os.Unsetenv("LLM_BASE_URL")
 	os.Unsetenv("LLM_MODEL")
 	os.Unsetenv("TEXT_ROUTES_OPEN")
@@ -211,12 +209,10 @@ func TestModelsCapabilities_LLMDisabled(t *testing.T) {
 }
 
 func TestModelsCapabilities_LLMEnabledRoutesOpen(t *testing.T) {
-	os.Setenv("TRIAL_DB_PATH", t.TempDir()+"/trials.json")
 	os.Setenv("LLM_BASE_URL", "http://localhost:99999/v1")
 	os.Setenv("LLM_MODEL", "test-model")
 	os.Setenv("TEXT_ROUTES_OPEN", "true")
 	defer func() {
-		os.Unsetenv("TRIAL_DB_PATH")
 		os.Unsetenv("LLM_BASE_URL")
 		os.Unsetenv("LLM_MODEL")
 		os.Unsetenv("TEXT_ROUTES_OPEN")
@@ -261,14 +257,10 @@ func TestModelsCapabilities_LLMEnabledRoutesOpen(t *testing.T) {
 // --- textRoutesMiddleware fail-closed guard ---
 
 func TestTextRoutes_FailClosed_NoAuth_NoOpen(t *testing.T) {
-	os.Setenv("TRIAL_DB_PATH", t.TempDir()+"/trials.json")
 	os.Unsetenv("LLM_BASE_URL")
 	os.Unsetenv("LLM_MODEL")
 	os.Unsetenv("TEXT_ROUTES_OPEN")
 	os.Unsetenv("AUTH_ENABLED")
-	defer func() {
-		os.Unsetenv("TRIAL_DB_PATH")
-	}()
 
 	mux, _, err := buildMux()
 	if err != nil {

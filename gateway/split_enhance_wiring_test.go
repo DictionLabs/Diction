@@ -64,7 +64,6 @@ func splitWiringMux(t *testing.T, transcript, enhanced string) http.Handler {
 	t.Setenv("LLM_MODEL", "test-model")
 	t.Setenv("DICTION_GATEWAY_AUTH", "off")
 	t.Setenv("DICTION_KEY_PATH", filepath.Join(t.TempDir(), "keys.json"))
-	t.Setenv("TRIAL_DB_PATH", filepath.Join(t.TempDir(), "trials.json"))
 
 	mux, _, err := buildMux()
 	if err != nil {

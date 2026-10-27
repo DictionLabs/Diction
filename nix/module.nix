@@ -7,6 +7,14 @@
   cfg = config.services.diction-gateway;
   inherit (lib) mkEnableOption mkOption mkIf types optionalAttrs;
 in {
+  imports = [
+    (lib.mkRemovedOptionModule ["services" "diction-gateway" "authEnabled"] ''
+      `authEnabled` (AUTH_ENABLED) switched on Diction Cloud's App Store receipt checks and
+      locked self-hosters out. Use `services.diction-gateway.gatewayAuth = "required";`
+      and pair the app by scanning the gateway's QR code.
+    '')
+  ];
+
   options.services.diction-gateway = {
     enable = mkEnableOption "Diction self-hosted STT gateway";
 
@@ -136,13 +144,26 @@ in {
       '';
     };
 
-    authEnabled = mkOption {
-      type = types.bool;
-      default = false;
+    gatewayAuth = mkOption {
+      type = types.enum ["off" "optional" "required"];
+      default = "optional";
       description = ''
-        Enable bearer-token authentication on the gateway (`AUTH_ENABLED`).
-        When true, all API requests must include a valid `Authorization`
-        header. Set the token via `environmentFile`.
+        Pairing key enforcement (`DICTION_GATEWAY_AUTH`). `optional` accepts the
+        key but lets keyless requests through; `required` rejects them with 401.
+        Use `required` whenever the gateway is reachable from the internet.
+        The pairing QR is printed to the journal at start
+        (`journalctl -u diction-gateway`); to print a fresh one, run
+        `sudo DICTION_KEY_PATH=/var/lib/diction-gateway/gateway-keys.json diction-gateway auth`.
+      '';
+    };
+
+    publicUrl = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      example = "https://diction.example.com";
+      description = ''
+        Address embedded in the pairing QR code (`PUBLIC_URL`), scheme, host
+        and port only. Without it the QR carries only the key.
       '';
     };
 
@@ -166,9 +187,12 @@ in {
           GATEWAY_PORT = toString cfg.port;
           DEFAULT_MODEL = cfg.defaultModel;
           MAX_BODY_SIZE = toString cfg.maxBodySize;
+          DICTION_GATEWAY_AUTH = cfg.gatewayAuth;
+          # The pairing keyring must survive restarts, or every paired phone re-scans.
+          DICTION_KEY_PATH = "/var/lib/diction-gateway/gateway-keys.json";
         }
-        // optionalAttrs cfg.authEnabled {
-          AUTH_ENABLED = "true";
+        // optionalAttrs (cfg.publicUrl != null) {
+          PUBLIC_URL = cfg.publicUrl;
         }
         // optionalAttrs (cfg.customBackend.url != null) {
           CUSTOM_BACKEND_URL = cfg.customBackend.url;
@@ -203,6 +227,7 @@ in {
           RestartSec = "5s";
 
           DynamicUser = true;
+          StateDirectory = "diction-gateway";
 
           NoNewPrivileges = true;
           ProtectSystem = "strict";

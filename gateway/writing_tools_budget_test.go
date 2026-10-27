@@ -13,7 +13,6 @@ import (
 // waits that long before inserting the raw text. (.claude/plans/insert-once-plan.md, C1.)
 func modelsBody(t *testing.T, env map[string]string) map[string]json.RawMessage {
 	t.Helper()
-	t.Setenv("TRIAL_DB_PATH", filepath.Join(t.TempDir(), "trials.json"))
 	t.Setenv("DICTION_KEY_PATH", filepath.Join(t.TempDir(), "keys.json"))
 	t.Setenv("DICTION_GATEWAY_AUTH", "off")
 	t.Setenv("LLM_BASE_URL", "")

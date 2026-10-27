@@ -320,6 +320,9 @@ func KeyStoreFromEnv(mode Mode) (*KeyStore, error) {
 // both key rotation and token TTL. Uses raw fmt (not log), matching
 // PrintQR's convention, so it renders cleanly in `docker compose logs`.
 func WarnDeprecatedEnv() {
+	if core.EnvBoolOrDefault("AUTH_ENABLED", false) {
+		fmt.Print("\033[33mwarning: AUTH_ENABLED is retired — treated as DICTION_GATEWAY_AUTH=required. Pair the app by scanning the QR (docker exec <container> gateway auth), then replace AUTH_ENABLED with DICTION_GATEWAY_AUTH: required.\033[0m\n")
+	}
 	if core.EnvOrDefault("DICTION_GATEWAY_KEY", "") == "" {
 		return
 	}

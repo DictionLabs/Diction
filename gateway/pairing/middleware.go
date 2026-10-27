@@ -26,7 +26,15 @@ const (
 
 // ModeFromEnv parses DICTION_GATEWAY_AUTH, defaulting to optional so image
 // upgrades never lock out existing deploys.
+//
+// AUTH_ENABLED=true is the retired switch for Diction Cloud's App Store receipt
+// and trial-token checks, which the community gateway no longer carries. An
+// operator who set it meant "keep strangers out", so it maps to required:
+// silently ignoring it would turn a closed gateway open on upgrade.
 func ModeFromEnv() Mode {
+	if core.EnvBoolOrDefault("AUTH_ENABLED", false) {
+		return ModeRequired
+	}
 	switch strings.ToLower(core.EnvOrDefault("DICTION_GATEWAY_AUTH", "optional")) {
 	case "off", "false", "0", "disabled":
 		return ModeOff
@@ -61,10 +69,6 @@ func writePairingError(w http.ResponseWriter, status int, reason, message string
 // — the same response for an expired token, a garbage token, or no token
 // at all (Expiry policy rule 1: no refresh-token semantics means there is
 // nothing a client should do differently, only re-pair).
-//
-// Community builds compose this FIRST; when the key does not match and
-// AUTH_ENABLED=true, the request falls through to the standard auth middleware,
-// so manually configured keys, trial tokens and JWS all keep working.
 func KeyMiddleware(ks *KeyStore, required bool, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if ks != nil && ks.Verify(bearerToken(r)) {

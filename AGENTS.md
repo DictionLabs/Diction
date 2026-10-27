@@ -11,11 +11,11 @@ OpenAI-compatible speech-to-text backends. It handles:
 - WebSocket streaming for low-latency transcription
 - HTTP transcription fallback
 - Optional LLM post-processing (transcript cleanup, voice editing, suggestions)
-- Optional trial token auth (Diction Cloud -- not for self-hosters)
+- QR pairing with per-device keys, optionally required on every request
 
-> WARNING: TEXT_ROUTES_OPEN=false (default). /v1/text/* routes return 403 until
-> you explicitly set TEXT_ROUTES_OPEN=true or AUTH_ENABLED=true. This is a
-> deliberate speed bump -- not a security control. Set it before calling those routes.
+> WARNING: TEXT_ROUTES_OPEN=false (default). /v1/text/* routes return 403 to callers
+> without a pairing key until you set TEXT_ROUTES_OPEN=true. This is a deliberate speed
+> bump, not a security control; the security control is DICTION_GATEWAY_AUTH=required.
 
 ## Routes
 
@@ -73,19 +73,7 @@ Content-Type: application/json
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `post_delivery_ms` | int | `DICTION_LIVE_ENHANCE_TIMEOUT_MS`: how long cleanup may run after the raw transcript was sent on a `split_enhance` stream. The iOS app waits this long + 1s (at least 9s, at most 120s; `0` = 120s) before inserting the raw text. |
-
-### POST /v1/trial
-
-Issues a trial token for Diction Cloud cloud subscription. Not useful for self-hosters
-(requires TRIAL_SECRET to be configured with Diction's server-side secret).
-
-```
-Request body: {"device_id": "<UUID>"}
-Response 200: {"token": "<hmac-token>", "expires_at": "<RFC3339>"}
-Response 503: {"error":"trial_not_configured"}  -- TRIAL_SECRET not set
-Response 409: {"error":"trial_already_used"}  -- trial already consumed
-```
+| `post_delivery_ms` | int | `DICTION_LIVE_ENHANCE_TIMEOUT_MS`: how long cleanup may run after the raw transcript was sent on a `split_enhance` stream. The iOS app waits this long + 1s (at least 9s, at most 121s; `0` = 121s) before inserting the raw text. |
 
 ### POST /v1/audio/transcriptions
 
@@ -126,7 +114,7 @@ for voice editing and transcript cleanup outside the transcription flow.
 
 Requires LLM to be configured (LLM_BASE_URL + LLM_MODEL) and either:
 - TEXT_ROUTES_OPEN=true, or
-- AUTH_ENABLED=true with a valid bearer token
+- a valid pairing key as the bearer token (DICTION_GATEWAY_AUTH=optional or required)
 
 Returns 403 {"error":"text_routes_closed"} if neither condition is met.
 Returns 503 {"error":"llm_not_configured"} if LLM env vars are not set.
@@ -328,11 +316,7 @@ edit" instead of typing the user's spoken instruction into their document. A cus
 | `GATEWAY_PORT` | `8080` | Port the gateway listens on |
 | `DEFAULT_MODEL` | `small` | Fallback model when none is specified in the request |
 | `MAX_BODY_SIZE` | `209715200` | Max request body size in bytes (200 MB) |
-| `AUTH_ENABLED` | `false` | Require bearer token on audio routes. Do not set for self-hosted installs -- see README |
-| `BUNDLE_ID` | `one.diction` | iOS bundle ID checked in JWS tokens (Diction Cloud only) |
-| `TRIAL_SECRET` | (empty) | Hex-encoded 32-byte HMAC key for trial tokens (Diction Cloud only) |
-| `TRIAL_DB_PATH` | `/data/trials.json` | Path to trial store |
-| `TRIAL_DURATION` | `24h` | Duration for new trial grants |
+| `AUTH_ENABLED` | `false` | Retired. `true` is treated as `DICTION_GATEWAY_AUTH=required`, with a startup warning |
 
 ### Speech Backend
 
@@ -360,7 +344,7 @@ Both LLM_BASE_URL and LLM_MODEL must be set or the LLM feature stays off.
 | `LLM_PROMPT_SUGGEST` | (see default) | System prompt for suggest intent |
 | `LLM_PROMPT_FORMATTING` | built-in | Appended to `LLM_PROMPT` when the client requests formatting |
 | `LLM_PROMPT_SUMMARY` | built-in | System prompt for /v1/text/summarize |
-| `TEXT_ROUTES_OPEN` | `false` | Set to `true` to open /v1/text/* to every caller when AUTH_ENABLED=false. Paired devices get them regardless, and `DICTION_GATEWAY_AUTH=required` opens them without this |
+| `TEXT_ROUTES_OPEN` | `false` | Set to `true` to open /v1/text/* to every caller. Paired devices get them regardless, and `DICTION_GATEWAY_AUTH=required` opens them without this |
 | `DICTION_ENHANCE_TIMEOUT_MS` | `20000` | Cleanup budget while the user waits (`/v1/audio/transcriptions`, edit intents on the stream). Raw transcript on timeout. `0` = no limit |
 | `DICTION_LIVE_ENHANCE_TIMEOUT_MS` | `8000` | Cleanup budget after the raw transcript is delivered (`/v1/audio/stream?split_enhance=true`). Advertised on `/v1/models` as `writing_tools.post_delivery_ms`. `0` = no limit |
 
@@ -410,11 +394,10 @@ Suggest 2-3 concise alternative phrasings or corrections for the selected text. 
 - Clean up transcripts using a BYO LLM (cleanup, edit, edit-selected)
 - Suggest alternative phrasings (suggest intent)
 - Probe health of speech backends
-- Issue and verify trial tokens (Diction Cloud only)
+- Pair devices by QR code and require their key on every request
 
 **Cannot:**
 - E2E encrypt text routes -- /v1/text/* is plaintext only. E2E is a Diction cloud feature.
-- Summarize arbitrary text -- summarize is a Diction cloud-only feature.
 - Store audio -- audio is transcribed and discarded.
 - TTS -- /v1/audio/speech is not implemented.
 - SSE streaming on REST -- use WebSocket /v1/audio/stream instead.
@@ -423,5 +406,5 @@ Suggest 2-3 concise alternative phrasings or corrections for the selected text. 
 
 - /v1/text/* endpoints are plaintext JSON. The X-Diction-E2E header must never appear on requests to these routes.
 - /v1/audio/transcriptions and /v1/audio/stream may be E2E-encrypted when called by the Diction iOS app pointed at diction.cloud. Self-hosted gateways will never see E2E requests in normal operation.
-- Error shape: `{"error":"<code>"}` for most errors. Auth failures: `{"error":"unauthorized","reason":"...","message":"..."}`.
+- Error shape: `{"error":"<code>"}` for most errors. Pairing failures (401): `{"error":"unauthorized","reason":"invalid_key","message":"..."}`.
 - The suggest endpoint always returns 200 with `{"suggestions":[]}` on LLM error (soft-fail). Never 5xx.

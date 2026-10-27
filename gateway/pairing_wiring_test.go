@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+
+	"github.com/DictionLabs/Diction/gateway/pairing"
 )
 
 // pairingMux builds the mux with a writable keystore path and the given
@@ -14,7 +16,6 @@ func pairingMux(t *testing.T, mode string) http.Handler {
 	t.Helper()
 	t.Setenv("DICTION_GATEWAY_AUTH", mode)
 	t.Setenv("DICTION_KEY_PATH", filepath.Join(t.TempDir(), "gateway-keys.json"))
-	t.Setenv("TRIAL_DB_PATH", filepath.Join(t.TempDir(), "trials.json"))
 	mux, _, err := buildMux()
 	if err != nil {
 		t.Fatalf("buildMux: %v", err)
@@ -245,5 +246,52 @@ func TestPairing_RequiredModeAdvertisesTextRoutes(t *testing.T) {
 	}
 	if !resp.Capabilities.TextProcess {
 		t.Fatal("required mode: every reachable caller is keyed, so text_process must be true")
+	}
+}
+
+// AUTH_ENABLED=true used to switch on Diction Cloud's receipt and trial checks, which the
+// community gateway no longer carries. It must keep a gateway closed: keyless requests get
+// 401, a paired key gets through.
+func TestPairing_LegacyAuthEnabled_MeansRequired(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "true")
+	keyPath := filepath.Join(t.TempDir(), "gateway-keys.json")
+	t.Setenv("DICTION_KEY_PATH", keyPath)
+	mux, _, err := buildMux()
+	if err != nil {
+		t.Fatalf("buildMux: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("AUTH_ENABLED=true must 401 keyless requests, got %d", rec.Code)
+	}
+
+	ks, err := pairing.KeyStoreFromEnv(pairing.ModeRequired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := ks.IssueToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code == http.StatusUnauthorized {
+		t.Fatalf("a paired key must pass under AUTH_ENABLED=true, got 401 %s", rec.Body.String())
+	}
+}
+
+// /v1/trial belonged to Diction Cloud; the community gateway no longer serves it.
+func TestTrialRouteGone(t *testing.T) {
+	mux := pairingMux(t, "optional")
+	req := httptest.NewRequest(http.MethodPost, "/v1/trial", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("/v1/trial must 404, got %d", rec.Code)
 	}
 }

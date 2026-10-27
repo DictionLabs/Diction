@@ -363,9 +363,8 @@ QR at any time, and each scan gets its own key. Required mode also opens the
 [AI text routes](#ai-cleanup-and-voice-editing-byo-llm) to paired devices, so `TEXT_ROUTES_OPEN` is
 not needed with it. Full details, including key rotation: [`AGENTS.md`](AGENTS.md).
 
-> **`AUTH_ENABLED` is a different thing - do not set it on a self-hosted gateway.** It does not
-> enable a shared secret. It accepts only Apple App Store receipts and trial tokens that exist for
-> Diction Cloud, so turning it on locks you out of your own server. Use `DICTION_GATEWAY_AUTH` above.
+An older gateway setting, `AUTH_ENABLED=true`, is retired. If you still have it set, the gateway
+treats it as `DICTION_GATEWAY_AUTH: required` and prints a warning; replace it with that line.
 
 ---
 
@@ -839,6 +838,8 @@ Enable as a service:
           services.diction-gateway = {
             enable = true;
             openFirewall = true;
+            # gatewayAuth = "required";   # pairing key on every request
+            # publicUrl = "https://diction.example.com";
             # customBackend.url = "http://127.0.0.1:8000";
             # llm.baseUrl = "http://127.0.0.1:11434/v1";
             # llm.model = "gemma2:9b";
@@ -851,7 +852,7 @@ Enable as a service:
 }
 ```
 
-The unit runs under `DynamicUser` with `ProtectSystem=strict`, `NoNewPrivileges`, and a narrow syscall filter. Use `environmentFile` for secrets - they don't end up in the world-readable Nix store. Full option list: [`nix/module.nix`](nix/module.nix).
+The unit runs under `DynamicUser` with `ProtectSystem=strict`, `NoNewPrivileges`, and a narrow syscall filter. The pairing key is kept in `/var/lib/diction-gateway`, and the pairing QR is in `journalctl -u diction-gateway`. Use `environmentFile` for secrets - they don't end up in the world-readable Nix store. Full option list: [`nix/module.nix`](nix/module.nix).
 
 ---
 
@@ -894,10 +895,10 @@ Works with the Node SDK, LangChain, Flowise, n8n, or any tool that expects OpenA
 
 **Authentication:** with the default `DICTION_GATEWAY_AUTH=optional`, pass any non-empty string
 as the API key - the gateway doesn't check it. With `required`, pass a paired key (`dk_...`, printed
-by `docker exec diction-gateway gateway auth`) as the API key. Do not set `AUTH_ENABLED`; see
+by `docker exec diction-gateway gateway auth`) as the API key. See
 [Pairing and Access Control](#pairing-and-access-control).
 
-**Error shape:** errors return `{"error":"<message>"}`, except auth failures, which return `{"error":"unauthorized","reason":"...","message":"..."}`, not OpenAI's nested `{"error":{"message":"...","type":"..."}}`. Most SDKs surface these as `HTTPError` rather than `APIError`.
+**Error shape:** errors return `{"error":"<message>"}`, except a missing pairing key in required mode, which returns `{"error":"unauthorized","reason":"invalid_key","message":"..."}`, not OpenAI's nested `{"error":{"message":"...","type":"..."}}`. Most SDKs surface these as `HTTPError` rather than `APIError`.
 
 ---
 

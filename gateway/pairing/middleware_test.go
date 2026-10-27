@@ -52,6 +52,23 @@ func TestModeFromEnv(t *testing.T) {
 	}
 }
 
+// AUTH_ENABLED=true is the retired cloud-auth switch; it fails closed into required, even
+// when DICTION_GATEWAY_AUTH says otherwise.
+func TestModeFromEnv_LegacyAuthEnabled(t *testing.T) {
+	t.Setenv("AUTH_ENABLED", "true")
+	for _, val := range []string{"", "optional", "off"} {
+		t.Setenv("DICTION_GATEWAY_AUTH", val)
+		if got := ModeFromEnv(); got != ModeRequired {
+			t.Errorf("AUTH_ENABLED=true, DICTION_GATEWAY_AUTH=%q → %q, want required", val, got)
+		}
+	}
+	t.Setenv("AUTH_ENABLED", "false")
+	t.Setenv("DICTION_GATEWAY_AUTH", "")
+	if got := ModeFromEnv(); got != ModeOptional {
+		t.Errorf("AUTH_ENABLED=false → %q, want optional", got)
+	}
+}
+
 func TestKeyMiddlewareMatrix(t *testing.T) {
 	ks, _ := newTestKeyStore(t, "", time.Hour, 0)
 	graceKey, err := ks.IssueToken()
