@@ -120,7 +120,7 @@ This README is the current setup guide. The app's **Setup guide** link opens it.
 **Requirements:**
 - A machine with [Docker and Docker Compose](https://docs.docker.com/engine/install/) installed: Linux box, NUC, home server, VPS. **No GPU needed** - the default speech model (Parakeet) runs on CPU.
 - About 2.5 GB of free RAM and 2 GB of disk for the default stack: Parakeet uses ~2 GB of RAM while transcribing (1.25 GB image), the gateway under 100 MB (150 MB image).
-- An x86-64 (amd64) host. The speech-model images are also built for arm64; the gateway image is amd64-only up to v14.0, with arm64 builds from the next release. Until then, use the [NixOS flake](#nixos) or `docker build gateway/` from this repo on a Raspberry Pi or other ARM machine.
+- An x86-64 (amd64) or ARM (arm64) host, so a Raspberry Pi 4/5 works too. The gateway image is multi-arch from v14.1; if you pinned an older tag on ARM, move to `v14.1` or `latest`.
 - iPhone running iOS 17.0 or later.
 
 ### Step 1 - Write the Compose File
@@ -202,7 +202,7 @@ diction-parakeet         Up 30 seconds (healthy)
 | Error | Fix |
 |-------|-----|
 | `pull access denied` on gateway image | `docker logout` and retry - a stale login to Docker Hub or `ghcr.io` can shadow the anonymous pull |
-| `no matching manifest for linux/arm64` on gateway image | ARM host - see Requirements above |
+| `no matching manifest for linux/arm64` on gateway image | ARM host pulling a gateway tag older than v14.1 - use `latest` |
 | Gateway exits immediately | Parakeet container failed - check its logs |
 
 ### Step 3 - Test the Server
@@ -612,7 +612,7 @@ with downloaded weights) are kept, so phones stay paired and models are not down
 Every gateway release is also published under its version tag. To pin one, or roll back after a
 bad upgrade, replace `latest` with a tag from the
 [releases page](https://github.com/DictionLabs/Diction/releases), e.g.
-`image: dictionlabs/gateway:v14.0`, and run `docker compose up -d`.
+`image: dictionlabs/gateway:v14.1`, and run `docker compose up -d`.
 
 ---
 
