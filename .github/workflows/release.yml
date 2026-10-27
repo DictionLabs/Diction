@@ -51,6 +51,10 @@ jobs:
           username: dictionlabs
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      # QEMU runs only the runtime stage's `apk add` for arm64; the Go build cross-compiles.
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
       - uses: docker/metadata-action@v5
         id: meta
         with:
@@ -73,6 +77,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: gateway
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

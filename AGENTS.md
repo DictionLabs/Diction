@@ -11,7 +11,7 @@ OpenAI-compatible speech-to-text backends. It handles:
 - WebSocket streaming for low-latency transcription
 - HTTP transcription fallback
 - Optional LLM post-processing (transcript cleanup, voice editing, suggestions)
-- Optional trial token auth (Diction One -- not for self-hosters)
+- Optional trial token auth (Diction Cloud -- not for self-hosters)
 
 > WARNING: TEXT_ROUTES_OPEN=false (default). /v1/text/* routes return 403 until
 > you explicitly set TEXT_ROUTES_OPEN=true or AUTH_ENABLED=true. This is a
@@ -77,7 +77,7 @@ Content-Type: application/json
 
 ### POST /v1/trial
 
-Issues a trial token for Diction One cloud subscription. Not useful for self-hosters
+Issues a trial token for Diction Cloud cloud subscription. Not useful for self-hosters
 (requires TRIAL_SECRET to be configured with Diction's server-side secret).
 
 ```
@@ -275,6 +275,50 @@ user's own instruction already states the shape of the result.
   {"text": "...", "context": "{\"formatting\":false}"}
 ```
 
+## What the LLM Receives
+
+**Language hint:** when the client's context carries a concrete `language` (not empty, not the
+auto-detect sentinel `"auto"`), the cleanup call gets a `(Language: xx)` hint appended to the
+user message — the built-in `LLM_PROMPT` tells the model to write in that language and correct
+wrong or missing accents/diacritics for it, never to translate. A custom `LLM_PROMPT` should say
+what to do with the hint if it matters to you; it is plain text appended after the transcript,
+not a template variable.
+
+**What the cleanup call sends.** The transcript comes first, unlabelled, exactly as before.
+The descriptive context the user configured in the app then follows, one labelled line per
+item, each omitted entirely when unset — a user with none of them configured sends
+byte-for-byte the request earlier releases sent:
+
+| Line | Source | Cap |
+|------|--------|-----|
+| `Custom words: a, b (also heard as: c)` | the user's My Words list | 50 entries |
+| `Tone: ...` | the user's Tone preset and About You description, merged | none |
+| `(Language: xx)` | the transcript's language, when concrete | — |
+
+**What it deliberately does NOT send, and why you should not add it.** The client also supplies
+the text around the cursor, the earlier transcripts of the session, and the clipboard. The
+gateway decodes them and forwards none of them to the cleanup prompt. Measured against
+`gpt-oss-20b` with the built-in prompt: given a block of three earlier transcripts, the
+dictation "yeah that sounds good" came back as *those three transcripts* — the user's actual
+words gone from their text field. A long clipboard block was appended to the output verbatim.
+Custom words, tone and profile never did this.
+
+The rule that survived: forward context that **describes** the speaker, never context that is
+itself prose the model could emit as the answer. The built-in prompt does say these lines are
+context and must not appear in the reply; a short prompt does not enforce it. If you write a
+custom `LLM_PROMPT` and want to feed it session or clipboard context, you own that trade — test
+it with a short dictation and a long context block before trusting it.
+
+**What the voice-edit call sends.** For `intent=edit` (the user's cursor, nothing selected) the
+gateway sends `Text: <before>‸<after>` followed by `Instruction: <what the user said>`. The `‸`
+marks the cursor. The model is expected to return the **full modified text** with the marker
+removed; the gateway strips any `‸` the model leaves behind, because the app inserts the result
+verbatim. For `intent=edit-selected` the selection is the text and the surrounding context
+follows as `Context before:` / `Context after:` lines. An edit request with nothing to edit (no
+cursor context, or no selection) fails rather than guessing, so the app shows "Couldn't apply
+edit" instead of typing the user's spoken instruction into their document. A custom
+`LLM_PROMPT_EDIT` should account for the marker.
+
 ## Environment Variables
 
 ### Core
@@ -285,8 +329,8 @@ user's own instruction already states the shape of the result.
 | `DEFAULT_MODEL` | `small` | Fallback model when none is specified in the request |
 | `MAX_BODY_SIZE` | `209715200` | Max request body size in bytes (200 MB) |
 | `AUTH_ENABLED` | `false` | Require bearer token on audio routes. Do not set for self-hosted installs -- see README |
-| `BUNDLE_ID` | `one.diction` | iOS bundle ID checked in JWS tokens (Diction One only) |
-| `TRIAL_SECRET` | (empty) | Hex-encoded 32-byte HMAC key for trial tokens (Diction One only) |
+| `BUNDLE_ID` | `one.diction` | iOS bundle ID checked in JWS tokens (Diction Cloud only) |
+| `TRIAL_SECRET` | (empty) | Hex-encoded 32-byte HMAC key for trial tokens (Diction Cloud only) |
 | `TRIAL_DB_PATH` | `/data/trials.json` | Path to trial store |
 | `TRIAL_DURATION` | `24h` | Duration for new trial grants |
 
@@ -316,7 +360,23 @@ Both LLM_BASE_URL and LLM_MODEL must be set or the LLM feature stays off.
 | `LLM_PROMPT_SUGGEST` | (see default) | System prompt for suggest intent |
 | `LLM_PROMPT_FORMATTING` | built-in | Appended to `LLM_PROMPT` when the client requests formatting |
 | `LLM_PROMPT_SUMMARY` | built-in | System prompt for /v1/text/summarize |
-| `TEXT_ROUTES_OPEN` | `false` | Set to `true` to open /v1/text/* when AUTH_ENABLED=false |
+| `TEXT_ROUTES_OPEN` | `false` | Set to `true` to open /v1/text/* to every caller when AUTH_ENABLED=false. Paired devices get them regardless, and `DICTION_GATEWAY_AUTH=required` opens them without this |
+| `DICTION_ENHANCE_TIMEOUT_MS` | `20000` | Cleanup budget while the user waits (`/v1/audio/transcriptions`, edit intents on the stream). Raw transcript on timeout. `0` = no limit |
+| `DICTION_LIVE_ENHANCE_TIMEOUT_MS` | `8000` | Cleanup budget after the raw transcript is delivered (`/v1/audio/stream?split_enhance=true`). Advertised on `/v1/models` as `writing_tools.post_delivery_ms`. `0` = no limit |
+
+### Pairing (self-hosted)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DICTION_GATEWAY_AUTH` | `optional` | `off`: no key, no QR. `optional`: keys accepted, keyless requests still pass. `required`: keyless requests get 401 `invalid_key` |
+| `PUBLIC_URL` | (empty) | `scheme://host[:port]` embedded in the pairing QR. Without it the QR is key-only |
+| `DICTION_KEY_PATH` | `/data/gateway-keys.json` | Keyring file. Persist `/data` on a volume or every recreate issues a new secret |
+| `DICTION_KEY_GRACE` | `720h` | How long a rotated-out secret keeps verifying |
+| `DICTION_TOKEN_TTL` | (empty, never) | Lifetime of each minted device key. Only meaningful with `required` |
+| `DICTION_GATEWAY_KEY` | (empty) | Deprecated. Pins one manual key; disables rotation and TTL |
+
+`docker exec <container> gateway auth` prints a fresh pairing QR. Routes: `GET /v1/auth/key`
+(refresh), `POST /v1/auth/rotate` (rotate secret).
 
 ## Default Prompts
 
@@ -324,12 +384,12 @@ When a prompt env var is empty (or file read fails), the gateway uses these buil
 
 **LLM_PROMPT (cleanup):**
 ```
-You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. Return only the corrected text, nothing else.
+You are a transcript cleanup tool. Fix grammar, punctuation, and remove filler words. If a language is given, write in that language and correct wrong or missing accents or diacritics for it. Never translate. Lines labelled "Custom words" or "Tone" may follow the transcript: they describe the speaker, never part of what you return. Return only the corrected transcript, nothing else.
 ```
 
 **LLM_PROMPT_EDIT:**
 ```
-You are a text editor. Apply the user's spoken instruction to the text. Return only the edited result, nothing else.
+You are a text editor. The text contains ‸ marking where the user's cursor is. Apply the user's spoken instruction to that text. Return only the full modified text, without the ‸ marker, and nothing else.
 ```
 
 **LLM_PROMPT_EDIT_SELECTED:**
@@ -350,7 +410,7 @@ Suggest 2-3 concise alternative phrasings or corrections for the selected text. 
 - Clean up transcripts using a BYO LLM (cleanup, edit, edit-selected)
 - Suggest alternative phrasings (suggest intent)
 - Probe health of speech backends
-- Issue and verify trial tokens (Diction One only)
+- Issue and verify trial tokens (Diction Cloud only)
 
 **Cannot:**
 - E2E encrypt text routes -- /v1/text/* is plaintext only. E2E is a Diction cloud feature.

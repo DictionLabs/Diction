@@ -1,4 +1,7 @@
-FROM golang:1.23-alpine AS builder
+# The builder runs on the CI host's own arch and cross-compiles: Go needs no emulation,
+# so an arm64 image costs seconds instead of a QEMU-emulated build.
+FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+ARG TARGETOS TARGETARCH
 
 WORKDIR /build
 COPY go.mod go.sum ./
@@ -14,7 +17,7 @@ ARG IMAGE_REF=unknown
 # opinion" that shows no notice. That is the right answer for an untagged build, and the
 # wrong one for a release -- hence release.yml passes the tag in.
 ARG VERSION=dev
-RUN CGO_ENABLED=0 go build -ldflags="-s -w -X 'github.com/DictionLabs/Diction/gateway/core.ImageRef=${IMAGE_REF}' -X 'github.com/DictionLabs/Diction/gateway/core.Version=${VERSION}'" -o gateway .
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X 'github.com/DictionLabs/Diction/gateway/core.ImageRef=${IMAGE_REF}' -X 'github.com/DictionLabs/Diction/gateway/core.Version=${VERSION}'" -o gateway .
 
 FROM alpine:latest
 
