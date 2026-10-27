@@ -13,17 +13,14 @@
 #      Works via the app's HTTP fallback path. No streaming, so longer
 #      dictations have a visible wait after you tap stop.
 #
-# Pick a profile (user always picks one explicitly):
-#   docker compose --profile small up -d
-#   docker compose --profile medium up -d
-#   docker compose --profile large up -d
+# Pick a profile (user always picks one explicitly). DEFAULT_MODEL must name the
+# engine you started: the gateway does not fall back to another one, so a mismatch
+# fails every dictation with 502. Parakeet is the default, so it needs nothing extra:
 #   docker compose --profile parakeet up -d
-#
-# Set DEFAULT_MODEL on the gateway to match your chosen profile:
-#   small     → DEFAULT_MODEL: small
-#   medium    → DEFAULT_MODEL: medium
-#   large     → DEFAULT_MODEL: large-v3-turbo
-#   parakeet  → DEFAULT_MODEL: parakeet-v3
+#   DEFAULT_MODEL=small          docker compose --profile small up -d
+#   DEFAULT_MODEL=medium         docker compose --profile medium up -d
+#   DEFAULT_MODEL=large-v3-turbo docker compose --profile large up -d
+# Or put DEFAULT_MODEL=small in a .env file next to this one.
 #
 # Gateway endpoints:
 #   POST /v1/audio/transcriptions   transcribe uploaded audio
@@ -40,7 +37,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      DEFAULT_MODEL: small
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-parakeet-v3}
       # --- AI Enhancement (BYO LLM) ---
       # Uncomment and configure to enable AI transcript cleanup and voice editing.
       # Works with OpenAI, Groq, Ollama, or any OpenAI-compatible provider.

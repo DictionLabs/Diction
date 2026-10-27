@@ -473,12 +473,13 @@ pull service. The weights are CTranslate2 builds of OpenAI's checkpoints, publis
 come from a namespace we control rather than a third party's conversion.
 
 **Shortcut:** this repo's [`docker-compose.yml`](docker-compose.yml) has every model as a compose
-profile, all on CPU, with pairing and the `/data` volume already set up:
+profile, all on CPU, with pairing and the `/data` volume already set up. It defaults to Parakeet;
+for a Whisper profile, pass the matching `DEFAULT_MODEL`:
 
 ```bash
 curl -O https://raw.githubusercontent.com/DictionLabs/Diction/main/docker-compose.yml
-# edit DEFAULT_MODEL on the gateway to match the profile, then:
-docker compose --profile parakeet up -d     # or: small, medium, large
+docker compose --profile parakeet up -d
+DEFAULT_MODEL=small docker compose --profile small up -d     # or medium, or large-v3-turbo with --profile large
 ```
 
 ```bash
