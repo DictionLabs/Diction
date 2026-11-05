@@ -105,9 +105,6 @@ type vocabCandidate struct {
 	// letters is the normalized edit distance between the spellings with every letter kept
 	// (letterKey), where distance compares sound keys with the vowels dropped.
 	letters float64
-	// realWord: the entry's canonical spelling is itself a dictionary word or name
-	// (isDictionaryWord), like Kristýna or Ondřej but not Machala or Vantagio.
-	realWord bool
 }
 
 // MatchVocabulary is RankVocabulary plus, for each admitted entry, the transcript words it
@@ -119,7 +116,9 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 // VocabularyOptions says what the gateway knows about where the transcript came from.
 type VocabularyOptions struct {
 	// STTBoosted: the STT backend that wrote the transcript was sent the custom-word list
-	// (Backend.AcceptsCustomWords: Cohere, Canary, Parakeet). See requireCorroboration.
+	// (Backend.AcceptsCustomWords: Cohere, Canary, Parakeet). Since 2026-11-05 the shortlist no
+	// longer treats this differently: a boosted STT that writes "Christina" for a saved
+	// "Kristýna" has not proven Christina was said (see requireCorroboration).
 	STTBoosted bool
 }
 
@@ -147,13 +146,22 @@ func MatchVocabularyWith(transcript string, forms [][]string, limit int, opts Vo
 		// looking for: "Vsetín" next to "set in".
 		ordinary, other := 1.0, 1.0
 		var ordinaryHit, otherHit transcriptNgram
+		shortLetters := 1.0
 		for _, form := range entry {
 			folded := foldPhonetic(form)
-			if len([]rune(strings.TrimSpace(form))) < vocabMinFormLength ||
-				len([]rune(folded)) < vocabMinFolded {
+			if len([]rune(strings.TrimSpace(form))) < vocabMinFormLength {
+				continue
+			}
+			if len([]rune(folded)) < vocabMinFolded {
+				if d, hit, ok := matchShortForm(form, folded, ngrams); ok && d < other {
+					other, otherHit, shortLetters = d, hit, d
+				}
 				continue
 			}
 			for _, ngram := range ngrams {
+				if ngram.short {
+					continue
+				}
 				// Cheap rejection before the O(n·m) DP: two strings whose lengths already
 				// differ by more than the ceiling can never score under it, and this runs on
 				// the request path for every entry × form × n-gram.
@@ -191,7 +199,7 @@ func MatchVocabularyWith(transcript string, forms [][]string, limit int, opts Vo
 		if strings.EqualFold(heard, strings.TrimSpace(entry[0])) || allOrdinaryWords(heard) {
 			heard = ""
 		}
-		letters := 1.0
+		letters := shortLetters
 		for _, form := range entry {
 			if d := normalizedLevenshtein(letterKey(form), letterKey(hit.text)); d < letters {
 				letters = d
@@ -199,9 +207,8 @@ func MatchVocabularyWith(transcript string, forms [][]string, limit int, opts Vo
 		}
 		candidates = append(candidates, vocabCandidate{
 			index: i, distance: distance, start: hit.start, end: hit.end, heard: heard,
-			taught:   heard != "" && isStoredVariant(heard, entry[1:]),
-			letters:  letters,
-			realWord: isDictionaryWord(strings.TrimSpace(entry[0])),
+			taught:  heard != "" && isStoredVariant(heard, entry[1:]),
+			letters: letters,
 		})
 	}
 
@@ -225,7 +232,7 @@ func MatchVocabularyWith(transcript string, forms [][]string, limit int, opts Vo
 		}
 	}
 
-	admitted = requireCorroboration(admitted, opts.STTBoosted)
+	admitted = requireCorroboration(admitted)
 
 	// Weakest first: a stable sort keeps input order among equal distances, so the same list
 	// and transcript always render the same prompt.
@@ -244,67 +251,110 @@ func MatchVocabularyWith(transcript string, forms [][]string, limit int, opts Vo
 	return out
 }
 
-// requireCorroboration applies the rules the 2026-10-18 Writing Tools e2e runs
-// (.claude/bow/writing-tools-mywords-cooperation-2026-10.md) showed the shortlist needs, because
-// the LLM treats a (sounds like "X" here) pointer as an instruction and swaps X whatever the
-// sentence says ("so Joaquín can reach the server", "Hi Siobhan, can we move it to tirzepatide
-// afternoon?", "I had lunch with Ondřej yesterday" for a friend called Andre):
+// requireCorroboration drops hits that share only a consonant skeleton with the custom word
+// (2026-10-18 Writing Tools e2e runs, .claude/bow/writing-tools-mywords-cooperation-2026-10.md).
+// The sound key drops every non-leading vowel, so "Thursday"/tirzepatide, "I can"/Joaquín,
+// "keyboard is"/Kubernetes and Czech "přes"/Apiaries all scored under the ceiling, and the LLM
+// treats a (sounds like "X" here) pointer as an instruction. With the vowels kept they are ≥ 0.5
+// apart, while every real mishearing measured was ≤ 0.45 (Sapansky/Szczepański, Matapolo/
+// metoprolol, Christina/Kristýna 0.33, Andre/Ondřej 0.33). Such a weak hit stays only when the
+// user taught it as a variant, or next to another misheard span: a garbled full name ("Andre
+// McCullough") is two adjacent manglings, which a coincidence almost never is.
 //
-//  1. Spellings that share only a consonant skeleton are not a match. The sound key drops every
-//     non-leading vowel, so "Thursday"/tirzepatide, "I can"/Joaquín, "keyboard is"/Kubernetes and
-//     Czech "přes"/Apiaries all scored under the ceiling. With the vowels kept they are ≥ 0.5
-//     apart, while every real mishearing measured was ≤ 0.45 (Sapansky/Szczepański, Matapolo/
-//     metoprolol). Such a weak hit stays only next to another misheard span: a garbled full name
-//     ("Andre McCullough") is two adjacent manglings, which a coincidence almost never is.
-//  2. A single transcript word gets no pointer unless the user taught it as a variant or another
-//     shortlisted word sits next to it (a full name: "Andrej Machala"). A lone word the STT
-//     wrote is usually what was said — another person's name, an ordinary word — and the STT,
-//     which hears the audio, already had the list. Without the pointer the LLM still sees the
-//     custom word and still fixes an obvious garble ("Namotron", "Mahala") on its own.
-//  3. Two real names, one heard: when the STT was boosted with the list, the saved word is
-//     itself a real word or name (isDictionaryWord: Kristýna, Ondřej) and the lone transcript
-//     word is a different real one ("Kristina", Czech "Andrej" and "Ondra", "Andre"), the entry
-//     is dropped altogether, not just its pointer. Without the pointer the LLM still swapped
-//     these on its own ("Kristina" → Kristýna 14/14): the entry in the prompt is enough. The
-//     STT had the saved spelling and chose another real name, which is evidence that name was
-//     said. A spelling that differs only in diacritics or case ("Joaquin") keeps the entry, as
-//     does a saved word that is not a dictionary word (Machala, Vantagio): a real word near it
-//     is as often the STT's mishearing ("Vantage" for Vantagio) as another word, and dropping
-//     those cost 4 points of Canary spelling for little gain. Cost of the rule: a saved name
-//     said but written as its sibling ("Наталья" for Наталия); saving that spelling as a variant
-//     brings the entry back (taught spans are exempt). Unboosted backends (Whisper, Live,
-//     self-hosted) keep the entry: their STT never saw the list.
-//
-// Multi-word spans keep their pointer ("Head Sner" → Hetzner, "apik saban" → apixaban): the
-// sentence is visibly broken there, which is what the pointer is for.
-func requireCorroboration(admitted []vocabCandidate, sttBoosted bool) []vocabCandidate {
-	next := func(i int, c vocabCandidate, misheardOnly bool) bool {
-		for j, o := range admitted {
-			if j != i && (o.start == c.end || o.end == c.start) && (!misheardOnly || o.heard != "") {
-				return true
-			}
-		}
-		return false
-	}
+// Every hit that passes keeps its pointer, a lone real name included. Withdrawn 2026-11-05: two
+// further rules from 2026-10-18 stripped the pointer from a lone single word and, when the STT
+// was boosted, dropped the entry when the heard word was itself a dictionary word. Together they
+// meant a user who saved "Kristýna" or "Ondřej" and said it never got it ("Christina", "Andre":
+// shortlist 0 on every boosted dictation). Product decision: a word the user saved and said wins
+// over a different real name of the same sound; the LLM gets the pointer and the sentence, and
+// the user who means another person can say so in the sentence or edit the result.
+func requireCorroboration(admitted []vocabCandidate) []vocabCandidate {
 	kept := make([]vocabCandidate, 0, len(admitted))
 	for i, c := range admitted {
-		if c.letters >= vocabWeakSpelling && !c.taught && !next(i, c, true) {
+		if c.letters >= vocabWeakSpelling && !c.taught && !misheardNeighbour(admitted, i) {
 			continue
 		}
 		kept = append(kept, c)
 	}
-	admitted = kept
-	kept = make([]vocabCandidate, 0, len(admitted))
-	for i, c := range admitted {
-		if c.heard != "" && !c.taught && c.end-c.start == 1 && !next(i, c, false) {
-			if sttBoosted && c.realWord && c.letters > 0 && isDictionaryWord(c.heard) {
-				continue
-			}
-			c.heard = ""
-		}
-		kept = append(kept, c)
-	}
 	return kept
+}
+
+// misheardNeighbour reports whether another admitted candidate with a pointer sits directly next
+// to admitted[i] in the transcript.
+func misheardNeighbour(admitted []vocabCandidate, i int) bool {
+	c := admitted[i]
+	for j, o := range admitted {
+		if j != i && (o.start == c.end || o.end == c.start) && o.heard != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// matchShortForm scores a custom word whose sound key is too short for the main matcher
+// (two consonants: Cara "kr", rig "rg"). Such a key one edit off describes half the language,
+// so the bar is far stricter: one transcript word, not an ordinary word of the language, with a
+// sound key of the same length, the same first letter, the same vowels, and at most one letter
+// apart with the vowels kept (shortKey). Kara → Cara (identical), Rick → rig ("rik"/"rig"), but
+// not "rug" or "Cora". Returns the normalized shortKey distance.
+func matchShortForm(form, folded string, ngrams []transcriptNgram) (float64, transcriptNgram, bool) {
+	key := shortKey(form)
+	keyRunes := []rune(key)
+	best, found := 1.0, false
+	var bestHit transcriptNgram
+	for _, ngram := range ngrams {
+		if !ngram.short || ngram.ordinary || len([]rune(ngram.folded)) != len([]rune(folded)) {
+			continue
+		}
+		heard := shortKey(ngram.text)
+		heardRunes := []rune(heard)
+		if len(heardRunes) == 0 || len(keyRunes) == 0 || heardRunes[0] != keyRunes[0] ||
+			vowels(heard) != vowels(key) {
+			continue
+		}
+		d := normalizedLevenshtein(key, heard)
+		longest := len(keyRunes)
+		if len(heardRunes) > longest {
+			longest = len(heardRunes)
+		}
+		if d*float64(longest) > 1.0001 || d > vocabBestDistanceCeiling {
+			continue
+		}
+		if d < best {
+			best, bestHit, found = d, ngram, true
+		}
+	}
+	return best, bestHit, found
+}
+
+// vowels returns the vowels of s in order.
+func vowels(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if isFoldableVowel(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// shortKey is foldPhonetic with the vowels kept: diacritics stripped, the same spelling
+// rewrites (ck → k, soft/hard c, ...), doubled letters merged.
+func shortKey(s string) string {
+	l := letterKey(s)
+	for _, rule := range phoneticRewrites {
+		l = strings.ReplaceAll(l, rule.from, rule.to)
+	}
+	l = softCBeforeFrontVowel(l)
+	var b strings.Builder
+	var prev rune
+	for _, r := range l {
+		if r != prev {
+			b.WriteRune(r)
+		}
+		prev = r
+	}
+	return b.String()
 }
 
 // allOrdinaryWords reports whether every token of a matched span is an ordinary word of the
@@ -334,6 +384,9 @@ type transcriptNgram struct {
 	ordinary   bool
 	start, end int
 	text       string
+	// short: a single token whose sound key is below vocabMinFolded, scored only by
+	// matchShortForm.
+	short bool
 }
 
 // foldedNgrams renders the transcript as folded 1..vocabMaxNgram token windows, so a single
@@ -352,6 +405,14 @@ func foldedNgrams(transcript string) []transcriptNgram {
 			text := strings.Join(tokens[i:i+n], " ")
 			folded := foldPhonetic(text)
 			if len([]rune(folded)) < vocabMinFolded {
+				if n == 1 && len([]rune(folded)) > 0 {
+					key := "short:" + strings.ToLower(text)
+					if _, dup := seen[key]; !dup {
+						seen[key] = struct{}{}
+						_, ordinary := commonEnglishWords[strings.ToLower(text)]
+						out = append(out, transcriptNgram{folded: folded, ordinary: ordinary, start: i, end: i + 1, text: text, short: true})
+					}
+				}
 				continue
 			}
 			if _, dup := seen[folded]; dup {

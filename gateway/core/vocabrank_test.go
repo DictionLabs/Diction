@@ -304,8 +304,8 @@ func TestFoldPhonetic_PinsTheCasesTheProductRelieson(t *testing.T) {
 
 // The shortlist knows which part of the transcript each word matched; handing that span to the
 // LLM is what turns "Andre McCullough" into "Ondrej Machala" (without it the model kept the
-// transcript 0/4 on gpt-oss-120b, with it 4/4 — 2026-09-24). Since 2026-10-18 a single word
-// gets the pointer only as part of a full name: "Quill" is still shortlisted, without one.
+// transcript 0/4 on gpt-oss-120b, with it 4/4 — 2026-09-24). A lone word keeps its pointer too
+// (2026-11-05; between 2026-10-18 and then only full names had one).
 func TestMatchVocabulary_ReportsWhatWasHeard(t *testing.T) {
 	forms := [][]string{entry("ondrej"), entry("machala"), entry("kuiil"), entry("fennec")}
 	got := MatchVocabulary(
@@ -315,7 +315,7 @@ func TestMatchVocabulary_ReportsWhatWasHeard(t *testing.T) {
 	for _, m := range got {
 		heard[forms[m.Index][0]] = m.Heard
 	}
-	want := map[string]string{"ondrej": "Andre", "machala": "McCullough", "kuiil": "", "fennec": ""}
+	want := map[string]string{"ondrej": "Andre", "machala": "McCullough", "kuiil": "Quill", "fennec": ""}
 	if !reflect.DeepEqual(heard, want) {
 		t.Errorf("heard = %v, want %v", heard, want)
 	}
@@ -331,21 +331,18 @@ func TestMatchVocabulary_OrdinaryPhraseNotShortlisted(t *testing.T) {
 	}
 }
 
-// 2026-10-18 user report and e2e run: a pointer at a lone word made the LLM swap the user's own
-// name in for whoever was actually named. The word stays on the list (the LLM can still fix an
-// obvious garble by itself); only the pointer goes.
-func TestMatchVocabulary_LoneWordGetsNoPointer(t *testing.T) {
+// A lone heard word keeps its pointer (2026-11-05, reversing 2026-10-18): stripping it meant a
+// user who saved Ondřej and said it got "Andre" back. The word the user saved wins; the LLM
+// reads the sentence.
+func TestMatchVocabulary_LoneWordKeepsPointer(t *testing.T) {
 	forms := [][]string{entry("Ondřej"), entry("Machala"), entry("Nemotron")}
-	for _, transcript := range []string{
-		"I had lunch with Andre yesterday and he loved the place.",
-		"Namotron runs on the second GPU now.",
+	for transcript, heard := range map[string]string{
+		"I had lunch with Andre yesterday and he loved the place.": "Andre",
+		"Namotron runs on the second GPU now.":                     "Namotron",
 	} {
 		got := MatchVocabulary(transcript, forms, DefaultVocabularyShortlist)
-		if len(got) != 1 {
-			t.Fatalf("%q: shortlist = %v, want one word", transcript, got)
-		}
-		if got[0].Heard != "" {
-			t.Errorf("%q: Heard = %q, want no pointer at a lone word", transcript, got[0].Heard)
+		if len(got) != 1 || got[0].Heard != heard {
+			t.Errorf("%q: shortlist = %+v, want one word pointing at %q", transcript, got, heard)
 		}
 	}
 }

@@ -717,8 +717,8 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 						intent, auto := resolveIntent(resp.Request.Context(), r, transcript, enhanceContextJSON, r.URL.Query().Get("intent"))
 						autoEdit = auto
 						llmStart := time.Now()
-						// The cleanup's My Words shortlist trusts a boosted STT's spelling of a
-						// lone real name (core.requireCorroboration).
+						// Whether the STT was sent the custom-word list. Carried for the cleanup;
+						// the My Words shortlist no longer treats it differently (2026-11-05).
 						ppCtx := WithSTTBoosted(resp.Request.Context(), customWordsFor(proxyBackend, customWordsJSON) != "")
 						resultText, resultMode, err := postProcess(
 							ppCtx, transcript, enhanceContextJSON, intent)
