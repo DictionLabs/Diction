@@ -145,7 +145,7 @@ func TestModelForLanguage_HealthFallback_TurboDown(t *testing.T) {
 
 // TestModelForLanguage_HealthFallback_TurboDown_PolishStillFallsBack proves
 // the capability check is a filter, not a blanket "never fall back": Polish
-// is EU-set (nonEUModelOverrides routes it to turbo normally), and canary-v2
+// is EU-set (the cloud STT model table routes it away from canary normally), and canary-v2
 // genuinely does serve it, so with turbo down the fallback to canary must
 // still fire.
 func TestModelForLanguage_HealthFallback_TurboDown_PolishStillFallsBack(t *testing.T) {
@@ -246,7 +246,7 @@ func TestModelForLanguage_Empty_UsesEnglishModel(t *testing.T) {
 }
 
 func TestModelForLanguage_OtherEU_UsesDefaultModel(t *testing.T) {
-	// "pl" deliberately excluded here — see nonEUModelOverrides / the Polish
+	// "pl" deliberately excluded here — see cloudSTTModels / the Polish
 	// routing fix (TestModelForLanguage_Polish_HealthyFallback), which routes it
 	// to large-v3-turbo instead of canary-v2 regardless of Cohere configuration.
 	g := testGatewayThreeTier()
@@ -470,18 +470,25 @@ func TestModelForLanguage_CohereUnhealthy_FallsToExistingTiers(t *testing.T) {
 	}
 }
 
-func TestModelForLanguage_Polish_HealthyFallback(t *testing.T) {
+// Polish moved off large-v3-turbo to Cohere on 2026-10-18 (16.5 → 10.9 % WER,
+// .claude/bow/server-stt-routing-2026-10.md). With Cohere down it falls back
+// through the EU tier: canary-v2 (16.6 %, tied with turbo), then turbo.
+func TestModelForLanguage_Polish_UsesCohere(t *testing.T) {
 	g := testGatewayWithCohere()
-	if got := g.ModelForLanguage("pl"); got != "large-v3-turbo" {
-		t.Errorf("pl: got %q, want large-v3-turbo", got)
+	if got := g.ModelForLanguage("pl"); got != "cohere-transcribe" {
+		t.Errorf("pl: got %q, want cohere-transcribe", got)
 	}
 }
 
-func TestModelForLanguage_Polish_FallbackDown_UsesDefault(t *testing.T) {
+func TestModelForLanguage_Polish_CohereDown_UsesEUTier(t *testing.T) {
 	g := testGatewayWithCohere()
-	g.health.set("large-v3-turbo", false)
+	g.health.set("cohere-transcribe", false)
 	if got := g.ModelForLanguage("pl"); got != "canary-v2" {
-		t.Errorf("pl (turbo down): got %q, want canary-v2", got)
+		t.Errorf("pl (cohere down): got %q, want canary-v2", got)
+	}
+	g.health.set("canary-v2", false)
+	if got := g.ModelForLanguage("pl"); got != "large-v3-turbo" {
+		t.Errorf("pl (cohere + canary down): got %q, want large-v3-turbo", got)
 	}
 }
 
@@ -492,12 +499,25 @@ func TestModelForLanguage_EUOnlyAndGreek_UnchangedOnCanary(t *testing.T) {
 	g := testGatewayWithCohere()
 	untouched := []string{
 		"bg", "hr", "cs", "da", "et", "fi", "hu", "lt", "lv",
-		"mt", "ro", "sk", "sl", "sv", "ru", "uk", "el",
+		"mt", "ro", "sk", "sl", "sv", "uk", "el",
 	}
 	for _, lang := range untouched {
 		if got := g.ModelForLanguage(lang); got != "canary-v2" {
 			t.Errorf("lang=%q: got %q, want canary-v2 (unaffected by Cohere rollout)", lang, got)
 		}
+	}
+}
+
+// Russian moved off canary-v2 to large-v3-turbo on 2026-10-18 (10.4 → 8.1 % WER);
+// with turbo down it falls back to canary-v2 through the EU tier.
+func TestModelForLanguage_Russian_UsesTurbo_CanaryWhenDown(t *testing.T) {
+	g := testGatewayWithCohere()
+	if got := g.ModelForLanguage("ru"); got != "large-v3-turbo" {
+		t.Errorf("ru: got %q, want large-v3-turbo", got)
+	}
+	g.health.set("large-v3-turbo", false)
+	if got := g.ModelForLanguage("ru"); got != "canary-v2" {
+		t.Errorf("ru (turbo down): got %q, want canary-v2", got)
 	}
 }
 
@@ -562,5 +582,151 @@ func TestModelForAutoDetect_DominantNonCohereEU_StillCanaryConfident(t *testing.
 	})
 	if result.Model != "canary-v2" || result.Tier != "canary_confident" {
 		t.Errorf("got model=%q tier=%q, want canary-v2/canary_confident", result.Model, result.Tier)
+	}
+}
+
+// --- Cloud STT model table (cloudSTTModels) ---
+
+// prodTableGateway mirrors production: the real DefaultBackends (so capability
+// checks see each backend's true language set), every slot configured, all
+// healthy, capability routing on.
+func prodTableGateway() *Gateway {
+	g := &Gateway{
+		backends:              DefaultBackends(),
+		defaultModel:          "canary-v2",
+		fallbackModel:         "large-v3-turbo",
+		englishModel:          "canary-v2",
+		parakeetModel:         "parakeet-v3",
+		cohereModel:           "cohere-transcribe",
+		health:                newHealthState(),
+		langCapabilityRouting: true,
+	}
+	for _, m := range []string{"canary-v2", "large-v3-turbo", "parakeet-v3", "cohere-transcribe"} {
+		g.health.set(m, true)
+	}
+	return g
+}
+
+// Every table row must point at a model that can actually serve the language —
+// a row that names a backend outside its language set would silently fall
+// through to the tiers forever (qualifies() rejects it).
+func TestCloudSTTModels_EveryRowIsCapable(t *testing.T) {
+	g := prodTableGateway()
+	for lang, slot := range cloudSTTModels {
+		m := g.slotModel(slot)
+		if m == "" {
+			t.Errorf("%s: slot %d has no production model", lang, slot)
+			continue
+		}
+		if !g.backendServes(m, lang) {
+			t.Errorf("%s: table routes to %s, which does not serve it", lang, m)
+		}
+	}
+}
+
+// With production config, every table language resolves to its table model.
+func TestCloudSTTModels_ProdConfig_PicksTableModel(t *testing.T) {
+	g := prodTableGateway()
+	for lang, slot := range cloudSTTModels {
+		want := g.slotModel(slot)
+		if got := g.ModelForLanguage(lang); got != want {
+			t.Errorf("ModelForLanguage(%q) = %q, want %q (table)", lang, got, want)
+		}
+		if got := g.ModelForLanguage(strings.ToUpper(lang)); got != want {
+			t.Errorf("ModelForLanguage(%q) = %q, want %q (case-insensitive)", strings.ToUpper(lang), got, want)
+		}
+	}
+}
+
+// legacyModelForLanguage is today's routing before the table (2026-10-17,
+// production config, everything healthy), frozen as the reference for
+// "languages outside the table route exactly as before".
+func legacyModelForLanguage(lang string) string {
+	switch lang {
+	case "", "en", "es", "de", "nl", "fr", "pt", "it":
+		return "cohere-transcribe"
+	case "pl":
+		return "large-v3-turbo"
+	}
+	if euLanguages[lang] {
+		return "canary-v2"
+	}
+	return "large-v3-turbo"
+}
+
+// Languages not in the table (and region-tagged codes, which never matched a
+// tier) keep exactly the model they had before the table existed.
+func TestCloudSTTModels_UnlistedLanguagesUnchanged(t *testing.T) {
+	g := prodTableGateway()
+	langs := []string{"cs", "sk", "bg", "hr", "da", "et", "fi", "hu", "lt", "lv", "mt",
+		"ro", "sl", "sv", "uk", "el", "no", "sr", "th", "id", "he", "fa", "pt-br", "zh-hans", "auto"}
+	for _, lang := range langs {
+		if _, inTable := cloudSTTModels[lang]; inTable {
+			t.Fatalf("%s is in the table; this test covers unlisted languages only", lang)
+		}
+		if got, want := g.ModelForLanguage(lang), legacyModelForLanguage(lang); got != want {
+			t.Errorf("ModelForLanguage(%q) = %q, want %q (unchanged)", lang, got, want)
+		}
+	}
+}
+
+// A table model that is down falls through to the tiers — the fallback chain
+// is today's EU / non-EU chain, and the retry path re-runs this same function
+// after the 5xx demotes the table model.
+func TestCloudSTTModels_TableModelDown_FallsThroughToTiers(t *testing.T) {
+	for lang, slot := range cloudSTTModels {
+		g := prodTableGateway()
+		down := g.slotModel(slot)
+		g.health.set(down, false)
+		got := g.ModelForLanguage(lang)
+		var want string
+		switch {
+		case lang == "en":
+			want = "canary-v2" // englishModel tier
+		case euLanguages[lang] && down != "canary-v2":
+			want = "canary-v2"
+		case euLanguages[lang]:
+			want = "large-v3-turbo"
+		case down != "large-v3-turbo":
+			want = "large-v3-turbo"
+		default:
+			want = "large-v3-turbo" // nothing else serves it: preferred model anyway
+		}
+		if got != want {
+			t.Errorf("%s with %s down: got %q, want %q", lang, down, got, want)
+		}
+	}
+}
+
+// Slots the gateway does not configure (community build: no COHERE_MODEL,
+// no PARAKEET_V3_MODEL) skip their table rows: those languages route through
+// the tiers as they did before Cohere/the table existed.
+func TestCloudSTTModels_UnconfiguredSlotsSkipRows(t *testing.T) {
+	g := prodTableGateway()
+	g.cohereModel = ""
+	g.parakeetModel = ""
+	for lang, slot := range cloudSTTModels {
+		if slot != slotCohere && slot != slotParakeet {
+			continue
+		}
+		want := "large-v3-turbo"
+		if euLanguages[lang] {
+			want = "canary-v2"
+		}
+		if got := g.ModelForLanguage(lang); got != want {
+			t.Errorf("%s with slot unset: got %q, want %q", lang, got, want)
+		}
+	}
+}
+
+// Auto-detect agrees with explicit routing on which languages Cohere serves.
+func TestModelForAutoDetect_CohereConfident_FollowsTable(t *testing.T) {
+	g := testAutoDetectGatewayWithCohere()
+	for lang, slot := range cloudSTTModels {
+		r := g.ModelForAutoDetect(AutoDetectContext{Profile: []langEntry{{Code: lang, Count: 9}}})
+		isCohere := r.Tier == "cohere_confident"
+		if isCohere != (slot == slotCohere) {
+			t.Errorf("%s: tier %q, table slot %d", lang, r.Tier, slot)
+		}
 	}
 }

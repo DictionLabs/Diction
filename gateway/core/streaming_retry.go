@@ -34,6 +34,7 @@ type streamRetryInput struct {
 	usePassthrough   bool
 	upstreamLanguage string
 	whisperPrompt    string
+	customWordsJSON  string
 }
 
 // isRetryableBackendFailure reports whether a proxyToBackend error means the backend
@@ -96,7 +97,7 @@ func (g *Gateway) handleStreamBackendFailure(
 
 	log.Printf("ws retry: backend %s failed (%s) — retrying on %s", backend.Name, hint, plan.backend.Name)
 	start := time.Now()
-	text, rerr := g.proxyToBackend(ctx, plan.target, plan.payload, plan.backend, in.upstreamLanguage, in.whisperPrompt)
+	text, rerr := g.proxyToBackend(ctx, plan.target, plan.payload, plan.backend, in.upstreamLanguage, in.whisperPrompt, in.customWordsJSON)
 	retryMs = time.Since(start).Milliseconds()
 	if rerr == nil && hasDegenerateRepetition(text) {
 		rerr = errSTTHallucination

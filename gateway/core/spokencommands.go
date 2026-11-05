@@ -10,17 +10,18 @@ import (
 // FORMATTING COMMANDS block in prompts.CleanupSystemPrompt). Two things it cannot do, which
 // live here instead:
 //
-//   - A break at the END of a dictation. Tokenizers normalise edge whitespace and the gateway
-//     TrimSpaces the model's answer anyway, so "see you tomorrow new paragraph" always came
-//     back as "See you tomorrow." ApplySpokenTrailingBreak restores it from the transcript.
+//   - A break at the END or START of a dictation. Tokenizers normalise edge whitespace and the
+//     gateway TrimSpaces the model's answer anyway, so "see you tomorrow new paragraph" always
+//     came back as "See you tomorrow." ApplySpokenTrailingBreak and ApplySpokenLeadingBreak
+//     restore them from the transcript.
 //   - The deletion guard. Every command removes words, so a correct cleanup of a
 //     command-dense dictation fell under EnhancedAcceptable's keep ratio.
 //     SpokenCommandWordCount lets the guard discount them.
 //
-// The phrase table is language-bounded on purpose: an unknown-language trailing command just
+// The phrase table is language-bounded on purpose: an unknown-language edge command just
 // loses its break, as before. "next paragraph" / "next line" are deliberately absent — they
 // end ordinary sentences ("see the next paragraph"). See
-// .claude/plans/spoken-formatting-commands-plan.md.
+// .claude/plans/spoken-formatting-commands-plan.md and .claude/plans/new-paragraph-edges-plan.md.
 
 // spokenBreakPhrases maps a lowercase command phrase to the break it stands for.
 var spokenBreakPhrases = map[string]string{
@@ -82,6 +83,20 @@ func trailingPhrase(words []string, table func(string) bool) string {
 	return ""
 }
 
+// leadingPhrase returns the command phrase the words start with, longest first, or "".
+func leadingPhrase(words []string, table func(string) bool) string {
+	for n := maxSpokenPhraseWords; n >= 1; n-- {
+		if len(words) < n {
+			continue
+		}
+		p := strings.Join(words[:n], " ")
+		if table(p) {
+			return p
+		}
+	}
+	return ""
+}
+
 func isBreakPhrase(p string) bool { _, ok := spokenBreakPhrases[p]; return ok }
 
 // SpokenTrailingBreak returns the break a transcript's final command stands for, or "" when
@@ -114,6 +129,45 @@ func ApplySpokenTrailingBreak(transcript, cleaned, after string) string {
 	have := len(after) - len(strings.TrimLeft(after, "\n"))
 	if need := len(brk) - have; need > 0 {
 		return cleaned + strings.Repeat("\n", need)
+	}
+	return cleaned
+}
+
+// SpokenLeadingBreak returns the break a transcript's opening command stands for, or "" when
+// the transcript does not start with one or the cleaned text still starts with the phrase (the
+// model judged it to be content: "New line of credit approved").
+func SpokenLeadingBreak(transcript, cleaned string) string {
+	p := leadingPhrase(spokenWords(transcript), isBreakPhrase)
+	if p == "" {
+		return ""
+	}
+	if leadingPhrase(spokenWords(cleaned), isBreakPhrase) == p {
+		return ""
+	}
+	return spokenBreakPhrases[p]
+}
+
+// ApplySpokenLeadingBreak normalises line breaks in cleaned to "\n" and prepends the break an
+// opening spoken command asked for, minus the newlines the text before the cursor already ends
+// with (trailing spaces/tabs skipped), so a join never exceeds one blank line. An empty before
+// gets the whole break: the gateway cannot tell the start of a field from a client that sent
+// no context, and the client drops it at the start of a field. Identity otherwise.
+func ApplySpokenLeadingBreak(transcript, cleaned, before string) string {
+	cleaned = strings.ReplaceAll(cleaned, "\r\n", "\n")
+	cleaned = strings.ReplaceAll(cleaned, "\r", "\n")
+	if strings.TrimSpace(cleaned) == "" {
+		return cleaned
+	}
+	brk := SpokenLeadingBreak(transcript, cleaned)
+	if brk == "" {
+		return cleaned
+	}
+	cleaned = strings.TrimLeft(cleaned, "\n")
+	before = strings.ReplaceAll(before, "\r\n", "\n")
+	before = strings.TrimRight(before, " \t")
+	have := len(before) - len(strings.TrimRight(before, "\n"))
+	if need := len(brk) - have; need > 0 {
+		return strings.Repeat("\n", need) + cleaned
 	}
 	return cleaned
 }

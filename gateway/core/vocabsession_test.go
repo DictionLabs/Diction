@@ -37,9 +37,9 @@ func TestSanitizeSessionContext(t *testing.T) {
 		},
 		{
 			name:       "every occurrence, any case, punctuation kept",
-			transcript: "andre said hi",
+			transcript: "andre mccullough said hi",
 			session:    []string{"ANDRE, andre and Andre's friend."},
-			forms:      [][]string{{"Ondrej"}},
+			forms:      [][]string{{"Ondrej"}, {"Machala"}},
 			want:       []string{"Ondrej, Ondrej and Andre's friend."},
 		},
 		{
@@ -67,7 +67,7 @@ func TestSanitizeSessionContext(t *testing.T) {
 			name:       "a span claimed by two custom words drops the line",
 			transcript: "I spoke with Cristina.",
 			session:    []string{"Cristina called.", "The weather is nice."},
-			forms:      [][]string{{"Kristýna"}, {"Christina"}},
+			forms:      [][]string{{"Kristýna", "Cristina"}, {"Christina", "Cristina"}},
 			want:       []string{"The weather is nice."},
 		},
 		{

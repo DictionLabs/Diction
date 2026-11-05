@@ -121,8 +121,31 @@ func TestRankVocabulary(t *testing.T) {
 		{
 			name:       "english mishearing of a czech surname",
 			transcript: "my name is Andre McCullough",
+			forms:      [][]string{entry("Ondrej"), entry("Machala")},
+			want:       []string{"Ondrej", "Machala"},
+		},
+		{
+			// McCullough and Machala share only their consonants (spelling 0.6 apart). Alone it is
+			// no better evidence than "Thursday" for tirzepatide; beside the misheard first name
+			// (above) it is a garbled full name.
+			name:       "a surname that shares only consonants is not enough on its own",
+			transcript: "my name is Andre McCullough",
 			forms:      [][]string{entry("Machala")},
-			want:       []string{"Machala"},
+			want:       nil,
+		},
+		{
+			// 2026-10-18 e2e run: each of these went into the cleanup prompt with a pointer and
+			// the LLM wrote the custom word in.
+			name:       "consonant-skeleton coincidences are not shortlisted",
+			transcript: "Hi Siobhan, can we move the call to Thursday afternoon so I can reach the keyboard is",
+			forms:      [][]string{entry("tirzepatide"), entry("Joaquín"), entry("Kubernetes")},
+			want:       nil,
+		},
+		{
+			name:       "czech ordinary word against a consonant skeleton",
+			transcript: "Notebook jsem připojil přes Tariel zcela.",
+			forms:      [][]string{entry("Apiaries")},
+			want:       nil,
 		},
 		{
 			name:       "a short-fold name is reachable from its mishearing",
@@ -281,7 +304,8 @@ func TestFoldPhonetic_PinsTheCasesTheProductRelieson(t *testing.T) {
 
 // The shortlist knows which part of the transcript each word matched; handing that span to the
 // LLM is what turns "Andre McCullough" into "Ondrej Machala" (without it the model kept the
-// transcript 0/4 on gpt-oss-120b, with it 4/4 — 2026-09-24).
+// transcript 0/4 on gpt-oss-120b, with it 4/4 — 2026-09-24). Since 2026-10-18 a single word
+// gets the pointer only as part of a full name: "Quill" is still shortlisted, without one.
 func TestMatchVocabulary_ReportsWhatWasHeard(t *testing.T) {
 	forms := [][]string{entry("ondrej"), entry("machala"), entry("kuiil"), entry("fennec")}
 	got := MatchVocabulary(
@@ -291,23 +315,71 @@ func TestMatchVocabulary_ReportsWhatWasHeard(t *testing.T) {
 	for _, m := range got {
 		heard[forms[m.Index][0]] = m.Heard
 	}
-	want := map[string]string{"ondrej": "Andre", "machala": "McCullough", "kuiil": "Quill", "fennec": ""}
+	want := map[string]string{"ondrej": "Andre", "machala": "McCullough", "kuiil": "", "fennec": ""}
 	if !reflect.DeepEqual(heard, want) {
 		t.Errorf("heard = %v, want %v", heard, want)
 	}
 }
 
-// A span of ordinary words is still shortlisted but gets no pointer. With the pointer,
-// gpt-oss-120b turned "I left the keys on the door." into "I left the keys Ondrej." (2026-09-26);
-// without it the LLM keeps the sentence and still restores misheard names.
-func TestMatchVocabulary_NoPointerAtOrdinaryWords(t *testing.T) {
+// "on the door" shares only consonants with Ondrej (spelling 0.67 apart), so it no longer
+// reaches the prompt at all. With a pointer, gpt-oss-120b turned "I left the keys on the door."
+// into "I left the keys Ondrej." (2026-09-26).
+func TestMatchVocabulary_OrdinaryPhraseNotShortlisted(t *testing.T) {
 	forms := [][]string{entry("ondrej"), entry("machala")}
-	got := MatchVocabulary("I left the keys on the door.", forms, DefaultVocabularyShortlist)
-	if len(got) != 1 || forms[got[0].Index][0] != "ondrej" {
-		t.Fatalf("shortlist = %v, want only ondrej", got)
+	if got := MatchVocabulary("I left the keys on the door.", forms, DefaultVocabularyShortlist); len(got) != 0 {
+		t.Fatalf("shortlist = %v, want none", got)
 	}
-	if got[0].Heard != "" {
-		t.Errorf("Heard = %q, want no pointer at an ordinary-word span", got[0].Heard)
+}
+
+// 2026-10-18 user report and e2e run: a pointer at a lone word made the LLM swap the user's own
+// name in for whoever was actually named. The word stays on the list (the LLM can still fix an
+// obvious garble by itself); only the pointer goes.
+func TestMatchVocabulary_LoneWordGetsNoPointer(t *testing.T) {
+	forms := [][]string{entry("Ondřej"), entry("Machala"), entry("Nemotron")}
+	for _, transcript := range []string{
+		"I had lunch with Andre yesterday and he loved the place.",
+		"Namotron runs on the second GPU now.",
+	} {
+		got := MatchVocabulary(transcript, forms, DefaultVocabularyShortlist)
+		if len(got) != 1 {
+			t.Fatalf("%q: shortlist = %v, want one word", transcript, got)
+		}
+		if got[0].Heard != "" {
+			t.Errorf("%q: Heard = %q, want no pointer at a lone word", transcript, got[0].Heard)
+		}
+	}
+}
+
+// A full name keeps its pointers: the neighbour is the corroboration, even when it was heard right.
+func TestMatchVocabulary_FullNameKeepsPointer(t *testing.T) {
+	forms := [][]string{entry("Ondřej"), entry("Machala")}
+	got := MatchVocabulary("Please send the invoice to Andrej Machala before Friday.", forms, DefaultVocabularyShortlist)
+	heard := map[string]string{}
+	for _, m := range got {
+		heard[forms[m.Index][0]] = m.Heard
+	}
+	want := map[string]string{"Ondřej": "Andrej", "Machala": ""}
+	if !reflect.DeepEqual(heard, want) {
+		t.Errorf("heard = %v, want %v", heard, want)
+	}
+}
+
+// A mishearing the user saved as a variant is their own evidence: pointer kept, even alone, and
+// even when the spellings share little.
+func TestMatchVocabulary_TaughtVariantKeepsPointer(t *testing.T) {
+	forms := [][]string{entry("Kristýna", "Christina")}
+	got := MatchVocabulary("I spoke with Christina today.", forms, DefaultVocabularyShortlist)
+	if len(got) != 1 || got[0].Heard != "Christina" {
+		t.Fatalf("shortlist = %+v, want Kristýna pointing at Christina", got)
+	}
+}
+
+// A multi-word span is where the sentence is visibly broken; it keeps its pointer.
+func TestMatchVocabulary_MultiWordSpanKeepsPointer(t *testing.T) {
+	forms := [][]string{entry("Hetzner")}
+	got := MatchVocabulary("we moved the server to Head Sner last week", forms, DefaultVocabularyShortlist)
+	if len(got) != 1 || got[0].Heard != "Head Sner" {
+		t.Fatalf("shortlist = %+v, want Hetzner pointing at \"Head Sner\"", got)
 	}
 }
 

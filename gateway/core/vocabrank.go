@@ -51,6 +51,9 @@ const (
 	// language: "Kuiil" ("kvl") matched "we will" ("vvl") and the LLM wrote "Kuiil put home
 	// TLD". A form this short must fold to exactly what was heard, as "Quill" does.
 	vocabMinFuzzyFolded = 4
+	// Spelling distance, vowels kept (letterKey), at which a sound-key hit is only a shared
+	// consonant skeleton. See requireCorroboration.
+	vocabWeakSpelling = 0.5
 	// Ceiling on entries considered, so an unbounded client list cannot turn one request into
 	// a quadratic scan.
 	vocabMaxEntries = 2000
@@ -90,9 +93,38 @@ type VocabularyMatch struct {
 	Heard string
 }
 
+// vocabCandidate is one custom word's best hit in the transcript, before admission.
+type vocabCandidate struct {
+	index    int
+	distance float64
+	// The transcript tokens [start, end) the winning hit covered, for per-span slack.
+	start, end int
+	heard      string
+	// taught: heard is one of the entry's stored variants, spelled as the user saved it.
+	taught bool
+	// letters is the normalized edit distance between the spellings with every letter kept
+	// (letterKey), where distance compares sound keys with the vowels dropped.
+	letters float64
+	// realWord: the entry's canonical spelling is itself a dictionary word or name
+	// (isDictionaryWord), like Kristýna or Ondřej but not Machala or Vantagio.
+	realWord bool
+}
+
 // MatchVocabulary is RankVocabulary plus, for each admitted entry, the transcript words it
 // matched. Same admission, same order.
 func MatchVocabulary(transcript string, forms [][]string, limit int) []VocabularyMatch {
+	return MatchVocabularyWith(transcript, forms, limit, VocabularyOptions{})
+}
+
+// VocabularyOptions says what the gateway knows about where the transcript came from.
+type VocabularyOptions struct {
+	// STTBoosted: the STT backend that wrote the transcript was sent the custom-word list
+	// (Backend.AcceptsCustomWords: Cohere, Canary, Parakeet). See requireCorroboration.
+	STTBoosted bool
+}
+
+// MatchVocabularyWith is MatchVocabulary for a transcript whose origin is known.
+func MatchVocabularyWith(transcript string, forms [][]string, limit int, opts VocabularyOptions) []VocabularyMatch {
 	if limit <= 0 || len(forms) == 0 {
 		return nil
 	}
@@ -101,14 +133,7 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 		return nil
 	}
 
-	type scored struct {
-		index    int
-		distance float64
-		// The transcript tokens [start, end) the winning hit covered, for per-span slack.
-		start, end int
-		heard      string
-	}
-	var candidates []scored
+	var candidates []vocabCandidate
 
 	entries := forms
 	if len(entries) > vocabMaxEntries {
@@ -166,8 +191,17 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 		if strings.EqualFold(heard, strings.TrimSpace(entry[0])) || allOrdinaryWords(heard) {
 			heard = ""
 		}
-		candidates = append(candidates, scored{
+		letters := 1.0
+		for _, form := range entry {
+			if d := normalizedLevenshtein(letterKey(form), letterKey(hit.text)); d < letters {
+				letters = d
+			}
+		}
+		candidates = append(candidates, vocabCandidate{
 			index: i, distance: distance, start: hit.start, end: hit.end, heard: heard,
+			taught:   heard != "" && isStoredVariant(heard, entry[1:]),
+			letters:  letters,
+			realWord: isDictionaryWord(strings.TrimSpace(entry[0])),
 		})
 	}
 
@@ -178,7 +212,7 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 	// Each candidate is judged against the best candidate competing for an overlapping stretch
 	// of the transcript, never against the utterance as a whole: several names in one sentence
 	// are several mentions, not rivals.
-	admitted := make([]scored, 0, len(candidates))
+	admitted := make([]vocabCandidate, 0, len(candidates))
 	for _, c := range candidates {
 		localBest := c.distance
 		for _, o := range candidates {
@@ -190,6 +224,8 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 			admitted = append(admitted, c)
 		}
 	}
+
+	admitted = requireCorroboration(admitted, opts.STTBoosted)
 
 	// Weakest first: a stable sort keeps input order among equal distances, so the same list
 	// and transcript always render the same prompt.
@@ -206,6 +242,69 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 		out = append(out, VocabularyMatch{Index: c.index, Heard: c.heard})
 	}
 	return out
+}
+
+// requireCorroboration applies the rules the 2026-10-18 Writing Tools e2e runs
+// (.claude/bow/writing-tools-mywords-cooperation-2026-10.md) showed the shortlist needs, because
+// the LLM treats a (sounds like "X" here) pointer as an instruction and swaps X whatever the
+// sentence says ("so Joaquín can reach the server", "Hi Siobhan, can we move it to tirzepatide
+// afternoon?", "I had lunch with Ondřej yesterday" for a friend called Andre):
+//
+//  1. Spellings that share only a consonant skeleton are not a match. The sound key drops every
+//     non-leading vowel, so "Thursday"/tirzepatide, "I can"/Joaquín, "keyboard is"/Kubernetes and
+//     Czech "přes"/Apiaries all scored under the ceiling. With the vowels kept they are ≥ 0.5
+//     apart, while every real mishearing measured was ≤ 0.45 (Sapansky/Szczepański, Matapolo/
+//     metoprolol). Such a weak hit stays only next to another misheard span: a garbled full name
+//     ("Andre McCullough") is two adjacent manglings, which a coincidence almost never is.
+//  2. A single transcript word gets no pointer unless the user taught it as a variant or another
+//     shortlisted word sits next to it (a full name: "Andrej Machala"). A lone word the STT
+//     wrote is usually what was said — another person's name, an ordinary word — and the STT,
+//     which hears the audio, already had the list. Without the pointer the LLM still sees the
+//     custom word and still fixes an obvious garble ("Namotron", "Mahala") on its own.
+//  3. Two real names, one heard: when the STT was boosted with the list, the saved word is
+//     itself a real word or name (isDictionaryWord: Kristýna, Ondřej) and the lone transcript
+//     word is a different real one ("Kristina", Czech "Andrej" and "Ondra", "Andre"), the entry
+//     is dropped altogether, not just its pointer. Without the pointer the LLM still swapped
+//     these on its own ("Kristina" → Kristýna 14/14): the entry in the prompt is enough. The
+//     STT had the saved spelling and chose another real name, which is evidence that name was
+//     said. A spelling that differs only in diacritics or case ("Joaquin") keeps the entry, as
+//     does a saved word that is not a dictionary word (Machala, Vantagio): a real word near it
+//     is as often the STT's mishearing ("Vantage" for Vantagio) as another word, and dropping
+//     those cost 4 points of Canary spelling for little gain. Cost of the rule: a saved name
+//     said but written as its sibling ("Наталья" for Наталия); saving that spelling as a variant
+//     brings the entry back (taught spans are exempt). Unboosted backends (Whisper, Live,
+//     self-hosted) keep the entry: their STT never saw the list.
+//
+// Multi-word spans keep their pointer ("Head Sner" → Hetzner, "apik saban" → apixaban): the
+// sentence is visibly broken there, which is what the pointer is for.
+func requireCorroboration(admitted []vocabCandidate, sttBoosted bool) []vocabCandidate {
+	next := func(i int, c vocabCandidate, misheardOnly bool) bool {
+		for j, o := range admitted {
+			if j != i && (o.start == c.end || o.end == c.start) && (!misheardOnly || o.heard != "") {
+				return true
+			}
+		}
+		return false
+	}
+	kept := make([]vocabCandidate, 0, len(admitted))
+	for i, c := range admitted {
+		if c.letters >= vocabWeakSpelling && !c.taught && !next(i, c, true) {
+			continue
+		}
+		kept = append(kept, c)
+	}
+	admitted = kept
+	kept = make([]vocabCandidate, 0, len(admitted))
+	for i, c := range admitted {
+		if c.heard != "" && !c.taught && c.end-c.start == 1 && !next(i, c, false) {
+			if sttBoosted && c.realWord && c.letters > 0 && isDictionaryWord(c.heard) {
+				continue
+			}
+			c.heard = ""
+		}
+		kept = append(kept, c)
+	}
+	return kept
 }
 
 // allOrdinaryWords reports whether every token of a matched span is an ordinary word of the
@@ -520,4 +619,28 @@ func CustomWordLine(word string, variants []string, heard string) string {
 		return word
 	}
 	return word + " (" + strings.Join(notes, "; ") + ")"
+}
+
+// letterKey is a spelling with case, diacritics, spaces and punctuation removed but every
+// letter, vowels included, kept.
+func letterKey(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if f, ok := diacriticFolding[r]; ok {
+			r = f
+		}
+		if unicode.IsLetter(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func isStoredVariant(heard string, variants []string) bool {
+	for _, v := range variants {
+		if strings.EqualFold(strings.TrimSpace(v), heard) {
+			return true
+		}
+	}
+	return false
 }
