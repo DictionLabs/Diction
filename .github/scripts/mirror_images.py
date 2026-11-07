@@ -86,7 +86,9 @@ def main():
                 actions.append(f"{target.split('/')[0]}: copied")
             else:
                 actions.append(f"{target.split('/')[0]}: **FAILED**")
-                failures.append(f"{dest}: {(r.stderr or r.stdout).strip()[:300]}")
+                # Keep the tail: regctl prints harmless "Failed to mount blob" warnings first,
+                # and the real error comes last.
+                failures.append(f"{dest}: {(r.stderr or r.stdout).strip()[-600:]}")
 
         summary(f"| `{key}` | {state} | {', '.join(actions)} |")
 
