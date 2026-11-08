@@ -172,7 +172,7 @@ volumes:
 > Images are published under [Diction Labs](https://github.com/DictionLabs) on Docker Hub
 > (`dictionlabs/gateway`, canonical) and GHCR (`ghcr.io/dictionlabs/gateway`).
 
-Model weights are baked into the `parakeet` image, so there's nothing to download on first start. `DEFAULT_MODEL: parakeet-v3` covers 25 European languages - for the other 74, see [Whisper on CPU](#whisper-on-cpu-99-languages) or, with an NVIDIA GPU, [large-v3-turbo](#nvidia-gpu-whisper-large-v3-turbo).
+Model weights are baked into the `parakeet` image, so there's nothing to download on first start. Unmodified copies of those weights are kept at [huggingface.co/DictionLabs](https://huggingface.co/DictionLabs) ([Parakeet v3 ONNX](https://huggingface.co/DictionLabs/parakeet-tdt-0.6b-v3-onnx), [diarization](https://huggingface.co/DictionLabs/Nemotron-3-Diarization-ONNX), [Silero VAD](https://huggingface.co/DictionLabs/silero-vad-onnx)). `DEFAULT_MODEL: parakeet-v3` covers 25 European languages - for the other 74, see [Whisper on CPU](#whisper-on-cpu-99-languages) or, with an NVIDIA GPU, [large-v3-turbo](#nvidia-gpu-whisper-large-v3-turbo).
 
 > **On a VPS or any host reachable from the internet**, this stack is open: anyone who finds
 > port 8080 can transcribe on your server, and if you add [AI cleanup](#ai-cleanup-and-voice-editing-byo-llm)

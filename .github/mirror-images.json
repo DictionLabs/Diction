@@ -35,7 +35,28 @@
       "upstream": "ghcr.io/achetronic/parakeet:latest-int8",
       "upstream_digest": "sha256:e07aeb167911de05f39ae3d4fabccbb05b55b53321110b5cc41e412cc641dd96",
       "licence": "Apache-2.0",
-      "note": "Promoted 2026-11-07 (#27): upstream v0.10.0 + self-host model export (3a0edc69). Same baked-in istupakov/parakeet-tdt-0.6b-v3-onnx weights plus a bundled, opt-in diarization model; models now under /models/asr/int8 (only matters if you mount your own); API and {text} response unchanged. Tested vs previous pin on 186 clips (en/cs/de/fr/es/pl): WER 21.0% -> 12.0%, same latency. Single-maintainer project. Apache-2.0 requires preserving NOTICE and stating changes; we copy the manifest unmodified, so nothing is changed and attribution lives in the repo description."
+      "note": "Promoted 2026-11-07 (#27): upstream v0.10.0 + self-host model export (3a0edc69). Same baked-in istupakov/parakeet-tdt-0.6b-v3-onnx weights plus a bundled, opt-in diarization model; models flat under /models with diarization in /models/diarization (checked in the image 2026-11-08; only matters if you mount your own); API and {text} response unchanged. Tested vs previous pin on 186 clips (en/cs/de/fr/es/pl): WER 21.0% -> 12.0%, same latency. Single-maintainer project. Apache-2.0 requires preserving NOTICE and stating changes; we copy the manifest unmodified, so nothing is changed and attribution lives in the repo description.",
+      "models": [
+        {
+          "path": "/models/{config.json,vocab.txt,nemo128.onnx,encoder-model.int8.onnx,decoder_joint-model.int8.onnx}",
+          "mirror": "https://huggingface.co/DictionLabs/parakeet-tdt-0.6b-v3-onnx",
+          "source": "istupakov/parakeet-tdt-0.6b-v3-onnx@8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce",
+          "licence": "CC-BY-4.0 (NVIDIA Parakeet TDT 0.6B v3; ONNX conversion by istupakov)"
+        },
+        {
+          "path": "/models/diarization/{config.json,preprocessor_config.json,processor_config.json,model_quantized.onnx,model_quantized.onnx_data}",
+          "mirror": "https://huggingface.co/DictionLabs/Nemotron-3-Diarization-ONNX",
+          "source": "onnx-community/Nemotron-3-Diarization-ONNX@353b6f8ad2cac3580e982d7fbdf0a010786b0406",
+          "licence": "OpenMDW-1.1 (NVIDIA Nemotron 3 Diarization)"
+        },
+        {
+          "path": "/models/silero_vad.onnx",
+          "mirror": "https://huggingface.co/DictionLabs/silero-vad-onnx",
+          "source": "github.com/snakers4/silero-vad@v6.2.1 (7e30209a3e901f9842f81b225f3e93d8199902b1)",
+          "licence": "MIT"
+        }
+      ],
+      "models_note": "Every model file in this image has an unmodified copy on DictionLabs Hugging Face, mirrored from the source revision above; sha256 of each mirrored file equals the file in the image at this upstream_digest (verified 2026-11-08). The image itself still carries its own baked-in copy and does not download anything; upstream offers no setting to change the model source, so this is a fallback, not a dependency. Re-mirror and re-verify whenever upstream_digest changes."
     }
   ],
   "targets": [
