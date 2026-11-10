@@ -189,6 +189,11 @@ func buildMux() (http.Handler, string, error) {
 		pairing:        keyStore != nil,
 		keyRotation:    keyStore != nil && !keyStore.Pinned(),
 		postDeliveryMs: liveEnhanceTimeoutMs,
+		// No preview source in the community build: preview=cloud is ignored, so
+		// say so. A build that produces interims sets these (core.PreviewRelay is
+		// not referenced here: this core copy predates preview.go).
+		preview:     false,
+		previewOpus: false,
 	}
 	// Per-request upgrade: a caller holding a valid pairing key does get the
 	// text routes (withGatewayKey lets it past the guard), so tell it so.

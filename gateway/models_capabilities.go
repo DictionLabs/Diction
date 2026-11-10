@@ -23,6 +23,11 @@ type capabilityFlags struct {
 	// postDeliveryMs is DICTION_LIVE_ENHANCE_TIMEOUT_MS: how long the Writing Tools pass
 	// may take after the raw transcript was sent. Advertised so the app waits as long.
 	postDeliveryMs int
+	// preview / previewOpus: the gateway answers preview=cloud on /v1/audio/stream with
+	// interim frames on PCM / Opus sessions. The community build has no preview source,
+	// so main.go leaves both false; a build that adds one sets them.
+	preview     bool
+	previewOpus bool
 }
 
 func withCapabilities(base http.HandlerFunc, flagsFor func(*http.Request) capabilityFlags) http.HandlerFunc {
@@ -73,6 +78,10 @@ func withCapabilities(base http.HandlerFunc, flagsFor func(*http.Request) capabi
 			// the key is pinned via DICTION_GATEWAY_KEY.
 			"pairing":      flags.pairing,
 			"key_rotation": flags.keyRotation,
+			// Interim text while recording (preview=cloud). preview_opus alone is
+			// read as not capable by clients: it only means anything with preview.
+			"preview":      flags.preview,
+			"preview_opus": flags.previewOpus,
 		})
 		baseResp["capabilities"] = caps
 		// Numbers do not fit the bool-only capabilities map, so the Writing Tools budget
