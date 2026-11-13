@@ -1,6 +1,6 @@
 # The builder runs on the CI host's own arch and cross-compiles: Go needs no emulation,
 # so an arm64 image costs seconds instead of a QEMU-emulated build.
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
 ARG TARGETOS TARGETARCH
 
 WORKDIR /build

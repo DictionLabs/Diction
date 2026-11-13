@@ -190,8 +190,8 @@ func buildMux() (http.Handler, string, error) {
 		keyRotation:    keyStore != nil && !keyStore.Pinned(),
 		postDeliveryMs: liveEnhanceTimeoutMs,
 		// No preview source in the community build: preview=cloud is ignored, so
-		// say so. A build that produces interims sets these (core.PreviewRelay is
-		// not referenced here: this core copy predates preview.go).
+		// say so. A build that produces interims (e.g. by setting core.PreviewRelay)
+		// sets these.
 		preview:     false,
 		previewOpus: false,
 	}

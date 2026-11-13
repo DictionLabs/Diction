@@ -202,6 +202,9 @@ func oggDurationMs(data []byte) int64 {
 type streamAction struct {
 	Action   string `json:"action"`
 	Language string `json:"language,omitempty"`
+	// Model and Text belong to the device_transcript action (merge=1, streaming_merge.go).
+	Model string `json:"model,omitempty"`
+	Text  string `json:"text,omitempty"`
 }
 
 type streamResult struct {
@@ -598,6 +601,17 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			idleTimeout = defaultStreamIdleTimeout
 		}
 
+		// Cloud preview (preview.go): PCM sessions only, opened on the first PCM frame.
+		// The deferred stop covers every early return; the explicit stop after the loop
+		// is what orders the last interim before the at-stop frames.
+		wantPreview := r.URL.Query().Get("preview") == "cloud" && PreviewRelay != nil
+		if wantPreview && isOpus {
+			reportPreviewRelay(ctx, "failed")
+			wantPreview = false
+		}
+		var preview *previewPump
+		defer func() { preview.stop() }()
+
 		for {
 			// Idle watchdog: if no frame arrives within idleTimeout, call
 			// conn.Close from a goroutine so a close frame is written before
@@ -797,6 +811,11 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 					}
 				} else {
 					pcmBuf.Write(data)
+					if wantPreview && preview == nil && len(data) > 0 {
+						preview = startPreviewPump(ctx, conn, language)
+						wantPreview = false
+					}
+					preview.send(data)
 				}
 				contextRead = true // context frame must come before any audio
 				continue
@@ -830,6 +849,20 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 					continue
 				}
 			}
+		}
+
+		// Recording is over: end the preview and join its writer before anything
+		// else is written, so no interim can follow the intent/result frames.
+		preview.stop()
+
+		// Merge (C3): keep reading after `done` for the phone transcripts while STT runs.
+		// Only when the merge can actually happen — an explicit edit, split_enhance, Clean up
+		// off or no hook (community) leave merge=1 ignored and the session exactly as today.
+		var phoneTranscripts *deviceTranscripts
+		if r.URL.Query().Get("merge") == "1" && MergeProcess != nil && postProcess != nil &&
+			r.URL.Query().Get("enhance") == "true" && r.URL.Query().Get("split_enhance") != "true" &&
+			!isEditIntentParam(r.URL.Query().Get("intent")) {
+			phoneTranscripts = startDeviceTranscriptReader(ctx, conn, expectedPhoneTranscripts(r.URL.Query().Get("phones")))
 		}
 
 		// ffmpegCleanup is deferred; it runs here on normal exit and on every
@@ -959,8 +992,9 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		}
 
 		whisperPrompt := buildWhisperPrompt(contextJSON)
+		customWordsJSON := buildCustomWordsField(contextJSON)
 		sttStart := time.Now()
-		text, err := g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt)
+		text, err := g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt, customWordsJSON)
 		sttMs := time.Since(sttStart).Milliseconds()
 		if err == nil && hasDegenerateRepetition(text) {
 			err = errSTTHallucination
@@ -971,7 +1005,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 				model: model, language: language, detectActive: detectActive,
 				adResult: adResult, adCtx: adCtx, payload: payload,
 				usePassthrough: usePassthrough, upstreamLanguage: upstreamLanguage,
-				whisperPrompt: whisperPrompt,
+				whisperPrompt: whisperPrompt, customWordsJSON: customWordsJSON,
 			}
 			// stt_ms includes the retry, same as the HTTP path's `whisperMs`.
 			var retryMs int64
@@ -982,6 +1016,11 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			}
 			sttMs += retryMs
 		}
+		sttDoneAt := time.Now()
+		// Whether the backend that finally served (after any retry) was sent the list: the
+		// cleanup's My Words shortlist trusts a boosted STT's spelling of a lone real name
+		// (requireCorroboration).
+		ctx = WithSTTBoosted(ctx, customWordsFor(backend, customWordsJSON) != "")
 
 		// Report the successful transcription on the same hook the HTTP path uses,
 		// so this path gets stt_ms. Side effect: audio_duration_ms was 0 on every
@@ -1030,9 +1069,20 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 
 		// Apply post-processing if provided (e.g. ?enhance=true)
 		var mode, status string
-		if postProcess != nil && enhanceEnabled && text != "" {
+		mergeHandled := false
+		ppCtx := ctx
+		if phoneTranscripts != nil && !isEdit {
+			var cleanupBy time.Time
+			text, mode, mergeHandled, cleanupBy = mergeInline(ctx, text, phoneTranscripts.waitAndReport(ctx, sttDoneAt), enhanceContextJSON)
+			if !cleanupBy.IsZero() {
+				var cancel context.CancelFunc
+				ppCtx, cancel = context.WithDeadline(ctx, cleanupBy)
+				defer cancel()
+			}
+		}
+		if !mergeHandled && postProcess != nil && enhanceEnabled && text != "" {
 			intent := intentParam
-			if resultText, resultMode, err := postProcess(ctx, text, enhanceContextJSON, intent); err == nil {
+			if resultText, resultMode, err := postProcess(ppCtx, text, enhanceContextJSON, intent); err == nil {
 				text = resultText
 				mode = resultMode
 			} else {
@@ -1165,7 +1215,9 @@ func backendStatusFromErr(s string) int {
 	return code
 }
 
-func (g *Gateway) proxyToBackend(ctx context.Context, target *url.URL, p audioPayload, backend *Backend, language, whisperPrompt string) (string, error) {
+// customWordsJSON is the rendered custom_words field; it is written only when the backend
+// has AcceptsCustomWords, so a retry onto any other backend drops it automatically.
+func (g *Gateway) proxyToBackend(ctx context.Context, target *url.URL, p audioPayload, backend *Backend, language, whisperPrompt, customWordsJSON string) (string, error) {
 	// Build multipart body
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -1186,6 +1238,9 @@ func (g *Gateway) proxyToBackend(ctx context.Context, target *url.URL, p audioPa
 	}
 	if whisperPrompt != "" {
 		writer.WriteField("prompt", whisperPrompt) //nolint:errcheck
+	}
+	if cw := customWordsFor(backend, customWordsJSON); cw != "" {
+		writer.WriteField(customWordsField, cw) //nolint:errcheck
 	}
 	writer.Close()
 
@@ -1223,5 +1278,8 @@ func (g *Gateway) proxyToBackend(ctx context.Context, target *url.URL, p audioPa
 		return "", fmt.Errorf("decode response: %w", err)
 	}
 
+	if whisperPrompt != "" {
+		return stripWhisperPromptEcho(result.Text), nil
+	}
 	return result.Text, nil
 }

@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -74,6 +75,10 @@ type MultipartRewriteOpts struct {
 	// request so Whisper returns the detected language code in its response.
 	// Only set for Whisper-tier auto-detect paths; Parakeet and Canary must not receive it.
 	InjectVerboseJSON bool
+
+	// CustomWordsJSON, when non-empty, is written as the `custom_words` field. Callers set
+	// it only for a backend with AcceptsCustomWords (see customWordsFor).
+	CustomWordsJSON string
 }
 
 // rewriteMultipart rewrites the multipart body:
@@ -81,6 +86,7 @@ type MultipartRewriteOpts struct {
 // - If opts.StripLanguage is true, also strips the "language" field (auto-detect mode)
 // - If opts.ForwardModel is non-empty, injects it for the backend
 // - If opts.WhisperPrompt is non-empty, injects it as a "prompt" field for vocab hinting
+// - If opts.CustomWordsJSON is non-empty, injects it as a "custom_words" field
 // - If opts.ConvertToWAV is true, converts the audio file to 16kHz mono WAV via ffmpeg
 func rewriteMultipart(body []byte, boundary string, opts MultipartRewriteOpts) ([]byte, string, int64, error) {
 	reader := multipart.NewReader(bytes.NewReader(body), boundary)
@@ -99,9 +105,15 @@ func rewriteMultipart(body []byte, boundary string, opts MultipartRewriteOpts) (
 		}
 
 		// Strip gateway-owned fields. Always: model, context, response_format.
-		// Conditionally: language (auto-detect strip or override — both remove the client value).
+		// Conditionally: language (auto-detect strip or override — both remove the client value),
+		// and custom_words only when the gateway writes its own — otherwise a client's field
+		// passes through exactly as it did before the field existed.
 		name := part.FormName()
 		if name == "model" || name == "context" || name == "response_format" {
+			part.Close()
+			continue
+		}
+		if name == customWordsField && opts.CustomWordsJSON != "" {
 			part.Close()
 			continue
 		}
@@ -162,6 +174,12 @@ func rewriteMultipart(body []byte, boundary string, opts MultipartRewriteOpts) (
 	if opts.WhisperPrompt != "" {
 		if err := writer.WriteField("prompt", opts.WhisperPrompt); err != nil {
 			return nil, "", 0, fmt.Errorf("write prompt field: %w", err)
+		}
+	}
+
+	if opts.CustomWordsJSON != "" {
+		if err := writer.WriteField(customWordsField, opts.CustomWordsJSON); err != nil {
+			return nil, "", 0, fmt.Errorf("write custom_words field: %w", err)
 		}
 	}
 
@@ -229,8 +247,27 @@ func convertToWAVBytes(audioData []byte, filename string) ([]byte, error) {
 // them as a Whisper prompt field. Whisper uses this as vocabulary hint during transcription,
 // improving accuracy for unusual terms, jargon, and proper nouns before LLM cleanup runs.
 func buildWhisperPrompt(contextJSON string) string {
-	if contextJSON == "" {
+	words := customWordsFromContext(contextJSON)
+	if len(words) == 0 {
 		return ""
+	}
+	// Phrased as a sentence, not a bare list: Whisper imitates the prompt's style, and a
+	// bare "A, B, C" made large-v3-turbo drop about half of its punctuation (2026-10-11
+	// eval, .claude/bow/explore-mywords-prompt.md). Same term recall, same insertions.
+	return whisperPromptLead + strings.Join(words, ", ") + "."
+}
+
+// CustomWordsFromContext is customWordsFromContext for the cloud build's Live path,
+// which carries My Words to WLK in a dial header (gateway/streaming_realtime.go).
+func CustomWordsFromContext(contextJSON string) []string {
+	return customWordsFromContext(contextJSON)
+}
+
+// customWordsFromContext returns the non-empty `customWords[].word` values of the
+// transcription context JSON, in client order. Invalid or empty context → nil.
+func customWordsFromContext(contextJSON string) []string {
+	if contextJSON == "" {
+		return nil
 	}
 	var ctx struct {
 		CustomWords []struct {
@@ -238,7 +275,7 @@ func buildWhisperPrompt(contextJSON string) string {
 		} `json:"customWords"`
 	}
 	if err := json.Unmarshal([]byte(contextJSON), &ctx); err != nil || len(ctx.CustomWords) == 0 {
-		return ""
+		return nil
 	}
 	words := make([]string, 0, len(ctx.CustomWords))
 	for _, cw := range ctx.CustomWords {
@@ -246,10 +283,58 @@ func buildWhisperPrompt(contextJSON string) string {
 			words = append(words, cw.Word)
 		}
 	}
+	return words
+}
+
+// customWordsField is the multipart field carrying My Words to a backend with
+// AcceptsCustomWords (the STT custom-word boost).
+const customWordsField = "custom_words"
+
+// maxCustomWordsField caps the words sent in custom_words. The app sends every My
+// Words entry uncapped; each boosting container applies its own, smaller cap.
+const maxCustomWordsField = 100
+
+// buildCustomWordsField renders the context's custom words as a JSON array for the
+// custom_words field, at most maxCustomWordsField in client order. "" when there are none.
+func buildCustomWordsField(contextJSON string) string {
+	words := customWordsFromContext(contextJSON)
 	if len(words) == 0 {
 		return ""
 	}
-	return strings.Join(words, ", ")
+	if len(words) > maxCustomWordsField {
+		words = words[:maxCustomWordsField]
+	}
+	b, err := json.Marshal(words)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// customWordsFor returns field for a backend that reads custom_words, else "".
+// The single gate that keeps the field away from every other backend.
+func customWordsFor(b *Backend, field string) string {
+	if b == nil || !b.AcceptsCustomWords {
+		return ""
+	}
+	return field
+}
+
+// whisperPromptLead introduces the My Words list in the Whisper prompt.
+const whisperPromptLead = "The following words are spelled exactly as shown: "
+
+// whisperPromptEchoRE matches the lead-in sentence when Whisper transcribes its own prompt
+// back, up to the end of that sentence (the list it echoes runs on until a stop or the end).
+var whisperPromptEchoRE = regexp.MustCompile(`(?i)the following words are spelled[^.!?]*[.!?]?`)
+
+// stripWhisperPromptEcho removes an echoed prompt lead-in. A Whisper server without VAD,
+// given silence or noise, returns its prompt as the transcript. Call it only when a prompt
+// was sent: otherwise the same words are the user's own speech.
+func stripWhisperPromptEcho(text string) string {
+	if !whisperPromptEchoRE.MatchString(text) {
+		return text
+	}
+	return strings.Join(strings.Fields(whisperPromptEchoRE.ReplaceAllString(text, " ")), " ")
 }
 
 // extractFormField reads a single field value from a multipart body without consuming it.
@@ -462,9 +547,11 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 		// Extract context and build Whisper vocabulary prompt from custom words
 		var contextJSON string
 		var whisperPrompt string
+		var customWordsJSON string
 		if boundary != "" {
 			contextJSON = extractFormField(body, boundary, "context")
 			whisperPrompt = buildWhisperPrompt(contextJSON)
+			customWordsJSON = buildCustomWordsField(contextJSON)
 		}
 
 		// Rewrite multipart body: strip model/context fields (routing done), convert audio if needed, inject Whisper prompt
@@ -477,6 +564,7 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 				ConvertToWAV:      backend.NeedsWAV,
 				ForwardModel:      backend.ForwardModel,
 				WhisperPrompt:     whisperPrompt,
+				CustomWordsJSON:   customWordsFor(backend, customWordsJSON),
 				StripLanguage:     detectActive && adResult.UpstreamLanguage == "",
 				LanguageOverride:  adResult.UpstreamLanguage,
 				InjectVerboseJSON: detectActive && isWhisperTier,
@@ -578,6 +666,18 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 					}
 
 					transcript := transcription.Text
+					promptEchoStripped := false
+					if whisperPrompt != "" {
+						if stripped := stripWhisperPromptEcho(transcript); stripped != transcript {
+							transcript = stripped
+							if transcript == "" {
+								// Nothing but the echo: answer like a backend that heard nothing.
+								writeTranscriptionResponse(resp, "", "", "", responseFormat, e2eClientKey, false)
+								return nil
+							}
+							promptEchoStripped = true
+						}
+					}
 					if hasDegenerateRepetition(transcript) {
 						resp.Body = io.NopCloser(bytes.NewReader(respBody))
 						return errSTTHallucination
@@ -602,7 +702,7 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 					// (e.g. "timestamps":null) that aren't part of the gateway contract — always
 					// normalize their response body to {"text":"..."}.
 					needsNormalize := proxyBackend.TargetPath != ""
-					needsRewrite := (postProcess != nil && enhanceEnabled) || e2eClientKey != "" || needsNormalize || responseFormat != "json" || fillerChanged
+					needsRewrite := (postProcess != nil && enhanceEnabled) || e2eClientKey != "" || needsNormalize || responseFormat != "json" || fillerChanged || promptEchoStripped
 					if !needsRewrite {
 						resp.Body = io.NopCloser(bytes.NewReader(respBody))
 						return nil
@@ -617,8 +717,11 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 						intent, auto := resolveIntent(resp.Request.Context(), r, transcript, enhanceContextJSON, r.URL.Query().Get("intent"))
 						autoEdit = auto
 						llmStart := time.Now()
+						// Whether the STT was sent the custom-word list. Carried for the cleanup;
+						// the My Words shortlist no longer treats it differently (2026-11-05).
+						ppCtx := WithSTTBoosted(resp.Request.Context(), customWordsFor(proxyBackend, customWordsJSON) != "")
 						resultText, resultMode, err := postProcess(
-							resp.Request.Context(), transcript, enhanceContextJSON, intent)
+							ppCtx, transcript, enhanceContextJSON, intent)
 						llmMs := time.Since(llmStart).Milliseconds()
 						resp.Header.Set("X-Diction-LLM-Ms", fmt.Sprintf("%d", llmMs))
 						if err != nil {
@@ -773,6 +876,7 @@ func (g *Gateway) TranscriptionHandlerWithPostProcess(postProcess func(context.C
 				ConvertToWAV:     retryBackend.NeedsWAV,
 				ForwardModel:     retryBackend.ForwardModel,
 				WhisperPrompt:    whisperPrompt,
+				CustomWordsJSON:  customWordsFor(retryBackend, customWordsJSON),
 				StripLanguage:    detectActive && adResult.UpstreamLanguage == "",
 				LanguageOverride: adResult.UpstreamLanguage,
 			})

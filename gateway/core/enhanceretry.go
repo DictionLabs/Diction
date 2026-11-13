@@ -54,7 +54,7 @@ func WithEnhanceBudget(
 		for attempts < MaxEnhanceAttempts {
 			attempts++
 			out, mode, err = fn(passCtx, text, contextJSON, intent)
-			if err == nil || !retryAllowed(ctx, passCtx) {
+			if err == nil || errors.Is(err, ErrEnhanceRejected) || !retryAllowed(ctx, passCtx) {
 				break
 			}
 			if attempts < MaxEnhanceAttempts {
@@ -86,15 +86,21 @@ const (
 	EnhanceSkipTimeout       = "timeout"          // the pass budget ran out
 	EnhanceSkipError         = "error"            // every attempt that fit failed fast
 	EnhanceSkipCanceled      = "canceled"         // the client went away
-	EnhanceSkipRejected      = "rejected"         // deletion guard (split socket, Live)
+	EnhanceSkipRejected      = "rejected"         // a guard rejected the answer (split socket, Live, merge)
 	EnhanceSkipNoTranscript  = "no_transcript"    // Live: nothing to clean up
 	EnhanceSkipNoReadyToStop = "no_ready_to_stop" // Live: upstream never finalized
 	EnhanceSkipNoLLM         = "no_llm"           // Live: no LLM configured
 )
 
+// ErrEnhanceRejected marks a pass whose answer arrived but a guard refused it. It is never
+// retried: the same input would draw the same answer.
+var ErrEnhanceRejected = errors.New("enhance answer rejected by a guard")
+
 // EnhanceSkipReason classifies a failed pass for the `enhance_skipped` field.
 func EnhanceSkipReason(ctx context.Context, err error) string {
 	switch {
+	case errors.Is(err, ErrEnhanceRejected):
+		return EnhanceSkipRejected
 	case errors.Is(ctx.Err(), context.Canceled), errors.Is(err, context.Canceled):
 		return EnhanceSkipCanceled
 	case errors.Is(err, context.DeadlineExceeded):

@@ -679,14 +679,19 @@ func TestBuildWhisperPrompt_NoCustomWords(t *testing.T) {
 
 func TestBuildWhisperPrompt_SingleWord(t *testing.T) {
 	got := buildWhisperPrompt(`{"customWords":[{"word":"Kubernetes"}]}`)
-	if got != "Kubernetes" {
-		t.Errorf("want %q, got %q", "Kubernetes", got)
+	want := "The following words are spelled exactly as shown: Kubernetes."
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
 	}
 }
 
+// A bare comma list ("A, B, C") as Whisper's initial_prompt is imitated as a style:
+// measured 2026-10-11 on large-v3-turbo it halved punctuation in the output (153 marks
+// vs 279 with no prompt, 290 in the references, 261 clips). The sentence form kept it
+// (292) with the same term recall and false insertions. .claude/bow/explore-mywords-prompt.md
 func TestBuildWhisperPrompt_MultipleWords(t *testing.T) {
 	got := buildWhisperPrompt(`{"customWords":[{"word":"PostgreSQL"},{"word":"WebSocket"},{"word":"OAuth"}]}`)
-	want := "PostgreSQL, WebSocket, OAuth"
+	want := "The following words are spelled exactly as shown: PostgreSQL, WebSocket, OAuth."
 	if got != want {
 		t.Errorf("want %q, got %q", want, got)
 	}
@@ -695,7 +700,7 @@ func TestBuildWhisperPrompt_MultipleWords(t *testing.T) {
 func TestBuildWhisperPrompt_WithVariants(t *testing.T) {
 	// Variants are LLM correction hints only — correct spelling is all Whisper gets
 	got := buildWhisperPrompt(`{"customWords":[{"word":"Kubernetes","variants":["cube er netties"]},{"word":"PostgreSQL","variants":["post gres sequel"]}]}`)
-	want := "Kubernetes, PostgreSQL"
+	want := "The following words are spelled exactly as shown: Kubernetes, PostgreSQL."
 	if got != want {
 		t.Errorf("want %q, got %q", want, got)
 	}
@@ -711,8 +716,9 @@ func TestBuildWhisperPrompt_InvalidJSON(t *testing.T) {
 func TestBuildWhisperPrompt_EmptyWordSkipped(t *testing.T) {
 	// Empty word strings within the list should be silently skipped
 	got := buildWhisperPrompt(`{"customWords":[{"word":""},{"word":"PostgreSQL"},{"word":""}]}`)
-	if got != "PostgreSQL" {
-		t.Errorf("want %q, got %q", "PostgreSQL", got)
+	want := "The following words are spelled exactly as shown: PostgreSQL."
+	if got != want {
+		t.Errorf("want %q, got %q", want, got)
 	}
 }
 
@@ -820,8 +826,87 @@ func TestTranscriptionHandler_WhisperPromptForwardedToBackend(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status: want 200, got %d (body: %s)", rr.Code, rr.Body.String())
 	}
-	if receivedPrompt != "Kubernetes, PostgreSQL" {
-		t.Errorf("prompt forwarded to Whisper: want %q, got %q", "Kubernetes, PostgreSQL", receivedPrompt)
+	wantPrompt := "The following words are spelled exactly as shown: Kubernetes, PostgreSQL."
+	if receivedPrompt != wantPrompt {
+		t.Errorf("prompt forwarded to Whisper: want %q, got %q", wantPrompt, receivedPrompt)
+	}
+}
+
+// --- Whisper prompt echo ---
+//
+// A Whisper server without VAD, fed silence or noise, transcribes its own prompt back.
+// Measured 2026-10-11: plain faster-whisper-server (tiny, and turbo with batching off)
+// returned "The following words are spelled exactly as shown..." for 6-8 of 8
+// noise-only clips. The gateway must never type that into the user's field.
+
+func TestStripWhisperPromptEcho(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"The following words are spelled exactly as shown.", ""},
+		{"The following words are spelled exactly as shown, Grafana, Xochitl, Xochitl", ""},
+		{"The following words are spelled correctly. The following words are spelled correctly.", ""},
+		{"The following words are spelled exactly as shown in the following words. Call Parker at three.", "Call Parker at three."},
+		{"Call Parker at three.", "Call Parker at three."},
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := stripWhisperPromptEcho(c.in); got != c.want {
+			t.Errorf("stripWhisperPromptEcho(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestTranscriptionHandler_PromptEchoStripped(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"text":"The following words are spelled exactly as shown."}`)
+	}))
+	defer backend.Close()
+	g := &Gateway{
+		backends:     []Backend{{Name: "small", URL: backend.URL, Aliases: []string{"small"}}},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+	body, ct := buildMultipart(t, map[string]string{"context": `{"customWords":[{"word":"Grafana"}]}`, "language": "en"}, "audio.m4a", "fake-audio")
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", ct)
+	rr := httptest.NewRecorder()
+	g.TranscriptionHandler()(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	var got struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode %q: %v", rr.Body.String(), err)
+	}
+	if got.Text != "" {
+		t.Errorf("echoed prompt reached the client: %q", got.Text)
+	}
+}
+
+// Without My Words no prompt was sent, so the same words are the user's own speech.
+func TestTranscriptionHandler_PromptEchoKeptWhenNoPromptSent(t *testing.T) {
+	const said = "The following words are spelled exactly as shown."
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"text":%q}`, said)
+	}))
+	defer backend.Close()
+	g := &Gateway{
+		backends:     []Backend{{Name: "small", URL: backend.URL, Aliases: []string{"small"}}},
+		health:       newHealthState(),
+		defaultModel: "small",
+		maxBodySize:  10 * 1024 * 1024,
+	}
+	body, ct := buildMultipart(t, map[string]string{"language": "en"}, "audio.m4a", "fake-audio")
+	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", ct)
+	rr := httptest.NewRecorder()
+	g.TranscriptionHandler()(rr, req)
+	if !strings.Contains(rr.Body.String(), said) {
+		t.Errorf("user's own words were stripped: %q", rr.Body.String())
 	}
 }
 

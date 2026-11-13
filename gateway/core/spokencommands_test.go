@@ -39,6 +39,63 @@ func TestApplySpokenTrailingBreak(t *testing.T) {
 	}
 }
 
+func TestSpokenLeadingBreak(t *testing.T) {
+	tests := []struct {
+		name       string
+		transcript string
+		cleaned    string
+		want       string
+	}{
+		{"paragraph at the start", "new paragraph thanks for sending the file", "Thanks for sending the file.", "\n\n"},
+		{"line at the start", "new line call the plumber", "Call the plumber.", "\n"},
+		{"punctuated STT form", "New paragraph. Thanks for the file.", "Thanks for the file.", "\n\n"},
+		{"German", "neuer Absatz vielen Dank", "Vielen Dank.", "\n\n"},
+		{"French three-word line", "à la ligne merci beaucoup", "Merci beaucoup.", "\n"},
+		{"trap: new line of credit kept as words", "new line of credit approved", "New line of credit approved.", ""},
+		{"cleaned still starts with the phrase", "new paragraph thanks", "New paragraph, thanks.", ""},
+		{"no command", "thanks for the file", "Thanks for the file.", ""},
+		{"command only at the end", "see you new paragraph", "See you.", ""},
+		{"next paragraph is not a command", "next paragraph is about cost", "Next paragraph is about cost.", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SpokenLeadingBreak(tt.transcript, tt.cleaned); got != tt.want {
+				t.Errorf("SpokenLeadingBreak(%q, %q) = %q, want %q", tt.transcript, tt.cleaned, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestApplySpokenLeadingBreak_dedupsAgainstBefore(t *testing.T) {
+	const transcript = "new paragraph thanks"
+	tests := []struct {
+		name    string
+		cleaned string
+		before  string
+		want    string
+	}{
+		{"empty before gets the whole break", "Thanks.", "", "\n\nThanks."},
+		{"before mid-sentence", "Thanks.", "Hi,", "\n\nThanks."},
+		{"before ends with one newline", "Thanks.", "Hi,\n", "\nThanks."},
+		{"before ends with a blank line", "Thanks.", "Hi,\n\n", "Thanks."},
+		{"trailing spaces after the newline are skipped", "Thanks.", "Hi,\n\n  ", "Thanks."},
+		{"CRLF before normalised", "Thanks.", "Hi,\r\n", "\nThanks."},
+		{"CRLF in cleaned normalised", "Thanks.\r\nBye.", "", "\n\nThanks.\nBye."},
+		{"leading newlines of cleaned are not doubled", "\nThanks.", "", "\n\nThanks."},
+		{"blank cleaned untouched", "", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ApplySpokenLeadingBreak(transcript, tt.cleaned, tt.before); got != tt.want {
+				t.Errorf("ApplySpokenLeadingBreak(%q, %q, %q) = %q, want %q", transcript, tt.cleaned, tt.before, got, tt.want)
+			}
+		})
+	}
+	if got := ApplySpokenLeadingBreak("thanks", "Thanks.", ""); got != "Thanks." {
+		t.Errorf("no command: got %q", got)
+	}
+}
+
 func TestSpokenCommandWordCount(t *testing.T) {
 	tests := []struct {
 		raw  string

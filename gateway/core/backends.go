@@ -33,10 +33,22 @@ type Backend struct {
 	// on the literal string "auto". Parakeet and the Whisper models do their
 	// own LID and leave this false.
 	NeedsExplicitLanguage bool
+
+	// AcceptsCustomWords is true when the backend reads the `custom_words`
+	// multipart field (a JSON array of the user's My Words) and biases its own
+	// decoding toward them — the STT custom-word boost. Our Cohere, Parakeet
+	// and Canary (canary-v2) containers do. The gateway sends the field to no
+	// other backend, so custom backends (always false) never see a field they
+	// do not expect. Self-hosters' Parakeet (achetronic/parakeet) reads named
+	// form fields only and ignores it; an older Canary container ignores it too.
+	// See .claude/plans/cohere-custom-word-boost-plan.md,
+	// .claude/plans/parakeet-custom-word-boost-plan.md and
+	// .claude/plans/canary-custom-word-boost-plan.md.
+	AcceptsCustomWords bool
 }
 
 // langSet returns a fresh copy of a language-code set, so a Backend never
-// holds a live reference to a package-level set (euLanguages, cohereLanguages)
+// holds a live reference to a package-level set (euLanguages, cohereSupported)
 // that could be mutated out from under it. Nothing mutates those sets today —
 // DefaultBackends() runs once at startup — so this prevents no current bug;
 // it exists so the day Canary's coverage diverges from Parakeet's, the change
@@ -109,10 +121,10 @@ func DefaultBackends() []Backend {
 		{Name: "distil-large-v3", URL: "http://whisper-distil-large:8000", Aliases: []string{"distil-large-v3", "Systran/faster-distil-whisper-large-v3"}, CanonicalID: "Systran/faster-distil-whisper-large-v3", DisplayName: "Large", Description: "highest accuracy Whisper model, English only", Provider: "whisper", Languages: langSet(map[string]bool{"en": true})},
 
 		// Parakeet (NVIDIA, OpenAI-compatible API, WAV only) — available for public/community gateway self-hosters
-		{Name: "parakeet-v3", URL: "http://parakeet:5092", Aliases: []string{"parakeet-v3", "parakeet", "parakeet-tdt-0.6b-v3", "nvidia/parakeet-tdt-0.6b-v3"}, CanonicalID: "nvidia/parakeet-tdt-0.6b-v3", DisplayName: "Parakeet", Description: "best overall accuracy and speed, 25 European languages", Provider: "parakeet", NeedsWAV: true, Languages: langSet(euLanguages)},
+		{Name: "parakeet-v3", URL: "http://parakeet:5092", Aliases: []string{"parakeet-v3", "parakeet", "parakeet-tdt-0.6b-v3", "nvidia/parakeet-tdt-0.6b-v3"}, CanonicalID: "nvidia/parakeet-tdt-0.6b-v3", DisplayName: "Parakeet", Description: "best overall accuracy and speed, 25 European languages", Provider: "parakeet", NeedsWAV: true, Languages: langSet(euLanguages), AcceptsCustomWords: true},
 
 		// Canary (NVIDIA, custom /inference API, WAV only, GPU-accelerated) — default for private cloud gateway
-		{Name: "canary-v2", URL: "http://canary:9000", Aliases: []string{"canary-v2", "canary", "nvidia/canary-1b-v2"}, CanonicalID: "nvidia/canary-1b-v2", DisplayName: "Canary", Description: "highest accuracy for 25 European languages, GPU-accelerated", Provider: "canary", NeedsWAV: true, TargetPath: "/inference", Languages: langSet(euLanguages), NeedsExplicitLanguage: true},
+		{Name: "canary-v2", URL: "http://canary:9000", Aliases: []string{"canary-v2", "canary", "nvidia/canary-1b-v2"}, CanonicalID: "nvidia/canary-1b-v2", DisplayName: "Canary", Description: "highest accuracy for 25 European languages, GPU-accelerated", Provider: "canary", NeedsWAV: true, TargetPath: "/inference", Languages: langSet(euLanguages), NeedsExplicitLanguage: true, AcceptsCustomWords: true},
 
 		// Canary-Qwen (NVIDIA, English-only, SALM architecture, #1 HF ASR leaderboard) — English tier for private cloud gateway.
 		// Disabled: 9.86 GiB VRAM doesn't fit alongside canary-v2 + whisper on the 16GB GPU (see server/docker-compose.yml).
@@ -120,11 +132,11 @@ func DefaultBackends() []Backend {
 		{Name: "canary-qwen", URL: "http://canary-qwen:9000", Aliases: []string{"canary-qwen", "nvidia/canary-qwen-2.5b"}, CanonicalID: "nvidia/canary-qwen-2.5b", DisplayName: "Canary Qwen", Description: "best-in-class English speech recognition, 5.63% WER", Provider: "canary", NeedsWAV: true, TargetPath: "/inference", Disabled: true, Languages: langSet(map[string]bool{"en": true}), NeedsExplicitLanguage: true},
 
 		// Cohere Transcribe (CohereLabs, OpenAI-compatible /v1/audio/transcriptions, WAV only,
-		// GPU-accelerated) — primary model for en/es/de/nl/fr/pt/it on the private cloud gateway,
-		// per the measured eval (COHERE_TRANSCRIBE_EVAL_RESULTS.md, 2026-07-06). Empty TargetPath
+		// GPU-accelerated) — serves the languages the cloud STT model table assigns to the Cohere
+		// slot (core/languages.go cloudSTTModels; measured, .claude/bow/server-stt-routing-2026-10.md). Empty TargetPath
 		// (defaults to /v1/audio/transcriptions) matches its native contract exactly, same posture
 		// as parakeet-v3 — no response normalization/adapter needed. NOT Disabled: it must be
 		// health-polled to be routable by ModelForLanguage/ModelForAutoDetect.
-		{Name: "cohere-transcribe", URL: "http://cohere:5093", Aliases: []string{"cohere-transcribe", "cohere", "CohereLabs/cohere-transcribe-03-2026"}, CanonicalID: "CohereLabs/cohere-transcribe-03-2026", DisplayName: "Cohere Transcribe", Description: "fastest + most accurate for English/Spanish, ties Canary on other EU languages", Provider: "cohere", NeedsWAV: true, Languages: langSet(cohereLanguages)},
+		{Name: "cohere-transcribe", URL: "http://cohere:5093", Aliases: []string{"cohere-transcribe", "cohere", "CohereLabs/cohere-transcribe-03-2026"}, CanonicalID: "CohereLabs/cohere-transcribe-03-2026", DisplayName: "Cohere Transcribe", Description: "fast multilingual speech recognition, 14 languages", Provider: "cohere", NeedsWAV: true, Languages: langSet(cohereSupported), AcceptsCustomWords: true},
 	}
 }

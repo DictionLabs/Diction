@@ -51,6 +51,9 @@ const (
 	// language: "Kuiil" ("kvl") matched "we will" ("vvl") and the LLM wrote "Kuiil put home
 	// TLD". A form this short must fold to exactly what was heard, as "Quill" does.
 	vocabMinFuzzyFolded = 4
+	// Spelling distance, vowels kept (letterKey), at which a sound-key hit is only a shared
+	// consonant skeleton. See requireCorroboration.
+	vocabWeakSpelling = 0.5
 	// Ceiling on entries considered, so an unbounded client list cannot turn one request into
 	// a quadratic scan.
 	vocabMaxEntries = 2000
@@ -90,9 +93,37 @@ type VocabularyMatch struct {
 	Heard string
 }
 
+// vocabCandidate is one custom word's best hit in the transcript, before admission.
+type vocabCandidate struct {
+	index    int
+	distance float64
+	// The transcript tokens [start, end) the winning hit covered, for per-span slack.
+	start, end int
+	heard      string
+	// taught: heard is one of the entry's stored variants, spelled as the user saved it.
+	taught bool
+	// letters is the normalized edit distance between the spellings with every letter kept
+	// (letterKey), where distance compares sound keys with the vowels dropped.
+	letters float64
+}
+
 // MatchVocabulary is RankVocabulary plus, for each admitted entry, the transcript words it
 // matched. Same admission, same order.
 func MatchVocabulary(transcript string, forms [][]string, limit int) []VocabularyMatch {
+	return MatchVocabularyWith(transcript, forms, limit, VocabularyOptions{})
+}
+
+// VocabularyOptions says what the gateway knows about where the transcript came from.
+type VocabularyOptions struct {
+	// STTBoosted: the STT backend that wrote the transcript was sent the custom-word list
+	// (Backend.AcceptsCustomWords: Cohere, Canary, Parakeet). Since 2026-11-05 the shortlist no
+	// longer treats this differently: a boosted STT that writes "Christina" for a saved
+	// "Kristýna" has not proven Christina was said (see requireCorroboration).
+	STTBoosted bool
+}
+
+// MatchVocabularyWith is MatchVocabulary for a transcript whose origin is known.
+func MatchVocabularyWith(transcript string, forms [][]string, limit int, opts VocabularyOptions) []VocabularyMatch {
 	if limit <= 0 || len(forms) == 0 {
 		return nil
 	}
@@ -101,14 +132,7 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 		return nil
 	}
 
-	type scored struct {
-		index    int
-		distance float64
-		// The transcript tokens [start, end) the winning hit covered, for per-span slack.
-		start, end int
-		heard      string
-	}
-	var candidates []scored
+	var candidates []vocabCandidate
 
 	entries := forms
 	if len(entries) > vocabMaxEntries {
@@ -122,13 +146,22 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 		// looking for: "Vsetín" next to "set in".
 		ordinary, other := 1.0, 1.0
 		var ordinaryHit, otherHit transcriptNgram
+		shortLetters := 1.0
 		for _, form := range entry {
 			folded := foldPhonetic(form)
-			if len([]rune(strings.TrimSpace(form))) < vocabMinFormLength ||
-				len([]rune(folded)) < vocabMinFolded {
+			if len([]rune(strings.TrimSpace(form))) < vocabMinFormLength {
+				continue
+			}
+			if len([]rune(folded)) < vocabMinFolded {
+				if d, hit, ok := matchShortForm(form, folded, ngrams); ok && d < other {
+					other, otherHit, shortLetters = d, hit, d
+				}
 				continue
 			}
 			for _, ngram := range ngrams {
+				if ngram.short {
+					continue
+				}
 				// Cheap rejection before the O(n·m) DP: two strings whose lengths already
 				// differ by more than the ceiling can never score under it, and this runs on
 				// the request path for every entry × form × n-gram.
@@ -166,8 +199,16 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 		if strings.EqualFold(heard, strings.TrimSpace(entry[0])) || allOrdinaryWords(heard) {
 			heard = ""
 		}
-		candidates = append(candidates, scored{
+		letters := shortLetters
+		for _, form := range entry {
+			if d := normalizedLevenshtein(letterKey(form), letterKey(hit.text)); d < letters {
+				letters = d
+			}
+		}
+		candidates = append(candidates, vocabCandidate{
 			index: i, distance: distance, start: hit.start, end: hit.end, heard: heard,
+			taught:  heard != "" && isStoredVariant(heard, entry[1:]),
+			letters: letters,
 		})
 	}
 
@@ -178,7 +219,7 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 	// Each candidate is judged against the best candidate competing for an overlapping stretch
 	// of the transcript, never against the utterance as a whole: several names in one sentence
 	// are several mentions, not rivals.
-	admitted := make([]scored, 0, len(candidates))
+	admitted := make([]vocabCandidate, 0, len(candidates))
 	for _, c := range candidates {
 		localBest := c.distance
 		for _, o := range candidates {
@@ -190,6 +231,8 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 			admitted = append(admitted, c)
 		}
 	}
+
+	admitted = requireCorroboration(admitted)
 
 	// Weakest first: a stable sort keeps input order among equal distances, so the same list
 	// and transcript always render the same prompt.
@@ -206,6 +249,112 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 		out = append(out, VocabularyMatch{Index: c.index, Heard: c.heard})
 	}
 	return out
+}
+
+// requireCorroboration drops hits that share only a consonant skeleton with the custom word
+// (2026-10-18 Writing Tools e2e runs, .claude/bow/writing-tools-mywords-cooperation-2026-10.md).
+// The sound key drops every non-leading vowel, so "Thursday"/tirzepatide, "I can"/Joaquín,
+// "keyboard is"/Kubernetes and Czech "přes"/Apiaries all scored under the ceiling, and the LLM
+// treats a (sounds like "X" here) pointer as an instruction. With the vowels kept they are ≥ 0.5
+// apart, while every real mishearing measured was ≤ 0.45 (Sapansky/Szczepański, Matapolo/
+// metoprolol, Christina/Kristýna 0.33, Andre/Ondřej 0.33). Such a weak hit stays only when the
+// user taught it as a variant, or next to another misheard span: a garbled full name ("Andre
+// McCullough") is two adjacent manglings, which a coincidence almost never is.
+//
+// Every hit that passes keeps its pointer, a lone real name included. Withdrawn 2026-11-05: two
+// further rules from 2026-10-18 stripped the pointer from a lone single word and, when the STT
+// was boosted, dropped the entry when the heard word was itself a dictionary word. Together they
+// meant a user who saved "Kristýna" or "Ondřej" and said it never got it ("Christina", "Andre":
+// shortlist 0 on every boosted dictation). Product decision: a word the user saved and said wins
+// over a different real name of the same sound; the LLM gets the pointer and the sentence, and
+// the user who means another person can say so in the sentence or edit the result.
+func requireCorroboration(admitted []vocabCandidate) []vocabCandidate {
+	kept := make([]vocabCandidate, 0, len(admitted))
+	for i, c := range admitted {
+		if c.letters >= vocabWeakSpelling && !c.taught && !misheardNeighbour(admitted, i) {
+			continue
+		}
+		kept = append(kept, c)
+	}
+	return kept
+}
+
+// misheardNeighbour reports whether another admitted candidate with a pointer sits directly next
+// to admitted[i] in the transcript.
+func misheardNeighbour(admitted []vocabCandidate, i int) bool {
+	c := admitted[i]
+	for j, o := range admitted {
+		if j != i && (o.start == c.end || o.end == c.start) && o.heard != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// matchShortForm scores a custom word whose sound key is too short for the main matcher
+// (two consonants: Cara "kr", rig "rg"). Such a key one edit off describes half the language,
+// so the bar is far stricter: one transcript word, not an ordinary word of the language, with a
+// sound key of the same length, the same first letter, the same vowels, and at most one letter
+// apart with the vowels kept (shortKey). Kara → Cara (identical), Rick → rig ("rik"/"rig"), but
+// not "rug" or "Cora". Returns the normalized shortKey distance.
+func matchShortForm(form, folded string, ngrams []transcriptNgram) (float64, transcriptNgram, bool) {
+	key := shortKey(form)
+	keyRunes := []rune(key)
+	best, found := 1.0, false
+	var bestHit transcriptNgram
+	for _, ngram := range ngrams {
+		if !ngram.short || ngram.ordinary || len([]rune(ngram.folded)) != len([]rune(folded)) {
+			continue
+		}
+		heard := shortKey(ngram.text)
+		heardRunes := []rune(heard)
+		if len(heardRunes) == 0 || len(keyRunes) == 0 || heardRunes[0] != keyRunes[0] ||
+			vowels(heard) != vowels(key) {
+			continue
+		}
+		d := normalizedLevenshtein(key, heard)
+		longest := len(keyRunes)
+		if len(heardRunes) > longest {
+			longest = len(heardRunes)
+		}
+		if d*float64(longest) > 1.0001 || d > vocabBestDistanceCeiling {
+			continue
+		}
+		if d < best {
+			best, bestHit, found = d, ngram, true
+		}
+	}
+	return best, bestHit, found
+}
+
+// vowels returns the vowels of s in order.
+func vowels(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if isFoldableVowel(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// shortKey is foldPhonetic with the vowels kept: diacritics stripped, the same spelling
+// rewrites (ck → k, soft/hard c, ...), doubled letters merged.
+func shortKey(s string) string {
+	l := letterKey(s)
+	for _, rule := range phoneticRewrites {
+		l = strings.ReplaceAll(l, rule.from, rule.to)
+	}
+	l = softCBeforeFrontVowel(l)
+	var b strings.Builder
+	var prev rune
+	for _, r := range l {
+		if r != prev {
+			b.WriteRune(r)
+		}
+		prev = r
+	}
+	return b.String()
 }
 
 // allOrdinaryWords reports whether every token of a matched span is an ordinary word of the
@@ -235,6 +384,9 @@ type transcriptNgram struct {
 	ordinary   bool
 	start, end int
 	text       string
+	// short: a single token whose sound key is below vocabMinFolded, scored only by
+	// matchShortForm.
+	short bool
 }
 
 // foldedNgrams renders the transcript as folded 1..vocabMaxNgram token windows, so a single
@@ -253,6 +405,14 @@ func foldedNgrams(transcript string) []transcriptNgram {
 			text := strings.Join(tokens[i:i+n], " ")
 			folded := foldPhonetic(text)
 			if len([]rune(folded)) < vocabMinFolded {
+				if n == 1 && len([]rune(folded)) > 0 {
+					key := "short:" + strings.ToLower(text)
+					if _, dup := seen[key]; !dup {
+						seen[key] = struct{}{}
+						_, ordinary := commonEnglishWords[strings.ToLower(text)]
+						out = append(out, transcriptNgram{folded: folded, ordinary: ordinary, start: i, end: i + 1, text: text, short: true})
+					}
+				}
 				continue
 			}
 			if _, dup := seen[folded]; dup {
@@ -520,4 +680,28 @@ func CustomWordLine(word string, variants []string, heard string) string {
 		return word
 	}
 	return word + " (" + strings.Join(notes, "; ") + ")"
+}
+
+// letterKey is a spelling with case, diacritics, spaces and punctuation removed but every
+// letter, vowels included, kept.
+func letterKey(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if f, ok := diacriticFolding[r]; ok {
+			r = f
+		}
+		if unicode.IsLetter(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func isStoredVariant(heard string, variants []string) bool {
+	for _, v := range variants {
+		if strings.EqualFold(strings.TrimSpace(v), heard) {
+			return true
+		}
+	}
+	return false
 }

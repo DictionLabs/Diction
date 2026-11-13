@@ -244,3 +244,19 @@ func (c *cleanupSignals) assertSilentSkip(t *testing.T, wantReason string) {
 		t.Errorf("enhance skips = %v, want exactly [%s]", c.skips, wantReason)
 	}
 }
+
+// A guard-rejected answer is final: retrying the same input would draw the same answer.
+func TestWithEnhanceBudget_RejectedNotRetried(t *testing.T) {
+	calls := 0
+	fn := WithEnhanceBudget(func(context.Context, string, string, string) (string, string, error) {
+		calls++
+		return "", "", fmt.Errorf("merge: %w", ErrEnhanceRejected)
+	}, 2*time.Second, nil)
+	_, _, err := fn(context.Background(), "t", "", "")
+	if calls != 1 {
+		t.Errorf("rejected answer retried: %d calls", calls)
+	}
+	if EnhanceSkipReason(context.Background(), err) != EnhanceSkipRejected {
+		t.Errorf("skip reason = %q, want rejected", EnhanceSkipReason(context.Background(), err))
+	}
+}
