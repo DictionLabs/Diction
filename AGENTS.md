@@ -116,6 +116,15 @@ sees no difference. The gateway cuts the audio at pauses, transcribes each finis
 segment once and the open segment again as it grows, one request at a time, on the same
 speech backend (or on `DICTION_PREVIEW_URL`). It works with any OpenAI-compatible backend.
 
+**Segmented final (optional, off by default).** With `DICTION_SEGMENTED_FINAL=true` the
+segments transcribed while the user was talking become the result: after `done` only the
+audio since the last pause is left to transcribe, so the wait no longer grows with the
+length of the recording. The texts are joined in order (in English a full stop that a cut
+put mid-sentence is removed). Anything short of a clean run falls back to the one request
+for the whole recording: a failed or implausible segment, a decode that fell short, a
+language change at `done`, or no pause for 90 s. It needs no client support and works
+with or without live text.
+
 ### POST /v1/text/process
 
 **Plaintext JSON -- no E2E encryption. Bearer token optional.**
@@ -352,6 +361,17 @@ edit" instead of typing the user's spoken instruction into their document. A cus
 | `DICTION_SEGMENT_MIN_MS` | `8000` | A segment is never shorter than this. Minimum `1000` |
 | `DICTION_SEGMENT_MAX_MS` | `20000` | Past this length, a pause of `DICTION_SEGMENT_SHORT_PAUSE_MS` is enough |
 | `DICTION_SEGMENT_SHORT_PAUSE_MS` | `300` | The pause that ends a segment longer than `DICTION_SEGMENT_MAX_MS`. Minimum `100` |
+
+### Segmented final
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DICTION_SEGMENTED_FINAL` | `false` | `true`: build the result from segments transcribed during the recording, plus the tail after the last pause. Falls back to the whole recording on any failure |
+| `DICTION_SEGMENT_FIRST_MIN_MS` | `0` | Minimum length of the first segment (`0` = `DICTION_SEGMENT_MIN_MS`). A recording shorter than this is always transcribed whole, e.g. `15000` keeps short dictations on the single request |
+
+The `DICTION_SEGMENT_*` settings under Live text decide where segments are cut for both features.
+With `DICTION_SEGMENTED_FINAL=true`, a result with more text than its audio can hold (over
+25 characters per second plus 20) is returned empty instead of being typed.
 
 ### LLM (AI Post-processing)
 

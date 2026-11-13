@@ -95,8 +95,8 @@ type Gateway struct {
 	// Tests override the field directly after construction.
 	streamIdleTimeout time.Duration
 
-	// live configures the built-in preview (live.go).
-	// The zero value (every test Gateway literal) disables it.
+	// live configures the segmented final and the built-in preview (live.go).
+	// The zero value (every test Gateway literal) disables both.
 	live LiveConfig
 
 	// OnTranscription is an optional hook called after each successful transcription.
