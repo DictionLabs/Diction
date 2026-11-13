@@ -122,6 +122,11 @@ type limitedStderrWriter struct {
 }
 
 func (lw *limitedStderrWriter) Write(p []byte) (int, error) {
+	// The full length, taken before p is cut to fit: returning the cut length is a
+	// short write. os/exec then stops draining stderr and reports the short write as
+	// the command's error from Wait, even when the process itself finished cleanly;
+	// a process that keeps writing can also be killed by SIGPIPE.
+	n := len(p)
 	remaining := lw.cap - lw.buf.Len()
 	if remaining > 0 {
 		if len(p) > remaining {
@@ -129,7 +134,7 @@ func (lw *limitedStderrWriter) Write(p []byte) (int, error) {
 		}
 		lw.buf.Write(p) //nolint:errcheck — writing to a bytes.Buffer is infallible
 	}
-	return len(p), nil // always report full write so exec doesn't get a short-write error
+	return n, nil // always report full write so exec doesn't get a short-write error
 }
 
 // readOggGranulepos returns the granule position from the last Ogg page in
