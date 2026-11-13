@@ -68,6 +68,8 @@ Content-Type: application/json
 | `text_suggest` | bool | /v1/text/suggest is open (same condition as text_process) |
 | `text_summarize` | bool | /v1/text/summarize is open (same condition as text_process) |
 | `formatting` | bool | the `formatting` context key is honoured on cleanup (llm=true) |
+| `preview` | bool | `?preview=cloud` on /v1/audio/stream is answered with `interim` frames on PCM sessions (`DICTION_PREVIEW=chunked`) |
+| `preview_opus` | bool | the same on Opus sessions (`preview` is true and ffmpeg is available to decode the audio as it arrives) |
 
 **writing_tools object** (present only when `llm` is true):
 
@@ -104,6 +106,15 @@ WebSocket streaming transcription. Used by the Diction iOS app for live transcri
 as you speak. Not part of any standard API. Binary audio frames in, JSON text frames out.
 
 Not suitable for scripting -- use /v1/audio/transcriptions for batch use.
+
+**Live text (optional, off by default).** With `DICTION_PREVIEW=chunked`, a client that
+connects with `?preview=cloud` also receives `{"type":"interim","text":"..."}` frames while
+audio is still arriving. Each one carries the whole transcript so far and replaces the
+one before it, and none follows the result frame. The result is unchanged: it still comes
+from one request for the whole recording, so a client that does not send `preview=cloud`
+sees no difference. The gateway cuts the audio at pauses, transcribes each finished
+segment once and the open segment again as it grows, one request at a time, on the same
+speech backend (or on `DICTION_PREVIEW_URL`). It works with any OpenAI-compatible backend.
 
 ### POST /v1/text/process
 
@@ -327,6 +338,20 @@ edit" instead of typing the user's spoken instruction into their document. A cus
 | `CUSTOM_BACKEND_AUTH` | Authorization header forwarded to the custom backend |
 | `CUSTOM_BACKEND_NEEDS_WAV` | Set to `true` if the backend only accepts WAV |
 | `CUSTOM_BACKEND_CANONICAL_ID` | HuggingFace-style ID to advertise in /v1/models |
+
+### Live text (built-in preview)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DICTION_PREVIEW` | `off` | `chunked`: answer `?preview=cloud` on /v1/audio/stream with interim frames, and advertise `preview` on /v1/models |
+| `DICTION_PREVIEW_INTERVAL_MS` | `1000` | New audio needed before the open segment is transcribed again. Minimum `250`. Requests never overlap, so a slow backend simply gives fewer interims |
+| `DICTION_PREVIEW_URL` | (empty) | URL of a separate OpenAI-compatible STT backend for the open segment's interim requests. Empty: the session's own backend |
+| `DICTION_PREVIEW_MODEL` | (empty) | Model ID forwarded to `DICTION_PREVIEW_URL` |
+| `DICTION_PREVIEW_AUTH` | (empty) | Authorization header forwarded to `DICTION_PREVIEW_URL` |
+| `DICTION_SEGMENT_PAUSE_MS` | `700` | A pause this long ends a segment. Minimum `200` |
+| `DICTION_SEGMENT_MIN_MS` | `8000` | A segment is never shorter than this. Minimum `1000` |
+| `DICTION_SEGMENT_MAX_MS` | `20000` | Past this length, a pause of `DICTION_SEGMENT_SHORT_PAUSE_MS` is enough |
+| `DICTION_SEGMENT_SHORT_PAUSE_MS` | `300` | The pause that ends a segment longer than `DICTION_SEGMENT_MAX_MS`. Minimum `100` |
 
 ### LLM (AI Post-processing)
 

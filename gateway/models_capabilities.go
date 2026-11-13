@@ -24,8 +24,7 @@ type capabilityFlags struct {
 	// may take after the raw transcript was sent. Advertised so the app waits as long.
 	postDeliveryMs int
 	// preview / previewOpus: the gateway answers preview=cloud on /v1/audio/stream with
-	// interim frames on PCM / Opus sessions. The community build has no preview source,
-	// so main.go leaves both false; a build that adds one sets them.
+	// interim frames on PCM / Opus sessions (core.Gateway.PreviewCapabilities).
 	preview     bool
 	previewOpus bool
 }
