@@ -336,13 +336,16 @@ func (e *liveEngine) committedText() string { return joinSegments(e.texts, e.lan
 // end a sentence ("not", "her", "that", "will") or start one ("When", "After", "Then")
 // is left out, because joining two real sentences is worse than a stray full stop.
 var (
-	segDanglingEnd = setOf("a", "an", "the", "and", "or", "nor", "of", "to", "for", "with", "from",
-		"into", "is", "are", "was", "were", "been", "am", "if", "because", "than", "my", "our",
-		"your", "their", "shows", "showed", "including", "per", "plus", "versus", "vs")
-	segContinuingStart = setOf("and", "or", "nor", "to", "of", "than", "whom", "whose", "plus",
-		"versus", "including")
+	// Not here, because they often end a spoken sentence: is/are/was/were/am/been
+	// ("I know what it is."), to ("I'd love to.").
+	segDanglingEnd = setOf("a", "an", "the", "and", "or", "nor", "of", "for", "with", "from",
+		"into", "if", "because", "than", "my", "our", "your", "their", "shows", "showed",
+		"including", "per", "plus", "versus", "vs")
+	// Not here, because they often start one: of ("Of course…"), to ("To be fair…"),
+	// plus ("Plus, it's cheaper.").
+	segContinuingStart = setOf("and", "or", "nor", "than", "whom", "whose", "versus", "including")
 	// After a removed full stop, only these words are lowercased. Anything else keeps its
-	// capital, because it may be a name ("introduced to. John" → "introduced to John").
+	// capital, because it may be a name ("lunch with. John" → "lunch with John").
 	segLowerable = setOf("a", "an", "the", "and", "or", "nor", "but", "so", "to", "of", "for",
 		"with", "without", "from", "in", "on", "at", "by", "into", "after", "before", "when",
 		"while", "then", "if", "because", "than", "as", "that", "this", "these", "those", "it",

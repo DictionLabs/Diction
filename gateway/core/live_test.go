@@ -321,12 +321,12 @@ func TestStreaming_BuiltinPreview_IgnoredWithoutParam(t *testing.T) {
 func TestJoinSegments_RepairsMidSentenceCuts(t *testing.T) {
 	// A backend punctuates each segment as a sentence; this is a dictation with mid-sentence pauses.
 	got := joinSegments([]string{
-		"The plan for the trip is.", "After the second meeting.", "To book the train at a low fare and.",
+		"The plan for the trip starts with.", "The second meeting.", "And.", "After that we book the train at a low fare and.",
 		"We leave within two weeks.", "If the forecast shows.", "Heavy rain.", "We will take the car.",
 		"I also want a paper map.", "Copy Mr.", "Smith?", "Done.",
 	}, "en")
 	// Only function words are lowercased; "Heavy" keeps its capital (it could be a name).
-	want := "The plan for the trip is after the second meeting to book the train at a low fare and " +
+	want := "The plan for the trip starts with the second meeting and after that we book the train at a low fare and " +
 		"we leave within two weeks. If the forecast shows Heavy rain. We will take the car. " +
 		"I also want a paper map. Copy Mr. Smith? Done."
 	if got != want {
@@ -339,11 +339,15 @@ func TestJoinSegments_KeepsCapitalsThatMatter(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 	// Names after a removed stop keep their capital.
-	if got := joinSegments([]string{"He was introduced to.", "John at the office.", "Seen with.", "Émile."}, "en"); got != "He was introduced to John at the office. Seen with Émile." {
+	if got := joinSegments([]string{"He had lunch with.", "John at the office.", "Seen with.", "Émile."}, "en"); got != "He had lunch with John at the office. Seen with Émile." {
 		t.Fatalf("got %q", got)
 	}
 	// Real sentence ends stay: "not", "her", "that" can end a sentence; "When" can start one.
 	if got := joinSegments([]string{"The printer did not.", "Her laptop was fine.", "I told her.", "When she called, I said that.", "Then we left."}, "en"); got != "The printer did not. Her laptop was fine. I told her. When she called, I said that. Then we left." {
+		t.Fatalf("got %q", got)
+	}
+	// Copulas and "to" end spoken sentences; "Of course", "To be fair" and "Plus" start them.
+	if got := joinSegments([]string{"I know what it is.", "Anyway, it works.", "I'd love to.", "Of course it rained.", "It was.", "To be fair, it was cheap.", "That is how it was.", "Plus, it's quick."}, "en"); got != "I know what it is. Anyway, it works. I'd love to. Of course it rained. It was. To be fair, it was cheap. That is how it was. Plus, it's quick." {
 		t.Fatalf("got %q", got)
 	}
 	if got := joinSegments([]string{"", " Hello. ", ""}, "en"); got != "Hello." {
