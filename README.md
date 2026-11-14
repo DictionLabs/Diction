@@ -94,6 +94,12 @@
       <sub><b>basnijholt</b></sub>
     </a>
   </td>
+  <td align="center">
+    <a href="https://github.com/testyfishy">
+      <img src="https://github.com/testyfishy.png?size=80" width="60" alt="testyfishy"><br>
+      <sub><b>testyfishy</b></sub>
+    </a>
+  </td>
 </tr></table>
 
 ---
