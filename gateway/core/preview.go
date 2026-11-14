@@ -67,7 +67,12 @@ func startPreviewPump(ctx context.Context, conn *websocket.Conn, language string
 	if PreviewRelay == nil {
 		return nil
 	}
-	sess := PreviewRelay(ctx, language)
+	return startPreviewPumpWith(ctx, conn, PreviewRelay(ctx, language))
+}
+
+// startPreviewPumpWith runs the writer for an already-open session (the PreviewRelay
+// hook's, or the built-in one in live.go). Nil session → nil pump.
+func startPreviewPumpWith(ctx context.Context, conn *websocket.Conn, sess PreviewSession) *previewPump {
 	if sess == nil {
 		return nil
 	}

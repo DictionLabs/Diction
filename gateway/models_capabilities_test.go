@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"testing"
 )
 
@@ -69,16 +70,35 @@ func TestWithCapabilities_NonOKPassesThroughUntouched(t *testing.T) {
 	}
 }
 
-// The community build has no preview source: the real mux says so explicitly.
-func TestBuildMux_ModelsAdvertisesNoPreview(t *testing.T) {
-	body := modelsBody(t, nil)
+func buildMuxCaps(t *testing.T, env map[string]string) map[string]bool {
+	t.Helper()
+	body := modelsBody(t, env)
 	var caps map[string]bool
 	if err := json.Unmarshal(body["capabilities"], &caps); err != nil {
 		t.Fatalf("capabilities: %v", err)
 	}
+	return caps
+}
+
+// Live text is off by default: the real mux says so explicitly.
+func TestBuildMux_ModelsAdvertisesNoPreviewByDefault(t *testing.T) {
+	caps := buildMuxCaps(t, map[string]string{"DICTION_PREVIEW": ""})
 	for _, k := range []string{"preview", "preview_opus"} {
 		if got, ok := caps[k]; !ok || got {
 			t.Errorf("capabilities[%q] = %v (present %v), want present and false", k, got, ok)
 		}
+	}
+}
+
+// DICTION_PREVIEW=chunked answers preview=cloud, so the mux advertises it. Opus
+// sessions need ffmpeg to decode the audio as it arrives.
+func TestBuildMux_ModelsAdvertisesBuiltinPreview(t *testing.T) {
+	caps := buildMuxCaps(t, map[string]string{"DICTION_PREVIEW": "chunked"})
+	if !caps["preview"] {
+		t.Errorf("capabilities[preview] = false, want true with DICTION_PREVIEW=chunked")
+	}
+	_, err := exec.LookPath("ffmpeg")
+	if want := err == nil; caps["preview_opus"] != want {
+		t.Errorf("capabilities[preview_opus] = %v, want %v (ffmpeg on PATH: %v)", caps["preview_opus"], want, want)
 	}
 }
