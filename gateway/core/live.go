@@ -242,8 +242,8 @@ type liveEngine struct {
 	committed int64    // sample position up to which texts cover the audio
 	failed    error
 	finishing bool
-	busy      bool // a segment job is running (tests wait on it)
-	english   bool // the full-stop repair in joinSegments is English-only
+	busy      bool   // a segment job is running (tests wait on it)
+	lang      string // session language: joinSegments' English repair and spaceless scripts
 
 	partialCancel  context.CancelFunc
 	partialFrom    int64 // committed position the last partial was computed from
@@ -327,7 +327,7 @@ func (e *liveEngine) commit(to int64, text string) {
 	e.committed = to
 }
 
-func (e *liveEngine) committedText() string { return joinSegments(e.texts, e.english) }
+func (e *liveEngine) committedText() string { return joinSegments(e.texts, e.lang) }
 
 // Words that (almost) never end a sentence, and words that (almost) never start one.
 // A backend punctuates every segment as if it were complete, so a cut at a mid-sentence
@@ -374,12 +374,48 @@ func lastWord(s string) string {
 	return strings.TrimRight(f[len(f)-1], ".,;:")
 }
 
-// joinSegments joins segment texts with spaces. For English (the word lists are
-// English) it also removes the full stop a cut put in mid-sentence: when a segment ends
-// in a word that cannot end a sentence, or the next starts with one that cannot start
-// one. The next word is then lowercased only if it is a common function word, so names
-// and acronyms keep their capitals. Question and exclamation marks are always kept.
-func joinSegments(texts []string, english bool) string {
+// spacelessLang reports a language written without spaces between words.
+func spacelessLang(lang string) bool {
+	l := strings.ToLower(lang)
+	if i := strings.IndexAny(l, "-_"); i >= 0 {
+		l = l[:i]
+	}
+	switch l {
+	case "zh", "ja", "yue", "th":
+		return true
+	}
+	return false
+}
+
+// spacelessRune reports a character of a script written without spaces (Chinese,
+// Japanese, Thai), including CJK and fullwidth punctuation such as 。and ，.
+func spacelessRune(r rune) bool {
+	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Thai) ||
+		(r >= 0x3000 && r <= 0x303F) || (r >= 0xFF00 && r <= 0xFFEF)
+}
+
+// segmentSeparator is what goes between two segments: nothing where the text is
+// Chinese, Japanese or Thai, a space otherwise. In a zh/ja/yue/th session one such
+// character at the seam is enough; in any other session (auto-detect included) both
+// sides must be one, so mixed text keeps its spaces.
+func segmentSeparator(prev, next, lang string) string {
+	last, _ := utf8.DecodeLastRuneInString(prev)
+	first, _ := utf8.DecodeRuneInString(next)
+	a, b := spacelessRune(last), spacelessRune(first)
+	if (a && b) || (spacelessLang(lang) && (a || b)) {
+		return ""
+	}
+	return " "
+}
+
+// joinSegments joins segment texts with spaces (none in Chinese, Japanese or Thai text,
+// see segmentSeparator). For English (the word lists are English) it also removes the
+// full stop a cut put in mid-sentence: when a segment ends in a word that cannot end a
+// sentence, or the next starts with one that cannot start one. The next word is then
+// lowercased only if it is a common function word, so names and acronyms keep their
+// capitals. Question and exclamation marks are always kept.
+func joinSegments(texts []string, lang string) string {
+	english := strings.HasPrefix(strings.ToLower(lang), "en")
 	var b strings.Builder
 	for _, t := range texts {
 		t = strings.TrimSpace(t)
@@ -401,7 +437,7 @@ func joinSegments(texts []string, english bool) string {
 				t = string(unicode.ToLower(r)) + t[size:]
 			}
 		}
-		b.WriteString(" ")
+		b.WriteString(segmentSeparator(b.String(), t, lang))
 		b.WriteString(t)
 	}
 	return b.String()
@@ -509,7 +545,7 @@ func (e *liveEngine) step() bool {
 	e.partialCancel = nil
 	// A segment may have committed meanwhile; this partial is then stale.
 	if err == nil && e.committed == from && !implausibleText(text, wav) {
-		joined := joinSegments(append(append([]string(nil), e.texts...), text), e.english)
+		joined := joinSegments(append(append([]string(nil), e.texts...), text), e.lang)
 		e.emit(joined)
 	}
 	e.mu.Unlock()
@@ -596,7 +632,7 @@ func (e *liveEngine) Finish(ctx context.Context) (string, bool, liveFinish) {
 		// Nothing heard, or the detector misjudged the audio: let the whole clip decide.
 		return "", false, st
 	}
-	return joinSegments(texts, e.english), true, st
+	return joinSegments(texts, e.lang), true, st
 }
 
 // Close stops the worker and any request in flight. Idempotent.
@@ -655,7 +691,7 @@ func (g *Gateway) startLive(ctx context.Context, target *url.URL, backend *Backe
 		}
 	}
 	e := newLiveEngine(ctx, g.live, final, partial)
-	e.english = strings.HasPrefix(strings.ToLower(language), "en")
+	e.lang = language
 	return e
 }
 

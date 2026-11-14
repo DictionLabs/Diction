@@ -324,7 +324,7 @@ func TestJoinSegments_RepairsMidSentenceCuts(t *testing.T) {
 		"The plan for the trip is.", "After the second meeting.", "To book the train at a low fare and.",
 		"We leave within two weeks.", "If the forecast shows.", "Heavy rain.", "We will take the car.",
 		"I also want a paper map.", "Copy Mr.", "Smith?", "Done.",
-	}, true)
+	}, "en")
 	// Only function words are lowercased; "Heavy" keeps its capital (it could be a name).
 	want := "The plan for the trip is after the second meeting to book the train at a low fare and " +
 		"we leave within two weeks. If the forecast shows Heavy rain. We will take the car. " +
@@ -335,26 +335,51 @@ func TestJoinSegments_RepairsMidSentenceCuts(t *testing.T) {
 }
 
 func TestJoinSegments_KeepsCapitalsThatMatter(t *testing.T) {
-	if got := joinSegments([]string{"Book an.", "SUV for the weekend.", "And.", "I will call."}, true); got != "Book an SUV for the weekend and I will call." {
+	if got := joinSegments([]string{"Book an.", "SUV for the weekend.", "And.", "I will call."}, "en"); got != "Book an SUV for the weekend and I will call." {
 		t.Fatalf("got %q", got)
 	}
 	// Names after a removed stop keep their capital.
-	if got := joinSegments([]string{"He was introduced to.", "John at the office.", "Seen with.", "Émile."}, true); got != "He was introduced to John at the office. Seen with Émile." {
+	if got := joinSegments([]string{"He was introduced to.", "John at the office.", "Seen with.", "Émile."}, "en"); got != "He was introduced to John at the office. Seen with Émile." {
 		t.Fatalf("got %q", got)
 	}
 	// Real sentence ends stay: "not", "her", "that" can end a sentence; "When" can start one.
-	if got := joinSegments([]string{"The printer did not.", "Her laptop was fine.", "I told her.", "When she called, I said that.", "Then we left."}, true); got != "The printer did not. Her laptop was fine. I told her. When she called, I said that. Then we left." {
+	if got := joinSegments([]string{"The printer did not.", "Her laptop was fine.", "I told her.", "When she called, I said that.", "Then we left."}, "en"); got != "The printer did not. Her laptop was fine. I told her. When she called, I said that. Then we left." {
 		t.Fatalf("got %q", got)
 	}
-	if got := joinSegments([]string{"", " Hello. ", ""}, true); got != "Hello." {
+	if got := joinSegments([]string{"", " Hello. ", ""}, "en"); got != "Hello." {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestJoinSegments_SpacelessScripts(t *testing.T) {
+	for _, c := range []struct {
+		lang string
+		in   []string
+		want string
+	}{
+		{"zh", []string{"我们明天去北京，", "然后坐火车回来。"}, "我们明天去北京，然后坐火车回来。"},
+		{"zh-Hant", []string{"今天天氣很好。", "我們去公園吧。"}, "今天天氣很好。我們去公園吧。"},
+		{"ja", []string{"明日は会議があります。", "資料を準備してください。"}, "明日は会議があります。資料を準備してください。"},
+		{"yue", []string{"我哋聽日去", "飲茶。"}, "我哋聽日去飲茶。"},
+		{"th", []string{"วันนี้อากาศดี", "เราไปเที่ยวกัน"}, "วันนี้อากาศดีเราไปเที่ยวกัน"},
+		// A spaceless session joins Latin text to Chinese without a space.
+		{"zh", []string{"我买了", "iPhone。"}, "我买了iPhone。"},
+		// Auto-detect: by script, both sides must be spaceless.
+		{"auto", []string{"我们明天去北京，", "然后坐火车回来。"}, "我们明天去北京，然后坐火车回来。"},
+		{"auto", []string{"I bought an", "iPhone today."}, "I bought an iPhone today."},
+		{"auto", []string{"Meeting with 王先生.", "Then lunch."}, "Meeting with 王先生. Then lunch."},
+		{"ko", []string{"오늘 날씨가 좋네요.", "산책 갈까요?"}, "오늘 날씨가 좋네요. 산책 갈까요?"},
+	} {
+		if got := joinSegments(c.in, c.lang); got != c.want {
+			t.Errorf("%s %q: got %q, want %q", c.lang, c.in, got, c.want)
+		}
 	}
 }
 
 func TestJoinSegments_OnlyRepairsEnglish(t *testing.T) {
 	// Czech "a" (and) / "to" (it): "Je to." is a whole sentence. No repair outside English.
 	in := []string{"Je to.", "Über alles a.", "Říkal to."}
-	if got := joinSegments(in, false); got != "Je to. Über alles a. Říkal to." {
+	if got := joinSegments(in, "cs"); got != "Je to. Über alles a. Říkal to." {
 		t.Fatalf("got %q", got)
 	}
 }
