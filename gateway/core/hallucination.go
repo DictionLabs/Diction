@@ -13,6 +13,16 @@ import (
 // error-kind reporting) without inventing a parallel code path.
 var errSTTHallucination = errors.New("stt: degenerate repetition detected")
 
+// errImplausibleLength: the backend returned more text than the audio can hold
+// (liveMaxCharsPerSec). Handled like any hallucination: not retried, the
+// dictation fails instead of typing invented text.
+var errImplausibleLength error = implausibleLengthError{}
+
+type implausibleLengthError struct{}
+
+func (implausibleLengthError) Error() string        { return "stt: more text than the audio can hold" }
+func (implausibleLengthError) Is(target error) bool { return target == errSTTHallucination }
+
 // degenerateRepetitionThreshold is how many consecutive occurrences of the
 // same normalized word we tolerate before treating the transcript as a
 // hallucination. Real speech repeats short words ("no no no no no", ~5) but

@@ -1086,7 +1086,10 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		whisperPrompt := buildWhisperPrompt(contextJSON)
 		customWordsJSON := buildCustomWordsField(contextJSON)
 		sttStart := time.Now()
-		var text string
+		var (
+			text   string
+			sttErr error
+		)
 		// Segmented final: most of the audio was transcribed while the user talked.
 		// Anything short of a clean result falls through to the whole-clip request.
 		segmented := false
@@ -1111,21 +1114,22 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		}
 		live.close() // nothing may compete with the whole-clip request for the backend
 		if !segmented {
-			text, err = g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt, customWordsJSON)
+			text, sttErr = g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt, customWordsJSON)
 			// Pieces mode holds every piece to a plausibility bound; hold the whole clip
 			// to it too, so an invented answer is not typed into the user's text.
-			if err == nil && g.live.Segmented && audioDurationMs > 0 &&
+			if sttErr == nil && g.live.Segmented && audioDurationMs > 0 &&
 				int64(utf8.RuneCountInString(text)) > liveMaxCharsPerSec*audioDurationMs/1000+20 && !hasDegenerateRepetition(text) {
-				log.Printf("live: more text than %dms of audio can hold; empty result", audioDurationMs)
-				text = ""
+				log.Printf("live: %d chars is more text than %dms of audio can hold; failing the dictation",
+					utf8.RuneCountInString(text), audioDurationMs)
+				sttErr = errImplausibleLength
 			}
 		}
 		sttMs := time.Since(sttStart).Milliseconds()
-		if err == nil && hasDegenerateRepetition(text) {
-			err = errSTTHallucination
+		if sttErr == nil && hasDegenerateRepetition(text) {
+			sttErr = errSTTHallucination
 		}
-		if err != nil {
-			log.Printf("ws proxy: %v", err)
+		if sttErr != nil {
+			log.Printf("ws proxy: %v", sttErr)
 			retry := streamRetryInput{
 				model: model, language: language, detectActive: detectActive,
 				adResult: adResult, adCtx: adCtx, payload: payload,
@@ -1135,7 +1139,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			// stt_ms includes the retry, same as the HTTP path's `whisperMs`.
 			var retryMs int64
 			var ok bool
-			if text, backend, retryMs, ok = g.handleStreamBackendFailure(ctx, err, backend, retry); !ok {
+			if text, backend, retryMs, ok = g.handleStreamBackendFailure(ctx, sttErr, backend, retry); !ok {
 				CloseWSWithTimeout(conn, wsCloseFailed, "transcription failed", 2*time.Second)
 				return
 			}
