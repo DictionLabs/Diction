@@ -744,3 +744,52 @@ func TestStreaming_BuiltinPreview_OpusDecodeSlotsBusy(t *testing.T) {
 		t.Fatalf("frames %v, calls %d, sent %q", frames, atomic.LoadInt32(calls), name)
 	}
 }
+
+// Partials are capped gateway-wide: while one session's partial holds the only slot,
+// another session sends no partials, but its segments still go through.
+func TestLiveEngine_PartialsShareAGatewayWideCap(t *testing.T) {
+	cfg := testLiveConfig()
+	cfg.partialSlots = make(chan struct{}, 1)
+
+	held := &fakeASR{hold: make(chan struct{})}
+	a := newLiveEngine(context.Background(), cfg, held.transcribe, held.transcribe)
+	defer a.Close()
+	a.Write(pcmPattern(1000)) //nolint:errcheck — enough speech for a partial, no cut
+	for deadline := time.Now().Add(5 * time.Second); len(held.durations()) == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("first session's partial never started")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	segs := &fakeASR{}
+	parts := &fakeASR{}
+	b := newLiveEngine(context.Background(), cfg, segs.transcribe, parts.transcribe)
+	defer b.Close()
+	feedLive(t, b, pcmPattern(4000, 1000, 1000)) // one cut, then an open segment
+	if n := len(segs.durations()); n != 1 {
+		t.Fatalf("second session sent %d segment requests while the slot was taken, want 1", n)
+	}
+	if n := len(parts.durations()); n != 0 {
+		t.Fatalf("second session sent %d partials while the only slot was taken, want 0", n)
+	}
+
+	close(held.hold) // the first partial finishes and frees the slot
+	for deadline := time.Now().Add(5 * time.Second); len(parts.durations()) == 0; {
+		if time.Now().After(deadline) {
+			t.Fatal("second session never sent a partial after the slot was freed")
+		}
+		b.Write(pcmPattern(200)) //nolint:errcheck — new audio is what retries a skipped partial
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestLiveConfigFromEnv_PartialCap(t *testing.T) {
+	if c := LiveConfigFromEnv(); c.PartialMaxConcurrent != 2 || cap(c.partialSlots) != 2 {
+		t.Fatalf("default cap %d / %d slots, want 2", c.PartialMaxConcurrent, cap(c.partialSlots))
+	}
+	t.Setenv("DICTION_PREVIEW_MAX_CONCURRENT", "0")
+	if c := LiveConfigFromEnv(); cap(c.partialSlots) != 1 {
+		t.Fatalf("0 gives %d slots, want at least 1", cap(c.partialSlots))
+	}
+}

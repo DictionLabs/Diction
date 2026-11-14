@@ -48,6 +48,10 @@ type LiveConfig struct {
 	FirstMinSegMs int
 
 	PartialEveryMs int // preview: re-transcribe the open segment after this much new audio
+	// Preview partials in flight across the whole gateway (DICTION_PREVIEW_MAX_CONCURRENT).
+	// A session whose partial finds them all taken skips it; segments and finals never wait.
+	PartialMaxConcurrent int
+	partialSlots         chan struct{} // nil = no limit (tests); shared by every copy of the config
 
 	// Optional separate backend for preview partials (e.g. the ASR server directly,
 	// skipping slower post-processing). Empty URL = the session's own backend.
@@ -60,17 +64,18 @@ type LiveConfig struct {
 // below a sane minimum are raised to it (a 0 ms preview interval would hammer the backend).
 func LiveConfigFromEnv() LiveConfig {
 	c := LiveConfig{
-		Segmented:      EnvBoolOrDefault("DICTION_SEGMENTED_FINAL", false),
-		Preview:        strings.EqualFold(EnvOrDefault("DICTION_PREVIEW", "off"), "chunked"),
-		PauseMs:        EnvIntOrDefault("DICTION_SEGMENT_PAUSE_MS", 700),
-		MinSegMs:       EnvIntOrDefault("DICTION_SEGMENT_MIN_MS", 8000),
-		MaxSegMs:       EnvIntOrDefault("DICTION_SEGMENT_MAX_MS", 20000),
-		ShortPauseMs:   EnvIntOrDefault("DICTION_SEGMENT_SHORT_PAUSE_MS", 300),
-		FirstMinSegMs:  EnvIntOrDefault("DICTION_SEGMENT_FIRST_MIN_MS", 0),
-		PartialEveryMs: EnvIntOrDefault("DICTION_PREVIEW_INTERVAL_MS", 1000),
-		PreviewURL:     EnvOrDefault("DICTION_PREVIEW_URL", ""),
-		PreviewModel:   EnvOrDefault("DICTION_PREVIEW_MODEL", ""),
-		PreviewAuth:    EnvOrDefault("DICTION_PREVIEW_AUTH", ""),
+		Segmented:            EnvBoolOrDefault("DICTION_SEGMENTED_FINAL", false),
+		Preview:              strings.EqualFold(EnvOrDefault("DICTION_PREVIEW", "off"), "chunked"),
+		PauseMs:              EnvIntOrDefault("DICTION_SEGMENT_PAUSE_MS", 700),
+		MinSegMs:             EnvIntOrDefault("DICTION_SEGMENT_MIN_MS", 8000),
+		MaxSegMs:             EnvIntOrDefault("DICTION_SEGMENT_MAX_MS", 20000),
+		ShortPauseMs:         EnvIntOrDefault("DICTION_SEGMENT_SHORT_PAUSE_MS", 300),
+		FirstMinSegMs:        EnvIntOrDefault("DICTION_SEGMENT_FIRST_MIN_MS", 0),
+		PartialEveryMs:       EnvIntOrDefault("DICTION_PREVIEW_INTERVAL_MS", 1000),
+		PartialMaxConcurrent: EnvIntOrDefault("DICTION_PREVIEW_MAX_CONCURRENT", 2),
+		PreviewURL:           EnvOrDefault("DICTION_PREVIEW_URL", ""),
+		PreviewModel:         EnvOrDefault("DICTION_PREVIEW_MODEL", ""),
+		PreviewAuth:          EnvOrDefault("DICTION_PREVIEW_AUTH", ""),
 	}
 	atLeast := func(v *int, min int) {
 		if *v < min {
@@ -82,6 +87,8 @@ func LiveConfigFromEnv() LiveConfig {
 	atLeast(&c.MinSegMs, 1000)
 	atLeast(&c.MaxSegMs, c.MinSegMs)
 	atLeast(&c.PartialEveryMs, 250)
+	atLeast(&c.PartialMaxConcurrent, 1)
+	c.partialSlots = make(chan struct{}, c.PartialMaxConcurrent)
 	return c
 }
 
@@ -533,6 +540,18 @@ func (e *liveEngine) step() bool {
 	if grown*1000/liveSampleRate < int64(e.cfg.PartialEveryMs) || e.det.voiced*liveFrameMs < liveMinVoicedMs {
 		e.mu.Unlock()
 		return false
+	}
+	// Each partial re-sends the whole open segment, so the gateway-wide cap is what
+	// keeps many sessions from tying up a self-hoster's GPU. Busy: skip this one; the
+	// next audio write tries again.
+	if slots := e.cfg.partialSlots; slots != nil {
+		select {
+		case slots <- struct{}{}:
+			defer func() { <-slots }()
+		default:
+			e.mu.Unlock()
+			return false
+		}
 	}
 	from := e.committed
 	wav := e.wav(from, end)
