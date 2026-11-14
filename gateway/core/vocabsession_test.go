@@ -6,7 +6,7 @@ import (
 )
 
 func TestSanitizeSessionContext(t *testing.T) {
-	names := [][]string{{"Ondrej"}, {"Machala"}}
+	names := [][]string{{"Endre"}, {"Mochala"}}
 	cases := []struct {
 		name       string
 		transcript string
@@ -19,28 +19,28 @@ func TestSanitizeSessionContext(t *testing.T) {
 			transcript: "Hello, my name is Andre McCullough.",
 			session:    []string{"Hello, my name is Andre McCullough."},
 			forms:      names,
-			want:       []string{"Hello, my name is Ondrej Machala."},
+			want:       []string{"Hello, my name is Endre Mochala."},
 		},
 		{
 			name:       "session line holds a different mishearing than the utterance",
 			transcript: "Hey, my name is Andre Makala.",
 			session:    []string{"Hello, my name is Andre McCullough.", "Hey, my name is Andre Makala."},
 			forms:      names,
-			want:       []string{"Hello, my name is Ondrej Machala.", "Hey, my name is Ondrej Machala."},
+			want:       []string{"Hello, my name is Endre Mochala.", "Hey, my name is Endre Mochala."},
 		},
 		{
 			name:       "session line is matched on its own even when the utterance has no name",
 			transcript: "Thanks, see you tomorrow.",
 			session:    []string{"This is Andre McCullough speaking."},
 			forms:      names,
-			want:       []string{"This is Ondrej Machala speaking."},
+			want:       []string{"This is Endre Mochala speaking."},
 		},
 		{
 			name:       "every occurrence, any case, punctuation kept",
 			transcript: "andre mccullough said hi",
 			session:    []string{"ANDRE, andre and Andre's friend."},
-			forms:      [][]string{{"Ondrej"}, {"Machala"}},
-			want:       []string{"Ondrej, Ondrej and Andre's friend."},
+			forms:      [][]string{{"Endre"}, {"Mochala"}},
+			want:       []string{"Endre, Endre and Andre's friend."},
 		},
 		{
 			name:       "ordinary words that sound like a name are left alone",
@@ -51,10 +51,10 @@ func TestSanitizeSessionContext(t *testing.T) {
 		},
 		{
 			name:       "canonical spelling and unrelated context untouched",
-			transcript: "Ondrej Machala here.",
-			session:    []string{"We deployed Kubernetes today.", "Ondrej Machala wrote this."},
+			transcript: "Endre Mochala here.",
+			session:    []string{"We deployed Kubernetes today.", "Endre Mochala wrote this."},
 			forms:      names,
-			want:       []string{"We deployed Kubernetes today.", "Ondrej Machala wrote this."},
+			want:       []string{"We deployed Kubernetes today.", "Endre Mochala wrote this."},
 		},
 		{
 			name:       "multi-word mishearing",
@@ -65,9 +65,9 @@ func TestSanitizeSessionContext(t *testing.T) {
 		},
 		{
 			name:       "a span claimed by two custom words drops the line",
-			transcript: "I spoke with Cristina.",
-			session:    []string{"Cristina called.", "The weather is nice."},
-			forms:      [][]string{{"Kristýna", "Cristina"}, {"Christina", "Cristina"}},
+			transcript: "I spoke with Carlota.",
+			session:    []string{"Carlota called.", "The weather is nice."},
+			forms:      [][]string{{"Karlota", "Carlota"}, {"Charlotte", "Carlota"}},
 			want:       []string{"The weather is nice."},
 		},
 		{
@@ -93,7 +93,7 @@ func TestSanitizeSessionContext(t *testing.T) {
 }
 
 func TestSanitizeSessionContextEmpty(t *testing.T) {
-	if got := SanitizeSessionContext("x", nil, [][]string{{"Ondrej"}}); got != nil {
+	if got := SanitizeSessionContext("x", nil, [][]string{{"Endre"}}); got != nil {
 		t.Errorf("nil session: got %q", got)
 	}
 }

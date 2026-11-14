@@ -26,15 +26,15 @@ func TestRankVocabulary(t *testing.T) {
 	}{
 		{
 			name:       "misheard surname is admitted",
-			transcript: "I spoke with Ondrej Mahala yesterday about the invoice",
-			forms:      [][]string{entry("Machala")},
-			want:       []string{"Machala"},
+			transcript: "I spoke with Endre Mohala yesterday about the invoice",
+			forms:      [][]string{entry("Mochala")},
+			want:       []string{"Mochala"},
 		},
 		{
 			name:       "exact spelling already present is admitted so it is protected",
-			transcript: "I spoke with Ondrej Machala yesterday",
-			forms:      [][]string{entry("Machala")},
-			want:       []string{"Machala"},
+			transcript: "I spoke with Endre Mochala yesterday",
+			forms:      [][]string{entry("Mochala")},
+			want:       []string{"Mochala"},
 		},
 		{
 			name:       "czech name behind an english mishearing",
@@ -43,10 +43,10 @@ func TestRankVocabulary(t *testing.T) {
 			want:       []string{"Vsetín"},
 		},
 		{
-			name:       "christina reaches kristyna through the soft-c rule",
-			transcript: "I spoke with Christina today about the project timeline",
-			forms:      [][]string{entry("Kristýna")},
-			want:       []string{"Kristýna"},
+			name:       "charlotte reaches karlota through the ch-to-k edit distance",
+			transcript: "I spoke with Charlotte today about the project timeline",
+			forms:      [][]string{entry("Karlota")},
+			want:       []string{"Karlota"},
 		},
 		{
 			name:       "variant carries an entry the canonical spelling cannot reach",
@@ -102,14 +102,14 @@ func TestRankVocabulary(t *testing.T) {
 			// whole utterance.
 			name:       "several words misheard in one utterance are all admitted",
 			transcript: "Hey, my name is Andre McCullough and I have two servers. One is called Quill and the second one Fennec.",
-			forms:      [][]string{entry("ondrej"), entry("machala"), entry("kuiil"), entry("fennec")},
-			want:       []string{"ondrej", "machala", "kuiil", "fennec"},
+			forms:      [][]string{entry("endre"), entry("mochala"), entry("kuiil"), entry("fennec")},
+			want:       []string{"endre", "mochala", "kuiil", "fennec"},
 		},
 		{
 			name:       "an exact hit elsewhere does not suppress a near match",
 			transcript: "Andre runs the Fennec server",
-			forms:      [][]string{entry("Ondrej"), entry("Fennec")},
-			want:       []string{"Ondrej", "Fennec"},
+			forms:      [][]string{entry("Endre"), entry("Fennec")},
+			want:       []string{"Endre", "Fennec"},
 		},
 		{
 			// The slack still works where it was meant to: between rivals for the same word.
@@ -121,16 +121,16 @@ func TestRankVocabulary(t *testing.T) {
 		{
 			name:       "english mishearing of a czech surname",
 			transcript: "my name is Andre McCullough",
-			forms:      [][]string{entry("Ondrej"), entry("Machala")},
-			want:       []string{"Ondrej", "Machala"},
+			forms:      [][]string{entry("Endre"), entry("Mochala")},
+			want:       []string{"Endre", "Mochala"},
 		},
 		{
-			// McCullough and Machala share only their consonants (spelling 0.6 apart). Alone it is
+			// McCullough and Mochala share only their consonants (spelling 0.8 apart). Alone it is
 			// no better evidence than "Thursday" for tirzepatide; beside the misheard first name
 			// (above) it is a garbled full name.
 			name:       "a surname that shares only consonants is not enough on its own",
 			transcript: "my name is Andre McCullough",
-			forms:      [][]string{entry("Machala")},
+			forms:      [][]string{entry("Mochala")},
 			want:       nil,
 		},
 		{
@@ -165,12 +165,12 @@ func TestRankVocabulary(t *testing.T) {
 		{
 			name:       "empty transcript admits nothing",
 			transcript: "",
-			forms:      [][]string{entry("Machala")},
+			forms:      [][]string{entry("Mochala")},
 			want:       nil,
 		},
 		{
 			name:       "empty list admits nothing",
-			transcript: "I spoke with Ondrej Mahala",
+			transcript: "I spoke with Endre Mohala",
 			forms:      nil,
 			want:       nil,
 		},
@@ -202,9 +202,9 @@ func TestRankVocabulary_DistractorsAreDroppedAndBestSitsLast(t *testing.T) {
 	} {
 		forms = append(forms, entry(w))
 	}
-	forms = append(forms, entry("Machala"))
+	forms = append(forms, entry("Mochala"))
 
-	idx := RankVocabulary("I spoke with Mahala yesterday about the invoice", forms, DefaultVocabularyShortlist)
+	idx := RankVocabulary("I spoke with Mohala yesterday about the invoice", forms, DefaultVocabularyShortlist)
 	got := words(forms, idx)
 	if len(got) == 0 {
 		t.Fatal("expected the near match to be admitted")
@@ -212,7 +212,7 @@ func TestRankVocabulary_DistractorsAreDroppedAndBestSitsLast(t *testing.T) {
 	if len(got) > DefaultVocabularyShortlist {
 		t.Errorf("admitted %d entries, cap is %d", len(got), DefaultVocabularyShortlist)
 	}
-	if got[len(got)-1] != "Machala" {
+	if got[len(got)-1] != "Mochala" {
 		t.Errorf("best match must sit last, got %v", got)
 	}
 	for _, w := range got {
@@ -226,19 +226,19 @@ func TestRankVocabulary_RespectsLimit(t *testing.T) {
 	// Twelve spellings of the same sound: all are credible, so the cap is what bounds them.
 	forms := [][]string{}
 	for _, w := range []string{
-		"Machala", "Machalla", "Machalah", "Makhala", "Mahchala", "Machalo",
-		"Machaley", "Machalie", "Machalu", "Machalir", "Machalen", "Machalos",
+		"Mochala", "Mochalla", "Mochalah", "Mokhala", "Mohchala", "Mochalo",
+		"Mochaley", "Mochalie", "Mochalu", "Mochalir", "Mochalen", "Mochalos",
 	} {
 		forms = append(forms, entry(w))
 	}
-	idx := RankVocabulary("I spoke with Mahala yesterday", forms, 3)
+	idx := RankVocabulary("I spoke with Mohala yesterday", forms, 3)
 	if len(idx) > 3 {
 		t.Fatalf("limit not applied: got %d", len(idx))
 	}
 }
 
 func TestRankVocabulary_ZeroLimitAdmitsNothing(t *testing.T) {
-	if idx := RankVocabulary("Mahala", [][]string{entry("Machala")}, 0); idx != nil {
+	if idx := RankVocabulary("Mohala", [][]string{entry("Mochala")}, 0); idx != nil {
 		t.Errorf("expected nil for a zero limit, got %v", idx)
 	}
 }
@@ -246,13 +246,13 @@ func TestRankVocabulary_ZeroLimitAdmitsNothing(t *testing.T) {
 // A list far past the guard must still answer, and must still find the match inside it.
 func TestRankVocabulary_LargeListIsBounded(t *testing.T) {
 	forms := make([][]string, 0, vocabMaxEntries+50)
-	forms = append(forms, entry("Machala"))
+	forms = append(forms, entry("Mochala"))
 	for i := 0; i < vocabMaxEntries+49; i++ {
 		forms = append(forms, entry("Placeholder"+strings.Repeat("x", i%7+3)))
 	}
-	got := words(forms, RankVocabulary("I spoke with Mahala today", forms, DefaultVocabularyShortlist))
-	if len(got) == 0 || got[len(got)-1] != "Machala" {
-		t.Errorf("expected Machala last, got %v", got)
+	got := words(forms, RankVocabulary("I spoke with Mohala today", forms, DefaultVocabularyShortlist))
+	if len(got) == 0 || got[len(got)-1] != "Mochala" {
+		t.Errorf("expected Mochala last, got %v", got)
 	}
 }
 
@@ -274,15 +274,15 @@ func TestFoldPhonetic_PinsTheCasesTheProductRelieson(t *testing.T) {
 	}
 
 	// The two names the product turns on are *near*, not identical: no single "ch" rule can
-	// serve Czech and English at once (Christina opens with a /k/, Machala with an /x/), so
+	// serve Czech and English at once (Charlotte opens with a /k/, Mochala with an /x/), so
 	// edit distance carries the difference instead. These bounds are what keep both
 	// admissible — a fold change that widens either one breaks a real case.
 	near := []struct {
 		a, b string
 		max  float64
 	}{
-		{"Machala", "Mahala", 0.30},
-		{"Christina", "Kristýna", 0.20},
+		{"Mochala", "Mohala", 0.30},
+		{"Charlotte", "Karlota", 0.20},
 	}
 	for _, pair := range near {
 		if d := normalizedLevenshtein(foldPhonetic(pair.a), foldPhonetic(pair.b)); d > pair.max {
@@ -291,7 +291,7 @@ func TestFoldPhonetic_PinsTheCasesTheProductRelieson(t *testing.T) {
 	}
 
 	differ := [][2]string{
-		{"Machala", "Kubernetes"},
+		{"Mochala", "Kubernetes"},
 		{"Ava", "Iris"},
 		{"park", "Parker"},
 	}
@@ -303,11 +303,11 @@ func TestFoldPhonetic_PinsTheCasesTheProductRelieson(t *testing.T) {
 }
 
 // The shortlist knows which part of the transcript each word matched; handing that span to the
-// LLM is what turns "Andre McCullough" into "Ondrej Machala" (without it the model kept the
+// LLM is what turns "Andre McCullough" into "Endre Mochala" (without it the model kept the
 // transcript 0/4 on gpt-oss-120b, with it 4/4 — 2026-09-24). A lone word keeps its pointer too
 // (2026-11-05; between 2026-10-18 and then only full names had one).
 func TestMatchVocabulary_ReportsWhatWasHeard(t *testing.T) {
-	forms := [][]string{entry("ondrej"), entry("machala"), entry("kuiil"), entry("fennec")}
+	forms := [][]string{entry("endre"), entry("mochala"), entry("kuiil"), entry("fennec")}
 	got := MatchVocabulary(
 		"Hey, my name is Andre McCullough and I have two servers. One is called Quill and the second one Fennec.",
 		forms, DefaultVocabularyShortlist)
@@ -315,27 +315,27 @@ func TestMatchVocabulary_ReportsWhatWasHeard(t *testing.T) {
 	for _, m := range got {
 		heard[forms[m.Index][0]] = m.Heard
 	}
-	want := map[string]string{"ondrej": "Andre", "machala": "McCullough", "kuiil": "Quill", "fennec": ""}
+	want := map[string]string{"endre": "Andre", "mochala": "McCullough", "kuiil": "Quill", "fennec": ""}
 	if !reflect.DeepEqual(heard, want) {
 		t.Errorf("heard = %v, want %v", heard, want)
 	}
 }
 
-// "on the door" shares only consonants with Ondrej (spelling 0.67 apart), so it no longer
+// "on the door" shares only consonants with Endre (spelling 0.82 apart), so it no longer
 // reaches the prompt at all. With a pointer, gpt-oss-120b turned "I left the keys on the door."
-// into "I left the keys Ondrej." (2026-09-26).
+// into "I left the keys Endre." (2026-09-26).
 func TestMatchVocabulary_OrdinaryPhraseNotShortlisted(t *testing.T) {
-	forms := [][]string{entry("ondrej"), entry("machala")}
+	forms := [][]string{entry("endre"), entry("mochala")}
 	if got := MatchVocabulary("I left the keys on the door.", forms, DefaultVocabularyShortlist); len(got) != 0 {
 		t.Fatalf("shortlist = %v, want none", got)
 	}
 }
 
 // A lone heard word keeps its pointer (2026-11-05, reversing 2026-10-18): stripping it meant a
-// user who saved Ondřej and said it got "Andre" back. The word the user saved wins; the LLM
+// user who saved Endře and said it got "Andre" back. The word the user saved wins; the LLM
 // reads the sentence.
 func TestMatchVocabulary_LoneWordKeepsPointer(t *testing.T) {
-	forms := [][]string{entry("Ondřej"), entry("Machala"), entry("Nemotron")}
+	forms := [][]string{entry("Endře"), entry("Mochala"), entry("Nemotron")}
 	for transcript, heard := range map[string]string{
 		"I had lunch with Andre yesterday and he loved the place.": "Andre",
 		"Namotron runs on the second GPU now.":                     "Namotron",
@@ -349,13 +349,13 @@ func TestMatchVocabulary_LoneWordKeepsPointer(t *testing.T) {
 
 // A full name keeps its pointers: the neighbour is the corroboration, even when it was heard right.
 func TestMatchVocabulary_FullNameKeepsPointer(t *testing.T) {
-	forms := [][]string{entry("Ondřej"), entry("Machala")}
-	got := MatchVocabulary("Please send the invoice to Andrej Machala before Friday.", forms, DefaultVocabularyShortlist)
+	forms := [][]string{entry("Endře"), entry("Mochala")}
+	got := MatchVocabulary("Please send the invoice to Andrea Mochala before Friday.", forms, DefaultVocabularyShortlist)
 	heard := map[string]string{}
 	for _, m := range got {
 		heard[forms[m.Index][0]] = m.Heard
 	}
-	want := map[string]string{"Ondřej": "Andrej", "Machala": ""}
+	want := map[string]string{"Endře": "Andrea", "Mochala": ""}
 	if !reflect.DeepEqual(heard, want) {
 		t.Errorf("heard = %v, want %v", heard, want)
 	}
@@ -364,10 +364,10 @@ func TestMatchVocabulary_FullNameKeepsPointer(t *testing.T) {
 // A mishearing the user saved as a variant is their own evidence: pointer kept, even alone, and
 // even when the spellings share little.
 func TestMatchVocabulary_TaughtVariantKeepsPointer(t *testing.T) {
-	forms := [][]string{entry("Kristýna", "Christina")}
-	got := MatchVocabulary("I spoke with Christina today.", forms, DefaultVocabularyShortlist)
-	if len(got) != 1 || got[0].Heard != "Christina" {
-		t.Fatalf("shortlist = %+v, want Kristýna pointing at Christina", got)
+	forms := [][]string{entry("Karlota", "Charlotte")}
+	got := MatchVocabulary("I spoke with Charlotte today.", forms, DefaultVocabularyShortlist)
+	if len(got) != 1 || got[0].Heard != "Charlotte" {
+		t.Fatalf("shortlist = %+v, want Karlota pointing at Charlotte", got)
 	}
 }
 
@@ -382,7 +382,7 @@ func TestMatchVocabulary_MultiWordSpanKeepsPointer(t *testing.T) {
 
 // RankVocabulary stays the index-only view of the same answer, for existing callers.
 func TestRankVocabulary_MatchesMatchVocabularyOrder(t *testing.T) {
-	forms := [][]string{entry("ondrej"), entry("fennec")}
+	forms := [][]string{entry("endre"), entry("fennec")}
 	tr := "Andre runs the Fennec server"
 	var fromMatch []int
 	for _, m := range MatchVocabulary(tr, forms, DefaultVocabularyShortlist) {
@@ -401,7 +401,7 @@ func TestCustomWordLine(t *testing.T) {
 		want     string
 	}{
 		{"Fennec", nil, "", "Fennec"},
-		{"Machala", nil, "McCullough", `Machala (sounds like "McCullough" here)`},
+		{"Mochala", nil, "McCullough", `Mochala (sounds like "McCullough" here)`},
 		{"Diction", []string{"ditching", "diction app"}, "", "Diction (also heard as: ditching, diction app)"},
 		{"Diction", []string{"ditching"}, "ditching", `Diction (also heard as: ditching; sounds like "ditching" here)`},
 	}

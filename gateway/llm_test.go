@@ -870,16 +870,16 @@ func TestProcessWithIntent_CustomWordsDecode(t *testing.T) {
 		name        string
 		contextJSON string
 	}{
-		{"app object shape", `{"customWords":[{"word":"Ondrej"},{"word":"Diction"}]}`},
-		{"third-party string shape", `{"customWords":["Ondrej","Diction"]}`},
+		{"app object shape", `{"customWords":[{"word":"Endre"},{"word":"Diction"}]}`},
+		{"third-party string shape", `{"customWords":["Endre","Diction"]}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "ondrej works on diction", tc.contextJSON, "")
+			userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "endre works on diction", tc.contextJSON, "")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if !strings.Contains(userMsg, "Ondrej") || !strings.Contains(userMsg, "Diction") {
+			if !strings.Contains(userMsg, "Endre") || !strings.Contains(userMsg, "Diction") {
 				t.Errorf("custom words did not reach the LLM: %q", userMsg)
 			}
 		})
@@ -891,13 +891,13 @@ func TestProcessWithIntent_CustomWordsDecode(t *testing.T) {
 func TestProcessWithIntent_CleanupContext(t *testing.T) {
 	full := `{"before":"a","after":"b","tone":"Friendly","profile":"An engineer",` +
 		`"sessionContext":["earlier one","earlier two"],"clipboard":"pasted text",` +
-		`"customWords":[{"word":"Ondrej"}]}`
+		`"customWords":[{"word":"Endre"}]}`
 
 	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "the transcript", full, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"Custom words:", "Ondrej", "Tone:", "Friendly", "An engineer"} {
+	for _, want := range []string{"Custom words:", "Endre", "Tone:", "Friendly", "An engineer"} {
 		if !strings.Contains(userMsg, want) {
 			t.Errorf("want %q in user message, got %q", want, userMsg)
 		}

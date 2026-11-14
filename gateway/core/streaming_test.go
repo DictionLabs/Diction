@@ -1464,12 +1464,12 @@ func TestClassifyBackendFailure_MatchesHTTPPathVocabulary(t *testing.T) {
 // and for a transcription backend that body IS the user's speech. Only the status
 // digits may ever be copied into telemetry.
 func TestClassifyBackendFailure_NeverLeaksTheResponseBody(t *testing.T) {
-	err := errors.New("backend returned 500: {\"text\":\"Ondrej said hello world\"}")
+	err := errors.New("backend returned 500: {\"text\":\"Endre said hello world\"}")
 	kind, hint, status := classifyBackendFailure(err)
 	if kind != kindSTTBackend5xx || status != 500 {
 		t.Fatalf("want stt_backend_5xx/500, got %s/%d", kind, status)
 	}
-	for _, needle := range []string{"Ondrej", "hello world", "text"} {
+	for _, needle := range []string{"Endre", "hello world", "text"} {
 		if strings.Contains(hint, needle) {
 			t.Errorf("hint leaked transcript content %q: %q", needle, hint)
 		}

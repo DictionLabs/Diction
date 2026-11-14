@@ -22,7 +22,7 @@ import (
 // AcceptsCustomWords (Cohere, Parakeet) and nothing else. Plan:
 // .claude/plans/cohere-custom-word-boost-plan.md.
 
-const cwContext = `{"customWords":[{"word":"Machala"},{"word":"Ondřej"}]}`
+const cwContext = `{"customWords":[{"word":"Mochala"},{"word":"Endře"}]}`
 
 func TestBuildCustomWordsField(t *testing.T) {
 	cases := []struct{ name, ctx, want string }{
@@ -30,7 +30,7 @@ func TestBuildCustomWordsField(t *testing.T) {
 		{"invalid", "{not json", ""},
 		{"no words", `{"before":"x"}`, ""},
 		{"empty words skipped", `{"customWords":[{"word":""},{"word":"A"}]}`, `["A"]`},
-		{"order and unicode kept", cwContext, `["Machala","Ondřej"]`},
+		{"order and unicode kept", cwContext, `["Mochala","Endře"]`},
 		{"quotes and commas escaped", `{"customWords":[{"word":"a \"b\", c"}]}`, `["a \"b\", c"]`},
 	}
 	for _, c := range cases {
@@ -109,11 +109,11 @@ func TestRewriteMultipart_CustomWords(t *testing.T) {
 	body, ct := buildMultipart(t, map[string]string{"language": "en", "custom_words": `["injected"]`}, "audio.m4a", "audio")
 	boundary := parseBoundary(ct)
 
-	out, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{CustomWordsJSON: `["Machala"]`})
+	out, newCT, _, err := rewriteMultipart(body, boundary, MultipartRewriteOpts{CustomWordsJSON: `["Mochala"]`})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := formFields(t, out, newCT)["custom_words"]; len(got) != 1 || got[0] != `["Machala"]` {
+	if got := formFields(t, out, newCT)["custom_words"]; len(got) != 1 || got[0] != `["Mochala"]` {
 		t.Errorf("with field: got %v", got)
 	}
 
@@ -189,7 +189,7 @@ func TestTranscriptionHandler_CustomWordsOnlyToFlaggedBackend(t *testing.T) {
 		cw, prompts := rec.snapshot()
 		want := ""
 		if flagged {
-			want = `["Machala","Ondřej"]`
+			want = `["Mochala","Endře"]`
 		}
 		if len(cw) != 1 || cw[0] != want {
 			t.Errorf("flagged=%v: custom_words got %v want %q", flagged, cw, want)
@@ -235,14 +235,14 @@ func TestProxyToBackend_CustomWordsOnlyToFlaggedBackend(t *testing.T) {
 		target, _ := url.Parse(srv.URL)
 		_, err := testGateway().proxyToBackend(context.Background(), target,
 			audioPayload{data: make([]byte, 100), filename: "audio.wav"},
-			&Backend{Name: "b", AcceptsCustomWords: flagged}, "en", "", `["Machala"]`)
+			&Backend{Name: "b", AcceptsCustomWords: flagged}, "en", "", `["Mochala"]`)
 		if err != nil {
 			t.Fatal(err)
 		}
 		cw, _ := rec.snapshot()
 		want := ""
 		if flagged {
-			want = `["Machala"]`
+			want = `["Mochala"]`
 		}
 		if len(cw) != 1 || cw[0] != want {
 			t.Errorf("flagged=%v: got %v want %q", flagged, cw, want)
@@ -280,7 +280,7 @@ func TestStreamHandler_CustomWordsAndRetry(t *testing.T) {
 	if _, _, err := conn.Read(ctx); err != nil {
 		t.Fatalf("read result: %v", err)
 	}
-	if cw, _ := primaryRec.snapshot(); len(cw) != 1 || cw[0] != `["Machala","Ondřej"]` {
+	if cw, _ := primaryRec.snapshot(); len(cw) != 1 || cw[0] != `["Mochala","Endře"]` {
 		t.Errorf("primary custom_words: %v", cw)
 	}
 	if cw, _ := fallbackRec.snapshot(); len(cw) != 1 || cw[0] != "" {

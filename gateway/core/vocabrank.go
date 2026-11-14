@@ -28,7 +28,7 @@ const (
 	// phonetic hit.
 	vocabStrongDistance = 0.2
 	// A form within this multiple of the best distance *for the same stretch of transcript*
-	// rides along with it, so a genuine ambiguity ("Machala" vs "Machova") reaches the LLM as
+	// rides along with it, so a genuine ambiguity ("Mochala" vs "Mochova") reaches the LLM as
 	// a small set rather than a coin-flip already decided here. Scoped per span since
 	// 2026-09-24: measured against the best of the whole utterance, one exact hit ("Fennec")
 	// set the bar to zero and silently dropped every other name the user said.
@@ -86,7 +86,7 @@ func RankVocabulary(transcript string, forms [][]string, limit int) []int {
 type VocabularyMatch struct {
 	// Index into the forms passed to MatchVocabulary.
 	Index int
-	// The transcript words, as written, that sound like the entry — "McCullough" for Machala.
+	// The transcript words, as written, that sound like the entry — "McCullough" for Mochala.
 	// Empty when they already are the entry's canonical spelling, since there is nothing to
 	// point at. Telling the LLM *where* the match is matters: shown only the word list,
 	// gpt-oss-120b judged "Andre McCullough" a real name and kept it 0/4; shown the span, 4/4.
@@ -117,8 +117,8 @@ func MatchVocabulary(transcript string, forms [][]string, limit int) []Vocabular
 type VocabularyOptions struct {
 	// STTBoosted: the STT backend that wrote the transcript was sent the custom-word list
 	// (Backend.AcceptsCustomWords: Cohere, Canary, Parakeet). Since 2026-11-05 the shortlist no
-	// longer treats this differently: a boosted STT that writes "Christina" for a saved
-	// "Kristýna" has not proven Christina was said (see requireCorroboration).
+	// longer treats this differently: a boosted STT that writes "Charlotte" for a saved
+	// "Karlota" has not proven Charlotte was said (see requireCorroboration).
 	STTBoosted bool
 }
 
@@ -257,14 +257,14 @@ func MatchVocabularyWith(transcript string, forms [][]string, limit int, opts Vo
 // "keyboard is"/Kubernetes and Czech "přes"/Apiaries all scored under the ceiling, and the LLM
 // treats a (sounds like "X" here) pointer as an instruction. With the vowels kept they are ≥ 0.5
 // apart, while every real mishearing measured was ≤ 0.45 (Sapansky/Szczepański, Matapolo/
-// metoprolol, Christina/Kristýna 0.33, Andre/Ondřej 0.33). Such a weak hit stays only when the
+// metoprolol, Charlotte/Karlota 0.25, Andre/Endře 0.20). Such a weak hit stays only when the
 // user taught it as a variant, or next to another misheard span: a garbled full name ("Andre
 // McCullough") is two adjacent manglings, which a coincidence almost never is.
 //
 // Every hit that passes keeps its pointer, a lone real name included. Withdrawn 2026-11-05: two
 // further rules from 2026-10-18 stripped the pointer from a lone single word and, when the STT
 // was boosted, dropped the entry when the heard word was itself a dictionary word. Together they
-// meant a user who saved "Kristýna" or "Ondřej" and said it never got it ("Christina", "Andre":
+// meant a user who saved "Karlota" or "Endře" and said it never got it ("Charlotte", "Andre":
 // shortlist 0 on every boosted dictation). Product decision: a word the user saved and said wins
 // over a different real name of the same sound; the LLM gets the pointer and the sentence, and
 // the user who means another person can say so in the sentence or edit the result.
@@ -358,9 +358,9 @@ func shortKey(s string) string {
 }
 
 // allOrdinaryWords reports whether every token of a matched span is an ordinary word of the
-// language. Such a span ("on the door" for Ondrej) is admitted but gets no pointer: the note
+// language. Such a span ("on the door" for Endre) is admitted but gets no pointer: the note
 // reads to the LLM as an instruction, and at low reasoning effort it swapped the name in even
-// when that broke the sentence ("I left the keys Ondrej"). Without the pointer the LLM still
+// when that broke the sentence ("I left the keys Endre"). Without the pointer the LLM still
 // sees the word and decides from the sentence's meaning.
 func allOrdinaryWords(span string) bool {
 	tokens := strings.Fields(span)
@@ -497,7 +497,7 @@ func foldPhonetic(s string) string {
 
 // dropSilentGH removes "gh" everywhere except at the start of a word. In English a non-initial
 // gh is silent ("night", "McCullough") or an /f/ ("tough") and never the /g/+/h/ the letters
-// suggest, so keeping it made an English-spoken "Machala" transcribed as "McCullough" land 0.60
+// suggest, so keeping it made an English-spoken "Mochala" transcribed as "McCullough" land 0.60
 // away instead of 0.25. Word-initial gh ("ghost") keeps its /g/.
 func dropSilentGH(s string) string {
 	if !strings.Contains(s, "gh") {
@@ -516,11 +516,11 @@ func dropSilentGH(s string) string {
 	return out.String()
 }
 
-// Deliberately no "ch" rule. English and Czech disagree about it — "Christina" opens with a
-// /k/, "Machala" with an /x/ — so any single mapping breaks one of the two names this feature
+// Deliberately no "ch" rule. English and Czech disagree about it — "Charlotte" opens with a
+// /k/, "Mochala" with an /x/ — so any single mapping breaks one of the two names this feature
 // exists for. Leaving the h in place lets edit distance absorb the difference instead:
-// Christina/Kristýna land 0.17 apart and Machala/Mahala 0.25, both admitted, where "ch"→"h"
-// put Christina and Kristýna in different places entirely.
+// Charlotte/Karlota land 0.20 apart and Mochala/Mohala 0.25, both admitted, where "ch"→"h"
+// put Charlotte and Karlota in different places entirely.
 var phoneticRewrites = []struct{ from, to string }{
 	{"sch", "s"},
 	{"ph", "f"},
@@ -536,7 +536,7 @@ var phoneticRewrites = []struct{ from, to string }{
 }
 
 // softCBeforeFrontVowel maps c → s before e/i/y and c → k elsewhere, the one context-sensitive
-// rule worth having: it is what makes "Christina" and "Kristýna" meet.
+// rule worth having: it is what makes "Carlota" and "Karlota" meet.
 func softCBeforeFrontVowel(s string) string {
 	runes := []rune(s)
 	var out strings.Builder

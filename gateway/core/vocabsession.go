@@ -11,7 +11,7 @@ import (
 //
 // The app sends the last few final transcripts from the same app as session context, and the
 // prompt tells the LLM to take proper-noun spellings from it. When those earlier dictations
-// carried the same mishearing the user is now fixing ("Andre McCullough" for Ondrej Machala),
+// carried the same mishearing the user is now fixing ("Andre McCullough" for Endre Mochala),
 // the session outvoted the custom-word hint: gpt-oss-120b restored the names ~2/10 with the
 // poisoned session and 10/10 without it (2026-09-29).
 //

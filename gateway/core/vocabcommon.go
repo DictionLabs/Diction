@@ -7,7 +7,7 @@ import "strings"
 // out literally.
 //
 // It answers the one question phonetic distance cannot. "park" and "Parker" sit exactly as far
-// apart as "Mahala" and "Machala" — 0.25 under the fold — so no threshold can admit the name
+// apart as "Mohala" and "Mochala" — 0.25 under the fold — so no threshold can admit the name
 // while rejecting the ordinary word. What separates them is that one is a word of the language
 // and the other is not, and the autocorrect engine's dictionary already knows which.
 //

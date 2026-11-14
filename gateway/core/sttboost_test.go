@@ -140,19 +140,19 @@ func shortlistWords(transcript string, forms [][]string, boosted bool) []string 
 // "boosted STT wrote another real name, drop the entry" rule): the entry reaches the LLM with a
 // pointer at what was heard, and the LLM decides from the sentence.
 func TestMatchVocabulary_SavedWordWinsOverRealName(t *testing.T) {
-	forms := [][]string{{"Kristýna"}, {"Machala"}, {"Ondřej"}, {"Nemotron"}, {"Joaquín"}, {"Vantagio", "Vantage"}}
+	forms := [][]string{{"Karlota"}, {"Mochala"}, {"Endře"}, {"Nemotron"}, {"Joaquín"}, {"Vantagio", "Vantage"}}
 	for _, tc := range []struct {
 		transcript string
 		want       string // shortlist joined by ",", same boosted and unboosted
 	}{
-		{"Kristina from accounting asked about the invoice.", "Kristýna<-Kristina"},
-		{"Michaela will send the photos tonight.", "Machala<-Michaela"},
-		{"Ondra přijde zítra na oběd.", "Ondřej<-Ondra"},
-		{"Andrej přijede v pondělí ráno.", "Ondřej<-Andrej"},
+		{"Carlota from accounting asked about the invoice.", "Karlota<-Carlota"},
+		{"Michaela will send the photos tonight.", "Mochala<-Michaela"},
+		{"Endra přijde zítra na oběd.", "Endře<-Endra"},
+		{"Andrea přijede v pondělí ráno.", "Endře<-Andrea"},
 		{"We tested Namotron on the GPU.", "Nemotron<-Namotron"},
 		{"Joaquin is coming tomorrow.", "Joaquín<-Joaquin"},
 		{"Vantage shipped the update.", "Vantagio<-Vantage"},
-		{"Hi, I am Andrej Machala.", "Ondřej<-Andrej,Machala"},
+		{"Hi, I am Andrea Mochala.", "Endře<-Andrea,Mochala"},
 	} {
 		for _, boosted := range []bool{true, false} {
 			if got := strings.Join(shortlistWords(tc.transcript, forms, boosted), ","); got != tc.want {
@@ -162,16 +162,16 @@ func TestMatchVocabulary_SavedWordWinsOverRealName(t *testing.T) {
 	}
 }
 
-// 2026-11-05 production report: My Words Ondřej, Kristýna, Cara, rig; Cohere (boosted) wrote
-// Andre, Christina, Kara, Rick and the gateway logged "shortlist 0 of 15" on every dictation.
+// 2026-11-05 production report: My Words Endře, Karlota, Cara, rig; Cohere (boosted) wrote
+// Andre, Charlotte, Kara, Rick and the gateway logged "shortlist 0 of 15" on every dictation.
 // Each must reach the shortlist with a pointer at the heard word.
 func TestMatchVocabulary_OwnerSavedWordsReachShortlist(t *testing.T) {
-	forms := [][]string{{"Ondřej"}, {"Kristýna"}, {"Cara"}, {"rig"}, {"Machala"}, {"Fennec"}}
+	forms := [][]string{{"Endře"}, {"Karlota"}, {"Cara"}, {"rig"}, {"Mochala"}, {"Fennec"}}
 	for _, tc := range []struct{ transcript, want string }{
-		{"I talked to Christina yesterday", "Kristýna<-Christina"},
-		{"I talked to Kristina yesterday", "Kristýna<-Kristina"},
-		{"Andre said hi", "Ondřej<-Andre"},
-		{"Andrej said hi", "Ondřej<-Andrej"},
+		{"I talked to Charlotte yesterday", "Karlota<-Charlotte"},
+		{"I talked to Carlota yesterday", "Karlota<-Carlota"},
+		{"Andre said hi", "Endře<-Andre"},
+		{"Andrea said hi", "Endře<-Andrea"},
 		{"Deploy it on Kara tonight", "Cara<-Kara"},
 		{"The Rick is running hot", "rig<-Rick"},
 		// The saved spelling itself: listed, nothing to point at.
@@ -208,15 +208,15 @@ func TestMatchVocabulary_ShortSavedWordRejectsCoincidences(t *testing.T) {
 // The real request shape: every saved word said reaches <custom_words> with its pointer.
 func TestBuildCleanupUserMessage_BoostedOwnerWords(t *testing.T) {
 	m := CleanupMessage{
-		Transcript: "I talked to Christina and Andre about Kara and the Rick",
-		VocabForms: [][]string{{"Ondřej"}, {"Kristýna"}, {"Cara"}, {"rig"}},
+		Transcript: "I talked to Charlotte and Andre about Kara and the Rick",
+		VocabForms: [][]string{{"Endře"}, {"Karlota"}, {"Cara"}, {"rig"}},
 		STTBoosted: true,
 		Closing:    CleanupClosing,
 	}
 	msg, _ := BuildCleanupUserMessage(m)
 	for _, line := range []string{
-		`Kristýna (sounds like "Christina" here)`,
-		`Ondřej (sounds like "Andre" here)`,
+		`Karlota (sounds like "Charlotte" here)`,
+		`Endře (sounds like "Andre" here)`,
 		`Cara (sounds like "Kara" here)`,
 		`rig (sounds like "Rick" here)`,
 	} {
@@ -225,7 +225,7 @@ func TestBuildCleanupUserMessage_BoostedOwnerWords(t *testing.T) {
 		}
 	}
 	m.Phone = []PhoneTranscript{{Model: "parakeet", Text: m.Transcript}}
-	if msg, _ := BuildCleanupUserMessage(m); !strings.Contains(msg, "Kristýna") {
+	if msg, _ := BuildCleanupUserMessage(m); !strings.Contains(msg, "Karlota") {
 		t.Errorf("merge must keep the entry:\n%s", msg)
 	}
 }
