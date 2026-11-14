@@ -113,6 +113,7 @@ type fakeASR struct {
 	calls []float64 // seconds of audio per call
 	fail  func(call int) error
 	delay time.Duration
+	hold  chan struct{} // non-nil: every reply waits until the test closes it
 }
 
 func (f *fakeASR) transcribe(ctx context.Context, wav []byte) (string, error) {
@@ -124,6 +125,13 @@ func (f *fakeASR) transcribe(ctx context.Context, wav []byte) (string, error) {
 	if f.delay > 0 {
 		select {
 		case <-time.After(f.delay):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	if f.hold != nil {
+		select {
+		case <-f.hold:
 		case <-ctx.Done():
 			return "", ctx.Err()
 		}
@@ -371,24 +379,34 @@ func TestLiveConfigFromEnv_ClampsNonsense(t *testing.T) {
 }
 
 func TestLiveEngine_SegmentReplyAfterGivingUpDoesNotPanic(t *testing.T) {
-	asr := &fakeASR{delay: 500 * time.Millisecond}
+	// The reply is held until the test releases it, so it always arrives after the
+	// engine gave up (a timed reply raced the 92 s of audio under -race).
+	asr := &fakeASR{hold: make(chan struct{})}
 	e := newLiveEngine(context.Background(), testLiveConfig(), asr.transcribe, nil)
 	defer e.Close()
 	feedChunksNoWait(e, pcmPattern(4000, 1000)) // a cut: the segment request starts
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(5 * time.Second)
 	for {
 		e.mu.Lock()
 		busy := e.busy
 		e.mu.Unlock()
-		if busy || time.Now().After(deadline) {
+		if busy {
 			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the segment request never started")
 		}
 		time.Sleep(time.Millisecond)
 	}
 	// While it is in flight, talk past the no-pause cap: the engine gives up and frees
 	// its audio. The late reply must then be ignored, not committed into a nil buffer.
 	feedChunksNoWait(e, pcmPattern(liveMaxOpenMs+2000))
-	e.Close() // joins the worker: the late reply has been handled
+	close(asr.hold)
+	select {
+	case <-e.workerDone: // the worker handled the late reply and stopped
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not stop after the late reply")
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !errors.Is(e.failed, errLiveNoPause) || len(e.texts) != 0 {
