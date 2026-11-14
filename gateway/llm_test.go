@@ -322,14 +322,20 @@ func TestLLM_Process_MaxTokensBounds(t *testing.T) {
 	// 500 floor they could spend it all and return empty, which reached users as a
 	// failed edit on a self-hosted gateway running gpt-oss-20b.
 	cfg.process(context.Background(), "hi")
-	if receivedMaxTokens != 4000 {
-		t.Errorf("short text: expected 4000 max_tokens, got %d", receivedMaxTokens)
+	if receivedMaxTokens != 4001 {
+		t.Errorf("short text: expected 4001 max_tokens (len/2 + 4000), got %d", receivedMaxTokens)
 	}
 
-	// Very long text → capped at 8192
+	// Long text → output estimate plus the reasoning allowance (llm_longinput_test.go).
 	cfg.process(context.Background(), strings.Repeat("x", 20000))
-	if receivedMaxTokens != 8192 {
-		t.Errorf("long text: expected 8192 max_tokens, got %d", receivedMaxTokens)
+	if receivedMaxTokens != 14000 {
+		t.Errorf("long text: expected 14000 max_tokens, got %d", receivedMaxTokens)
+	}
+
+	// Very long text → capped at 16384
+	cfg.process(context.Background(), strings.Repeat("x", 60000))
+	if receivedMaxTokens != 16384 {
+		t.Errorf("very long text: expected 16384 max_tokens, got %d", receivedMaxTokens)
 	}
 }
 

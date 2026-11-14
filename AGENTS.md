@@ -387,7 +387,7 @@ Both LLM_BASE_URL and LLM_MODEL must be set or the LLM feature stays off.
 | `LLM_BASE_URL` | (empty) | OpenAI-compatible chat completions endpoint, e.g. `https://api.openai.com/v1` |
 | `LLM_MODEL` | (empty) | Model identifier, e.g. `gpt-4o-mini` |
 | `LLM_API_KEY` | (empty) | Bearer token. Not needed for local Ollama |
-| `LLM_REASONING_EFFORT` | (empty) | OpenAI reasoning effort: `none`, `low`, `medium`, `high` |
+| `LLM_REASONING_EFFORT` | (empty) | OpenAI reasoning effort: `none`, `low`, `medium`, `high`. Set `low` on gpt-oss-20b (default effort can burn the whole output budget on reasoning) |
 | `LLM_PROMPT` | (see default) | System prompt for transcript cleanup. String or `/path/to/file` |
 | `LLM_PROMPT_EDIT` | (see default) | System prompt for voice-edit intent |
 | `LLM_PROMPT_EDIT_SELECTED` | (see default) | System prompt for edit-selected intent |
