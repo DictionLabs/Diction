@@ -110,19 +110,22 @@ Not suitable for scripting -- use /v1/audio/transcriptions for batch use.
 **Live text (optional, off by default).** With `DICTION_PREVIEW=chunked`, a client that
 connects with `?preview=cloud` also receives `{"type":"interim","text":"..."}` frames while
 audio is still arriving. Each one carries the whole transcript so far and replaces the
-one before it, and none follows the result frame. The result is unchanged: it still comes
-from one request for the whole recording, so a client that does not send `preview=cloud`
-sees no difference. The gateway cuts the audio at pauses, transcribes each finished
+one before it, and none follows the result frame. Live text does not change the result: it
+still comes from one request for the whole recording (unless segmented final, below, is
+on), so a client that does not send `preview=cloud` sees no difference. The gateway cuts the audio at pauses, transcribes each finished
 segment once and the open segment again as it grows, one request at a time, on the same
 speech backend (or on `DICTION_PREVIEW_URL`). It works with any OpenAI-compatible backend.
+At most `DICTION_PREVIEW_MAX_CONCURRENT` interim requests run at once across the gateway;
+a session that finds them all busy skips that interim.
 
 **Segmented final (optional, off by default).** With `DICTION_SEGMENTED_FINAL=true` the
 segments transcribed while the user was talking become the result: after `done` only the
 audio since the last pause is left to transcribe, so the wait no longer grows with the
-length of the recording. The texts are joined in order (in English a full stop that a cut
-put mid-sentence is removed). Anything short of a clean run falls back to the one request
+length of the recording. The texts are joined in order, without a space in Chinese,
+Japanese and Thai text (in English a full stop that a cut put mid-sentence is removed). Anything short of a clean run falls back to the one request
 for the whole recording: a failed or implausible segment, a decode that fell short, a
-language change at `done`, or no pause for 90 s. It needs no client support and works
+language change at `done`, or 90 s of audio not yet transcribed (no pause, or a backend
+that fell behind). It needs no client support and works
 with or without live text.
 
 ### POST /v1/text/process
@@ -357,6 +360,7 @@ edit" instead of typing the user's spoken instruction into their document. A cus
 | `DICTION_PREVIEW_URL` | (empty) | URL of a separate OpenAI-compatible STT backend for the open segment's interim requests. Empty: the session's own backend |
 | `DICTION_PREVIEW_MODEL` | (empty) | Model ID forwarded to `DICTION_PREVIEW_URL` |
 | `DICTION_PREVIEW_AUTH` | (empty) | Authorization header forwarded to `DICTION_PREVIEW_URL` |
+| `DICTION_PREVIEW_MAX_CONCURRENT` | `2` | Interim requests in flight across the whole gateway. Each one re-sends the open segment, so this bounds the extra load on the speech backend. A session that finds every slot busy skips that interim. Minimum `1` |
 | `DICTION_SEGMENT_PAUSE_MS` | `700` | A pause this long ends a segment. Minimum `200` |
 | `DICTION_SEGMENT_MIN_MS` | `8000` | A segment is never shorter than this. Minimum `1000` |
 | `DICTION_SEGMENT_MAX_MS` | `20000` | Past this length, a pause of `DICTION_SEGMENT_SHORT_PAUSE_MS` is enough |
@@ -370,8 +374,9 @@ edit" instead of typing the user's spoken instruction into their document. A cus
 | `DICTION_SEGMENT_FIRST_MIN_MS` | `0` | Minimum length of the first segment (`0` = `DICTION_SEGMENT_MIN_MS`). A recording shorter than this is always transcribed whole, e.g. `15000` keeps short dictations on the single request |
 
 The `DICTION_SEGMENT_*` settings under Live text decide where segments are cut for both features.
-With `DICTION_SEGMENTED_FINAL=true`, a result with more text than its audio can hold (over
-25 characters per second plus 20) is returned empty instead of being typed.
+With `DICTION_SEGMENTED_FINAL=true`, a whole-recording result with more text than its audio
+can hold (over 25 characters per second plus 20) fails the dictation instead of being typed;
+a near-silent recording that comes back as invented text gives an empty result.
 
 ### LLM (AI Post-processing)
 

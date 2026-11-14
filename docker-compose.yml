@@ -64,6 +64,19 @@ services:
       # DICTION_TOKEN_TTL: 2160h
       # DICTION_GATEWAY_KEY is deprecated (still honored): pinning a manual
       # key disables both rotation and DICTION_TOKEN_TTL above.
+      # --- Live text (off by default; see README "Live Text") ---
+      # Show words while you talk (the app's Live text setting):
+      # DICTION_PREVIEW: chunked
+      # DICTION_PREVIEW_INTERVAL_MS: 1000
+      # Separate speech server for live text only (default: the same one):
+      # DICTION_PREVIEW_URL: http://your-asr:8000
+      # Live text requests in flight across the gateway (protects your GPU):
+      # DICTION_PREVIEW_MAX_CONCURRENT: 2
+      # Finish long dictations in about a second: keep the parts transcribed
+      # while you talk instead of sending the whole recording again at stop:
+      # DICTION_SEGMENTED_FINAL: "true"
+      # Recordings shorter than this are still transcribed whole:
+      # DICTION_SEGMENT_FIRST_MIN_MS: 15000
     volumes:
       # Persists the pairing keyring (and trial records). Without this a new
       # key is generated on every container recreate and paired devices must
