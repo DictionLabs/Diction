@@ -18,7 +18,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 )
@@ -533,13 +535,13 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// Passthrough: when the backend can accept Ogg/WebM directly, skip the
 		// ffmpeg decode and forward the accumulated Opus bytes as-is.
 		//
-		// The built-in preview (live.go) needs PCM while the user talks, so ffmpeg also
+		// Live features (live.go) need PCM while the user talks, so ffmpeg also
 		// decodes the Opus as it arrives. With a passthrough backend the original
 		// Ogg/WebM is still kept (keepOriginal): the whole-clip request then sends
 		// exactly what it sends today, and any decode trouble only turns live off.
 		previewParam := r.URL.Query().Get("preview") == "cloud"
 		builtinPreview := previewParam && PreviewRelay == nil && g.live.Preview
-		liveOn := builtinPreview && (!isOpus || ffmpegAvail)
+		liveOn := (g.live.Segmented || builtinPreview) && (!isOpus || ffmpegAvail)
 		keepOriginal := isOpus && !backend.NeedsWAV && liveOn
 		if keepOriginal {
 			// A best-effort decode never waits for a slot or rejects the session.
@@ -602,14 +604,17 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			stdoutDone     chan struct{}
 			ffmpegWriteErr error
 
-			// keepOriginal only: the decode for the live engine failed; it gets no more audio.
-			liveBroken bool
+			// keepOriginal only: the decode for the live engine failed or fell short,
+			// so the segmented final must not be trusted (the original is sent instead).
+			liveBroken       bool
+			liveDecodedBytes int64 // PCM bytes the live decoder produced (atomic)
 		)
 
 		// ffmpegCleanup closes stdin and waits for the process to exit + stdout to drain.
 		// It is idempotent — safe to call explicitly after the loop AND again from the
 		// defer so that early returns in the post-loop section also reap the process.
 		var ffmpegCleaned bool
+		var ffmpegWaitErr error // read only by the keepOriginal checks
 		ffmpegCleanup := func() {
 			if ffmpegCleaned || ffmpegStdin == nil {
 				return
@@ -619,7 +624,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 			if stdoutDone != nil {
 				<-stdoutDone
 			}
-			ffmpegCmd.Wait() //nolint:errcheck — we capture stderr separately
+			ffmpegWaitErr = ffmpegCmd.Wait() // stderr is captured separately
 		}
 		defer ffmpegCleanup()
 
@@ -653,6 +658,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// Live engine (live.go): opened on the first audio frame, by which time the
 		// context frame (custom words → prompt) has been read.
 		var live *liveEngine
+		var liveLanguage string
 		defer func() { live.close() }()
 
 		for {
@@ -744,6 +750,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 				}
 
 				if liveOn && live == nil {
+					liveLanguage = language
 					live = g.startLive(ctx, target, backend, language, upstreamLanguageFor(language), contextJSON, builtinPreview)
 					if builtinPreview {
 						preview = startPreviewPumpWith(ctx, conn, livePreview{live})
@@ -781,7 +788,7 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 					// ffmpeg from probe-blocking on a live pipe.
 					if keepOriginal {
 						// Best effort: a decoder that cannot start only turns live off.
-						cmd, stdin, done, derr := startLiveDecoder(ctx, strings.TrimPrefix(containerFile, "audio."), &ffmpegStderr, live)
+						cmd, stdin, done, derr := startLiveDecoder(ctx, strings.TrimPrefix(containerFile, "audio."), &ffmpegStderr, live, &liveDecodedBytes)
 						if derr != nil {
 							log.Printf("live: decoder did not start; live off for this session")
 							liveBroken = true
@@ -945,6 +952,21 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		// after cleanup has drained stdout and reaped the process.
 		ffmpegCleanup()
 
+		// keepOriginal: trust the live engine only if ffmpeg exited cleanly and
+		// decoded (about) as much audio as the Ogg holds.
+		if keepOriginal && !liveBroken {
+			decodedMs := atomic.LoadInt64(&liveDecodedBytes) * 1000 / pcmBytesPerSecond
+			oggMs := int64(-1)
+			if containerFile == "audio.ogg" {
+				oggMs = oggDurationMs(opusInputBuf.Bytes())
+			}
+			if ffmpegWaitErr != nil || (oggMs >= 0 && absInt64(decodedMs-oggMs) > 500) {
+				log.Printf("live: decode incomplete (decoded %dms of %dms, decoder_exit_ok=%v, decoder_stderr=%d bytes); using the whole clip",
+					decodedMs, oggMs, ffmpegWaitErr == nil, ffmpegStderr.buf.Len())
+				liveBroken = true
+			}
+		}
+
 		// After draining, handle any write error that broke the read loop.
 		if ffmpegWriteErr != nil {
 			hint := fmt.Sprintf("ffmpeg stdin write error: %v", ffmpegWriteErr)
@@ -1064,8 +1086,40 @@ func (g *Gateway) StreamingHandlerWithSplitEnhance(
 		whisperPrompt := buildWhisperPrompt(contextJSON)
 		customWordsJSON := buildCustomWordsField(contextJSON)
 		sttStart := time.Now()
+		var text string
+		// Segmented final: most of the audio was transcribed while the user talked.
+		// Anything short of a clean result falls through to the whole-clip request.
+		segmented := false
+		if live != nil && g.live.Segmented && !liveBroken {
+			if language != liveLanguage {
+				log.Printf("live: language changed at done; using the whole clip")
+			} else {
+				t, ok, st := live.Finish(ctx)
+				segmented = ok
+				if ok {
+					text = t
+				}
+
+				if st.invented {
+					// The whole recording already came back as invented text (typically a
+					// near-silent clip answered with the backend's own prompt). Asking again
+					// would cost seconds for the same answer.
+					log.Printf("live: more text than %.2fs of audio can hold; empty result", st.tailSec)
+					segmented = true
+				}
+			}
+		}
 		live.close() // nothing may compete with the whole-clip request for the backend
-		text, err := g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt, customWordsJSON)
+		if !segmented {
+			text, err = g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt, customWordsJSON)
+			// Pieces mode holds every piece to a plausibility bound; hold the whole clip
+			// to it too, so an invented answer is not typed into the user's text.
+			if err == nil && g.live.Segmented && audioDurationMs > 0 &&
+				int64(utf8.RuneCountInString(text)) > liveMaxCharsPerSec*audioDurationMs/1000+20 && !hasDegenerateRepetition(text) {
+				log.Printf("live: more text than %dms of audio can hold; empty result", audioDurationMs)
+				text = ""
+			}
+		}
 		sttMs := time.Since(sttStart).Milliseconds()
 		if err == nil && hasDegenerateRepetition(text) {
 			err = errSTTHallucination
