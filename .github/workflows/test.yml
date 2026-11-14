@@ -25,7 +25,7 @@ jobs:
       - name: Run tests with coverage
         working-directory: gateway
         run: |
-          go test ./... -coverprofile=coverage.txt -timeout 120s
+          go test -race ./... -coverprofile=coverage.txt -timeout 300s
           go tool cover -func=coverage.txt | tee coverage_func.txt
           COVERAGE=$(awk '/^total:/{gsub(/%/,"",$NF); printf "%.1f", $NF}' coverage_func.txt)
           echo "Coverage: ${COVERAGE}%"
