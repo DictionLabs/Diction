@@ -231,7 +231,7 @@ func TestStreamingPreview_NoHook_Ignored(t *testing.T) {
 func TestStreamingPreview_Opus_NoRelay(t *testing.T) {
 	rl := installFakePreview(t, 0)
 	g := makeGateway(echoTranscript(t, "x").URL, false, 10<<20) // passthrough
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

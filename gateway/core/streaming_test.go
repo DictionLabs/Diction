@@ -242,7 +242,7 @@ func startStreamingServer(t *testing.T, whisperResponse string, whisperStatus in
 	}
 	g.health.set("small", true)
 
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 	return srv, g
 }
@@ -263,7 +263,7 @@ func TestStreamingHandler_NoMatchingBackend(t *testing.T) {
 		defaultModel: "small",
 		maxBodySize:  10 * 1024 * 1024,
 	}
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/v1/audio/stream")
@@ -367,7 +367,7 @@ func TestStreamingHandler_OnTranscriptionReportsSTTTime(t *testing.T) {
 	}
 	g.health.set("small", true)
 
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -532,13 +532,13 @@ func TestStreamingHandler_DegenerateRepetition_ClosesAndReportsHallucination(t *
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(*events) == 0 {
+	for time.Now().Before(deadline) && events.Len() == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(*events) == 0 {
+	if events.Len() == 0 {
 		t.Fatal("no OnError event captured")
 	}
-	got := (*events)[0]
+	got := events.All()[0]
 	if got.Kind != "stt_hallucination" {
 		t.Errorf("kind: want stt_hallucination, got %q", got.Kind)
 	}
@@ -661,7 +661,7 @@ func startStreamingServerWithPostProcess(t *testing.T, whisperResponse string, p
 	}
 	g.health.set("small", true)
 
-	srv := httptest.NewServer(g.StreamingHandlerWithPostProcess(postProcess))
+	srv := httptest.NewServer(trackHandler(g.StreamingHandlerWithPostProcess(postProcess)))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -887,7 +887,7 @@ func captureStreamingPrompt(t *testing.T, contextJSON string) capturedPrompt {
 		maxBodySize:  10 * 1024 * 1024,
 	}
 	g.health.set("small", true)
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1012,19 +1012,6 @@ func TestStreamingHandler_NoEnhance_NoModeField(t *testing.T) {
 
 // --- Commit A: observability (reason tag + device hash on ws_read) ---
 
-// withCapturedOnError installs a temporary core.OnError capturing events into
-// the returned slice; the returned restore func puts the prior hook back.
-// Not parallel-safe — the hook is a package-global.
-func withCapturedOnError(t *testing.T) (*[]ErrorEvent, func()) {
-	t.Helper()
-	var events []ErrorEvent
-	prev := OnError
-	OnError = func(_ context.Context, e ErrorEvent) {
-		events = append(events, e)
-	}
-	return &events, func() { OnError = prev }
-}
-
 func TestStreamingHandler_EmitsReasonOnWSRead_GoingAway(t *testing.T) {
 	// Not parallel-safe: mutates core.OnError.
 	events, restore := withCapturedOnError(t)
@@ -1046,16 +1033,16 @@ func TestStreamingHandler_EmitsReasonOnWSRead_GoingAway(t *testing.T) {
 	// Give the server a moment to observe the close and emit the event.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(*events) > 0 {
+		if events.Len() > 0 {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	if len(*events) == 0 {
+	if events.Len() == 0 {
 		t.Fatal("no OnError event captured")
 	}
-	got := (*events)[0]
+	got := events.All()[0]
 	if got.Kind != "ws_read" {
 		t.Errorf("kind: want ws_read, got %q", got.Kind)
 	}
@@ -1108,14 +1095,14 @@ func TestStreamingHandler_IdleTimeout_ClosesClient(t *testing.T) {
 	// Server-side OnError should have fired with reason=idle_timeout.
 	// Give the handler goroutine a moment to fully emit before asserting.
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(*events) == 0 {
+	for time.Now().Before(deadline) && events.Len() == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(*events) == 0 {
+	if events.Len() == 0 {
 		t.Fatal("no OnError emitted for idle timeout")
 	}
-	if (*events)[0].Reason != wsReasonIdleTimeout {
-		t.Errorf("emitted reason: want %q, got %q", wsReasonIdleTimeout, (*events)[0].Reason)
+	if events.All()[0].Reason != wsReasonIdleTimeout {
+		t.Errorf("emitted reason: want %q, got %q", wsReasonIdleTimeout, events.All()[0].Reason)
 	}
 }
 
@@ -1168,18 +1155,6 @@ func TestNewGateway_RespectsIdleTimeoutConfig(t *testing.T) {
 
 // --- Commit C: OnRequestFailed hook ---
 
-// withCapturedOnRequestFailed installs a temporary core.OnRequestFailed that
-// appends each (errorType) call to the returned slice. Not parallel-safe.
-func withCapturedOnRequestFailed(t *testing.T) (*[]string, func()) {
-	t.Helper()
-	var calls []string
-	prev := OnRequestFailed
-	OnRequestFailed = func(_ context.Context, errorType string) {
-		calls = append(calls, errorType)
-	}
-	return &calls, func() { OnRequestFailed = prev }
-}
-
 func TestStreamingHandler_WSReadError_TriggersOnRequestFailed(t *testing.T) {
 	// Not parallel-safe: mutates core.OnRequestFailed.
 	calls, restore := withCapturedOnRequestFailed(t)
@@ -1196,18 +1171,18 @@ func TestStreamingHandler_WSReadError_TriggersOnRequestFailed(t *testing.T) {
 	_ = conn.Close(websocket.StatusGoingAway, "")
 
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(*calls) == 0 {
+	for time.Now().Before(deadline) && calls.Len() == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(*calls) == 0 {
+	if calls.Len() == 0 {
 		t.Fatal("OnRequestFailed not called on ws_read error")
 	}
 	// Changed 2026-10: a socket that dies while the client is still sending
 	// audio is the client's doing (backgrounded, lost signal, cancelled), not
 	// the STT backend's: the backend has not been called yet. It gets its own
 	// error_type so backend-health alerting does not page on it.
-	if (*calls)[0] != errTypeClientAbort {
-		t.Errorf("errorType: want %q, got %q", errTypeClientAbort, (*calls)[0])
+	if calls.All()[0] != errTypeClientAbort {
+		t.Errorf("errorType: want %q, got %q", errTypeClientAbort, calls.All()[0])
 	}
 }
 
@@ -1229,14 +1204,14 @@ func TestStreamingHandler_IdleTimeout_IsClientAbort(t *testing.T) {
 	_, _, _ = conn.Read(ctx) // send nothing; wait for the idle close
 
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(*calls) == 0 {
+	for time.Now().Before(deadline) && calls.Len() == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(*calls) == 0 {
+	if calls.Len() == 0 {
 		t.Fatal("OnRequestFailed not called on idle timeout")
 	}
-	if (*calls)[0] != errTypeClientAbort {
-		t.Errorf("errorType: want %q, got %q", errTypeClientAbort, (*calls)[0])
+	if calls.All()[0] != errTypeClientAbort {
+		t.Errorf("errorType: want %q, got %q", errTypeClientAbort, calls.All()[0])
 	}
 }
 
@@ -1259,10 +1234,10 @@ func TestStreamingHandler_NoAudio_TriggersOnRequestFailed(t *testing.T) {
 	_, _, _ = conn.Read(ctx) // wait for server close
 
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(*calls) == 0 {
+	for time.Now().Before(deadline) && calls.Len() == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(*calls) == 0 {
+	if calls.Len() == 0 {
 		t.Fatal("OnRequestFailed not called for no-audio path")
 	}
 	// Changed 2026-09: no-audio gets its own error_type (errTypeNoAudio), not
@@ -1270,8 +1245,8 @@ func TestStreamingHandler_NoAudio_TriggersOnRequestFailed(t *testing.T) {
 	// can be measured and judged apart from a real backend fault. See
 	// TestStreamingHandler_NoAudio_EmitsEventWithSocketMetrics for the fuller
 	// assertion (kind, LatencyMs, InputChars).
-	if (*calls)[0] != errTypeNoAudio {
-		t.Errorf("errorType: want %q, got %q", errTypeNoAudio, (*calls)[0])
+	if calls.All()[0] != errTypeNoAudio {
+		t.Errorf("errorType: want %q, got %q", errTypeNoAudio, calls.All()[0])
 	}
 }
 
@@ -1295,14 +1270,14 @@ func TestStreamingHandler_BackendFailure_TriggersOnRequestFailed(t *testing.T) {
 	_, _, _ = conn.Read(ctx) // wait for server close
 
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(*calls) == 0 {
+	for time.Now().Before(deadline) && calls.Len() == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(*calls) == 0 {
+	if calls.Len() == 0 {
 		t.Fatal("OnRequestFailed not called on backend failure")
 	}
-	if (*calls)[0] != errTypeSTTError {
-		t.Errorf("errorType: want %q, got %q", errTypeSTTError, (*calls)[0])
+	if calls.All()[0] != errTypeSTTError {
+		t.Errorf("errorType: want %q, got %q", errTypeSTTError, calls.All()[0])
 	}
 }
 
@@ -1331,8 +1306,8 @@ func TestStreamingHandler_HappyPath_NoRequestFailed(t *testing.T) {
 
 	// Give any stray goroutine a moment to (wrongly) fire.
 	time.Sleep(100 * time.Millisecond)
-	if len(*calls) != 0 {
-		t.Errorf("OnRequestFailed fired on happy path: %v", *calls)
+	if calls.Len() != 0 {
+		t.Errorf("OnRequestFailed fired on happy path: %v", calls.All())
 	}
 }
 
@@ -1400,7 +1375,7 @@ func TestStreamingHandler_AutoDetect_WithDeviceHash(t *testing.T) {
 	var dbPtr atomic.Pointer[sql.DB]
 	g.profileStore = NewProfileStore(&dbPtr)
 
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	defer srv.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1553,13 +1528,13 @@ func TestStreamingHandler_Backend5xx_EmitsStatusAndDemotes(t *testing.T) {
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(*events) == 0 {
+	for time.Now().Before(deadline) && events.Len() == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(*events) == 0 {
+	if events.Len() == 0 {
 		t.Fatal("no OnError event captured")
 	}
-	got := (*events)[0]
+	got := events.All()[0]
 	if got.Kind != kindSTTBackend5xx {
 		t.Errorf("kind: want %s, got %q", kindSTTBackend5xx, got.Kind)
 	}
@@ -1602,13 +1577,13 @@ func TestStreamingHandler_Backend4xx_KeepsBackendHealthy(t *testing.T) {
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(*events) == 0 {
+	for time.Now().Before(deadline) && events.Len() == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(*events) == 0 {
+	if events.Len() == 0 {
 		t.Fatal("no OnError event captured")
 	}
-	got := (*events)[0]
+	got := events.All()[0]
 	if got.Kind != kindSTTBackendError {
 		t.Errorf("kind: want %s, got %q", kindSTTBackendError, got.Kind)
 	}
@@ -1753,13 +1728,13 @@ func TestStreamingHandler_NoAudio_EmitsEventWithSocketMetrics(t *testing.T) {
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(*events) == 0 {
+	for time.Now().Before(deadline) && events.Len() == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(*events) != 1 {
-		t.Fatalf("OnError calls: want 1, got %d: %+v", len(*events), *events)
+	if events.Len() != 1 {
+		t.Fatalf("OnError calls: want 1, got %d: %+v", events.Len(), events.All())
 	}
-	ev := (*events)[0]
+	ev := events.All()[0]
 	if ev.Kind != "ws_no_audio" {
 		t.Errorf("Kind: want ws_no_audio, got %q", ev.Kind)
 	}
@@ -1779,14 +1754,14 @@ func TestStreamingHandler_NoAudio_EmitsEventWithSocketMetrics(t *testing.T) {
 	}
 
 	deadline = time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && len(*calls) == 0 {
+	for time.Now().Before(deadline) && calls.Len() == 0 {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if len(*calls) != 1 {
-		t.Fatalf("OnRequestFailed calls: want 1, got %d: %v", len(*calls), *calls)
+	if calls.Len() != 1 {
+		t.Fatalf("OnRequestFailed calls: want 1, got %d: %v", calls.Len(), calls.All())
 	}
-	if (*calls)[0] != errTypeNoAudio {
-		t.Errorf("errorType: want %q, got %q", errTypeNoAudio, (*calls)[0])
+	if calls.All()[0] != errTypeNoAudio {
+		t.Errorf("errorType: want %q, got %q", errTypeNoAudio, calls.All()[0])
 	}
 }
 
@@ -1814,21 +1789,21 @@ func TestStreamingHandler_PreUpgrade503_EmitsRouteFailAndSetsHeader(t *testing.T
 		t.Errorf("X-Diction-Route-Model: want small, got %q", got)
 	}
 
-	if len(*events) != 1 {
-		t.Fatalf("OnError calls: want 1, got %d: %+v", len(*events), *events)
+	if events.Len() != 1 {
+		t.Fatalf("OnError calls: want 1, got %d: %+v", events.Len(), events.All())
 	}
-	if (*events)[0].Kind != "stt_route_fail" {
-		t.Errorf("Kind: want stt_route_fail, got %q", (*events)[0].Kind)
+	if events.All()[0].Kind != "stt_route_fail" {
+		t.Errorf("Kind: want stt_route_fail, got %q", events.All()[0].Kind)
 	}
-	if (*events)[0].HTTPStatus != http.StatusServiceUnavailable {
-		t.Errorf("HTTPStatus: want 503, got %d", (*events)[0].HTTPStatus)
+	if events.All()[0].HTTPStatus != http.StatusServiceUnavailable {
+		t.Errorf("HTTPStatus: want 503, got %d", events.All()[0].HTTPStatus)
 	}
 
-	if len(*calls) != 1 {
-		t.Fatalf("OnRequestFailed calls: want 1, got %d: %v", len(*calls), *calls)
+	if calls.Len() != 1 {
+		t.Fatalf("OnRequestFailed calls: want 1, got %d: %v", calls.Len(), calls.All())
 	}
-	if (*calls)[0] != errTypeSTTError {
-		t.Errorf("errorType: want %q, got %q", errTypeSTTError, (*calls)[0])
+	if calls.All()[0] != errTypeSTTError {
+		t.Errorf("errorType: want %q, got %q", errTypeSTTError, calls.All()[0])
 	}
 }
 
@@ -1860,12 +1835,12 @@ func TestStreamingHandler_ClientGoneAfterSuccess_NotCountedAsFailure(t *testing.
 
 	time.Sleep(200 * time.Millisecond)
 
-	for _, c := range *calls {
+	for _, c := range calls.All() {
 		if c == errTypeSTTError {
-			t.Errorf("OnRequestFailed(%q) fired after a successful transcription — a client that walked away must not inflate the failure rate: %v", errTypeSTTError, *calls)
+			t.Errorf("OnRequestFailed(%q) fired after a successful transcription — a client that walked away must not inflate the failure rate: %v", errTypeSTTError, calls.All())
 		}
 	}
-	for _, ev := range *events {
+	for _, ev := range events.All() {
 		if ev.Kind == "ws_write" && ev.Hint != "client gone before result write" {
 			t.Errorf("unexpected ws_write hint: %q", ev.Hint)
 		}

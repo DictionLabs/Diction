@@ -15,8 +15,9 @@ import (
 // OnError = emitError at startup; community builds leave it nil.
 func TestOnError_DefaultNil(t *testing.T) {
 	// Preserve/restore in case another test installed a hook.
+	waitHandlers(t) // a previous test's streaming handler may still read OnError
 	prev := OnError
-	defer func() { OnError = prev }()
+	defer func() { waitHandlers(t); OnError = prev }()
 
 	OnError = nil
 	// Call site pattern — must be safe when nil.
@@ -26,8 +27,9 @@ func TestOnError_DefaultNil(t *testing.T) {
 }
 
 func TestOnError_HookFires(t *testing.T) {
+	waitHandlers(t) // a previous test's streaming handler may still read OnError
 	prev := OnError
-	defer func() { OnError = prev }()
+	defer func() { waitHandlers(t); OnError = prev }()
 
 	var mu sync.Mutex
 	var got ErrorEvent
@@ -52,8 +54,9 @@ func TestOnError_HookFires(t *testing.T) {
 // forces rewriteMultipart to return an error, which the handler reports as
 // `stt_multipart`. Covers the other OnError branch in proxy.go.
 func TestOnError_FiresOnMultipartRewriteFailure(t *testing.T) {
+	waitHandlers(t) // a previous test's streaming handler may still read OnError
 	prev := OnError
-	defer func() { OnError = prev }()
+	defer func() { waitHandlers(t); OnError = prev }()
 
 	var seen []string
 	var mu sync.Mutex
@@ -97,8 +100,9 @@ func TestOnError_FiresOnMultipartRewriteFailure(t *testing.T) {
 // transcribe intent's cleanup failure is silent instead (see
 // TestTranscriptionHandler_NonEditPostProcessFailureKeepsRawFallback).
 func TestOnError_FiresOnPostProcessError(t *testing.T) {
+	waitHandlers(t) // a previous test's streaming handler may still read OnError
 	prev := OnError
-	defer func() { OnError = prev }()
+	defer func() { waitHandlers(t); OnError = prev }()
 
 	var seen []string
 	var mu sync.Mutex

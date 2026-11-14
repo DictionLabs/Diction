@@ -66,8 +66,10 @@ func startMergeServer(t *testing.T, transcript string, sttDelay time.Duration, m
 	}
 	g.health.set("small", true)
 
+	waitHandlers(t) // previous test's handlers may still read the hooks from their last defer
 	prevMerge, prevOnMerged, prevSkip, prevInputs, prevGrace := MergeProcess, OnMerged, OnEnhanceSkipped, OnMergeInputs, mergeDeviceGrace
 	t.Cleanup(func() {
+		waitHandlers(t)
 		MergeProcess, OnMerged, OnEnhanceSkipped, OnMergeInputs, mergeDeviceGrace = prevMerge, prevOnMerged, prevSkip, prevInputs, prevGrace
 	})
 	mergeDeviceGrace = 300 * time.Millisecond // the timing tests are written against the grace, whatever its value
@@ -113,7 +115,7 @@ func startMergeServer(t *testing.T, transcript string, sttDelay time.Duration, m
 		}
 		return "cleaned:" + text, "transcribe", nil
 	}
-	srv := httptest.NewServer(g.StreamingHandlerWithSplitEnhance(cleanup, nil))
+	srv := httptest.NewServer(trackHandler(g.StreamingHandlerWithSplitEnhance(cleanup, nil)))
 	t.Cleanup(srv.Close)
 	return srv, rig
 }

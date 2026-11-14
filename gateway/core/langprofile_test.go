@@ -80,9 +80,13 @@ func openFakeDB(t *testing.T, rows [][]driver.Value) *sql.DB {
 	return openFakeDBWith(t, &fakeDriver{queryRows: rows})
 }
 
+// fakeDBSeq keeps driver names unique across -count=N reruns.
+var fakeDBSeq atomic.Int64
+
 func openFakeDBWith(t *testing.T, d *fakeDriver) *sql.DB {
 	t.Helper()
-	name := "fakedb-" + t.Name()
+	// Unique per call: sql.Register panics on a reused name, which -count=N hits.
+	name := fmt.Sprintf("fakedb-%s-%d", t.Name(), fakeDBSeq.Add(1))
 	sql.Register(name, d)
 	db, err := sql.Open(name, "test")
 	if err != nil {

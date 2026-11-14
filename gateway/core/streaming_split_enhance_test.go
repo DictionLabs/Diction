@@ -44,7 +44,7 @@ func startSplitServer(
 	}
 	g.health.set("small", true)
 
-	srv := httptest.NewServer(g.StreamingHandlerWithSplitEnhance(inline, postDelivery))
+	srv := httptest.NewServer(trackHandler(g.StreamingHandlerWithSplitEnhance(inline, postDelivery)))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -316,8 +316,8 @@ func TestSplitEnhance_ReportsTranscriptionExactlyOnce(t *testing.T) {
 		calls.Add(1)
 	}
 
-	srv := httptest.NewServer(g.StreamingHandlerWithSplitEnhance(
-		echoEnhance("Hello there, world friend."), echoEnhance("Hello there, world friend.")))
+	srv := httptest.NewServer(trackHandler(g.StreamingHandlerWithSplitEnhance(
+		echoEnhance("Hello there, world friend."), echoEnhance("Hello there, world friend."))))
 	defer srv.Close()
 
 	dialAndFinish(t, srv, "model=small&language=en&enhance=true&split_enhance=true")

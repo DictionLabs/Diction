@@ -213,6 +213,10 @@ type cleanupSignals struct {
 
 func captureCleanupSignals(t *testing.T) *cleanupSignals {
 	t.Helper()
+	// Same contract as withCapturedOnError: the previous test's streaming handler
+	// emits its outcome from its last defer, after the client has its result, so
+	// wait for every tracked handler before swapping (and before restoring).
+	waitHandlers(t)
 	c := &cleanupSignals{}
 	prevErr, prevSkip := OnError, OnEnhanceSkipped
 	OnError = func(_ context.Context, e ErrorEvent) {
@@ -225,7 +229,7 @@ func captureCleanupSignals(t *testing.T) *cleanupSignals {
 		defer c.mu.Unlock()
 		c.skips = append(c.skips, reason)
 	}
-	t.Cleanup(func() { OnError, OnEnhanceSkipped = prevErr, prevSkip })
+	t.Cleanup(func() { waitHandlers(t); OnError, OnEnhanceSkipped = prevErr, prevSkip })
 	return c
 }
 

@@ -52,7 +52,7 @@ func twoBackendStreamServer(t *testing.T, primary, fallback Backend) (*httptest.
 	}
 	g.health.set(primary.Name, true)
 	g.health.set(fallback.Name, true)
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 	return srv, g
 }
@@ -99,6 +99,9 @@ func (c *capturedEvents) snapshot() []ErrorEvent {
 
 func captureStreamHooks(t *testing.T) (*capturedEvents, *atomic.Int32) {
 	t.Helper()
+	// Same contract as withCapturedOnError: wait for the previous test's handlers
+	// (the outcome is emitted from the handler's last defer) before swapping hooks.
+	waitHandlers(t)
 	ev := &capturedEvents{}
 	var failed atomic.Int32
 	prevErr, prevFailed := OnError, OnRequestFailed
@@ -108,7 +111,7 @@ func captureStreamHooks(t *testing.T) (*capturedEvents, *atomic.Int32) {
 		ev.mu.Unlock()
 	}
 	OnRequestFailed = func(_ context.Context, _ string) { failed.Add(1) }
-	t.Cleanup(func() { OnError, OnRequestFailed = prevErr, prevFailed })
+	t.Cleanup(func() { waitHandlers(t); OnError, OnRequestFailed = prevErr, prevFailed })
 	return ev, &failed
 }
 
@@ -261,7 +264,7 @@ func TestStreamRetry_NoAlternative_TransportFaultKeepsTheOnlyBackend(t *testing.
 		maxBodySize:  10 * 1024 * 1024,
 	}
 	g.health.set("only", true)
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	if _, err := streamPCMAndRead(t, srv); err == nil {

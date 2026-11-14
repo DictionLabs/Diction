@@ -180,7 +180,7 @@ func assertCloseCode(t *testing.T, conn *websocket.Conn, want websocket.StatusCo
 func TestOpus_UnknownCodecRejected400(t *testing.T) {
 	b := echoTranscript(t, "nope")
 	g := makeGateway(b.URL, false, 10<<20)
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	resp, err := http.Get(srv.URL + "/v1/audio/stream?codec=flac")
@@ -201,7 +201,7 @@ func TestOpus_CodecPCMRegression(t *testing.T) {
 		t.Run(q, func(t *testing.T) {
 			b := echoTranscript(t, "pcm ok")
 			g := makeGateway(b.URL, false, 10<<20)
-			srv := httptest.NewServer(g.StreamingHandler())
+			srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 			t.Cleanup(srv.Close)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -235,7 +235,7 @@ func TestOpus_PassthroughByteIdentical(t *testing.T) {
 	ogg := genOggOpus(t)
 	cb := newCaptureBackend(t, "passthrough")
 	g := makeGateway(cb.srv.URL, false, 10<<20)
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	text, err := streamOpusBinary(t, srv, ogg, true)
@@ -272,7 +272,7 @@ func TestOpus_LargeSingleFrameAccepted(t *testing.T) {
 
 	cb := newCaptureBackend(t, "large-frame")
 	g := makeGateway(cb.srv.URL, false, 10<<20) // NeedsWAV=false → passthrough, no ffmpeg needed
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	text, err := streamOpusBinary(t, srv, ogg, true)
@@ -322,7 +322,7 @@ func TestOpus_FFmpegDecodeProducesWAV(t *testing.T) {
 	ogg := genOggOpus(t)
 	cb := newCaptureBackend(t, "decoded")
 	g := makeGateway(cb.srv.URL, true, 10<<20)
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	text, err := streamOpusBinary(t, srv, ogg, true)
@@ -353,7 +353,7 @@ func TestOpus_DecodedSizeCapEnforced(t *testing.T) {
 	ogg := genOggOpus(t)
 	b := echoTranscript(t, "nope")
 	g := makeGateway(b.URL, true, 1) // 1 byte cap — any decoded output exceeds this
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -378,7 +378,7 @@ func TestOpus_GarbageBytesUnknownContainer(t *testing.T) {
 	// Bytes that aren't OggS or EBML magic → wsCloseUnknown (contract violation).
 	b := echoTranscript(t, "nope")
 	g := makeGateway(b.URL, false, 10<<20)
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -409,7 +409,7 @@ func TestOpus_SubprotocolAcceptedReportsCodecTag(t *testing.T) {
 		gotCodec.Store(codec)
 		gotNegotiation.Store(negotiation)
 	}
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	text, err := streamOpusBinary(t, srv, ogg, true)
@@ -436,7 +436,7 @@ func TestOpus_SubprotocolDeclinedFallsBackToPCM(t *testing.T) {
 
 	b := echoTranscript(t, "pcm fallback")
 	g := makeGateway(b.URL, true, 10<<20)
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -477,7 +477,7 @@ func TestOpus_NonNegotiatingClientNoFfmpegClosesCleanly(t *testing.T) {
 
 	b := echoTranscript(t, "unreachable")
 	g := makeGateway(b.URL, true, 10<<20)
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -497,7 +497,7 @@ func TestOpus_PCMCodecTagReported(t *testing.T) {
 	g.OnStreamingCodec = func(_ context.Context, codec, _ string) {
 		gotCodec.Store(codec)
 	}
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -645,7 +645,7 @@ func BenchmarkOpus_ConcurrentFFmpegDecode(b *testing.B) {
 	b.Cleanup(backend.Close)
 
 	g := makeGateway(backend.URL, true, 50<<20)
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	b.Cleanup(srv.Close)
 
 	b.ResetTimer()

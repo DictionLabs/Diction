@@ -1153,11 +1153,11 @@ func TestTranscriptionHandler_MalformedBackendURL_Returns400(t *testing.T) {
 	if got := rr.Header().Get("X-Diction-Route-Model"); got != "broken" {
 		t.Errorf("X-Diction-Route-Model: want broken, got %q", got)
 	}
-	if len(*events) != 1 || (*events)[0].Kind != "stt_route_fail" {
-		t.Errorf("OnError: want one stt_route_fail event, got %+v", *events)
+	if events.Len() != 1 || events.All()[0].Kind != "stt_route_fail" {
+		t.Errorf("OnError: want one stt_route_fail event, got %+v", events.All())
 	}
-	if len(*calls) != 1 || (*calls)[0] != errTypeSTTError {
-		t.Errorf("OnRequestFailed: want one %q call, got %v", errTypeSTTError, *calls)
+	if calls.Len() != 1 || calls.All()[0] != errTypeSTTError {
+		t.Errorf("OnRequestFailed: want one %q call, got %v", errTypeSTTError, calls.All())
 	}
 }
 
@@ -1485,10 +1485,10 @@ func TestTranscriptionHandler_UpstreamCanceled_EmitsError(t *testing.T) {
 	cancel()
 	<-done
 
-	if len(*events) == 0 {
+	if events.Len() == 0 {
 		t.Fatal("no OnError event captured on proxy cancel")
 	}
-	got := (*events)[0]
+	got := events.All()[0]
 	if got.Kind != "stt_upstream_canceled" {
 		t.Errorf("kind: want stt_upstream_canceled, got %q", got.Kind)
 	}
@@ -1502,7 +1502,7 @@ func TestTranscriptionHandler_UpstreamCanceled_EmitsError(t *testing.T) {
 	// stt_backend_5xx event, and (having no alternative) called
 	// OnRequestFailed(errTypeSTTError) — inflating the Din error-rate alerter
 	// on a benign double-tap. None of that may happen now.
-	for _, e := range *events {
+	for _, e := range events.All() {
 		if e.Kind == "stt_backend_5xx" {
 			t.Errorf("client cancel wrongly emitted stt_backend_5xx: %+v", e)
 		}
@@ -1510,8 +1510,8 @@ func TestTranscriptionHandler_UpstreamCanceled_EmitsError(t *testing.T) {
 	if !g.health.get("small") {
 		t.Error("client cancel wrongly demoted the backend (health=false); a cancel is not a backend fault")
 	}
-	if len(*failures) != 0 {
-		t.Errorf("OnRequestFailed must NOT be called on a pure client cancel, got %d call(s): %v", len(*failures), *failures)
+	if failures.Len() != 0 {
+		t.Errorf("OnRequestFailed must NOT be called on a pure client cancel, got %d call(s): %v", failures.Len(), failures.All())
 	}
 	if rr.Code != statusClientClosed {
 		t.Errorf("status: want %d (client closed), got %d", statusClientClosed, rr.Code)
@@ -1543,13 +1543,13 @@ func TestTranscriptionHandler_UpstreamUnreachable_EmitsBackendError(t *testing.T
 	rr := httptest.NewRecorder()
 	g.TranscriptionHandler()(rr, req)
 
-	if len(*events) == 0 {
+	if events.Len() == 0 {
 		t.Fatal("no OnError event captured for unreachable backend")
 	}
-	if (*events)[0].Kind != "stt_backend_error" {
-		t.Errorf("kind: want stt_backend_error, got %q", (*events)[0].Kind)
+	if events.All()[0].Kind != "stt_backend_error" {
+		t.Errorf("kind: want stt_backend_error, got %q", events.All()[0].Kind)
 	}
-	if len(*failures) == 0 {
+	if failures.Len() == 0 {
 		t.Error("OnRequestFailed not called on transport error")
 	}
 }

@@ -66,7 +66,7 @@ func TestBackCompat_ProductionClientUpstreamBytes(t *testing.T) {
 	}
 	g.health.set("small", true)
 
-	srv := httptest.NewServer(g.StreamingHandler())
+	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	defer srv.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

@@ -118,12 +118,13 @@ func TestTranscriptionHandler_E2EEncryptFailureFallsBackToPlain(t *testing.T) {
 
 	// Capture OnError callbacks — the e2e_encrypt failure must fire one.
 	var capturedKind string
+	waitHandlers(t) // a previous test's streaming handler may still read OnError
 	OnError = func(_ context.Context, ev ErrorEvent) {
 		if ev.Source == "e2e" {
 			capturedKind = ev.Kind
 		}
 	}
-	t.Cleanup(func() { OnError = nil })
+	t.Cleanup(func() { waitHandlers(t); OnError = nil })
 
 	g := &Gateway{
 		backends: []Backend{

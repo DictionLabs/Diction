@@ -93,7 +93,7 @@ func TestStreamHandler_PostProcessSeesSTTBoost(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			g := boostTestGateway(t, tc.primaryStatus, tc.primaryFlagged)
 			rec := &boostRecorder{}
-			srv := httptest.NewServer(g.StreamingHandlerWithPostProcess(rec.postProcess))
+			srv := httptest.NewServer(trackHandler(g.StreamingHandlerWithPostProcess(rec.postProcess)))
 			t.Cleanup(srv.Close)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
