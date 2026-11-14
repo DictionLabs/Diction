@@ -119,7 +119,7 @@
 
 ## Self-Hosting
 
-Diction speaks the OpenAI transcription API (`POST /v1/audio/transcriptions`) directly, so any compatible Whisper server works without the gateway. The gateway adds a WebSocket layer for live streaming — audio is transcribed as you speak, so by the time you tap stop the result is already back. For longer dictations the difference is noticeable; for short phrases it barely matters. The gateway also handles end-to-end encryption, QR pairing and optional LLM cleanup.
+Diction speaks the OpenAI transcription API (`POST /v1/audio/transcriptions`) directly, so any compatible Whisper server works without the gateway. The gateway adds a WebSocket layer for streaming: audio goes up while you speak, so nothing is left to upload when you tap stop. With [Live Text](#live-text) on, you also see your words while you talk, and long dictations can finish in about a second. The gateway also handles end-to-end encryption, QR pairing and optional LLM cleanup.
 
 This README is the current setup guide. The app's **Setup guide** link opens it.
 
@@ -608,8 +608,12 @@ volumes:
 
 ## Live Text
 
-The gateway can show your words while you talk (the app's **Live text** setting) on any
-backend above. Both settings are off by default:
+The gateway can show your words while you talk (the app's **Live text** setting, under
+Home → Keyboard) on any backend above. Both settings are off by default.
+
+> Needs a gateway built after v15.0 (build from source until the next release) and the next
+> Diction app release; on older versions the settings do nothing.
+
 
 ```yaml
     environment:
