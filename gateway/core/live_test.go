@@ -793,3 +793,22 @@ func TestLiveConfigFromEnv_PartialCap(t *testing.T) {
 		t.Fatalf("0 gives %d slots, want at least 1", cap(c.partialSlots))
 	}
 }
+
+// A hung segment request does not let the audio behind it grow without bound: the
+// 90 s cap counts cuts that are waiting too.
+func TestLiveEngine_HungRequestStillCapsHeldAudio(t *testing.T) {
+	asr := &fakeASR{hold: make(chan struct{})}
+	defer close(asr.hold)
+	e := newLiveEngine(context.Background(), testLiveConfig(), asr.transcribe, nil)
+	defer e.Close()
+	var pattern []int
+	for i := 0; i < 20; i++ { // 100 s of speech with a pause every 5 s
+		pattern = append(pattern, 4000, 1000)
+	}
+	feedChunksNoWait(e, pcmPattern(pattern...))
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !errors.Is(e.failed, errLiveBacklog) || len(e.pcm) != 0 || len(e.pending) != 0 {
+		t.Fatalf("failed = %v with %d bytes and %d cuts held behind a hung request", e.failed, len(e.pcm), len(e.pending))
+	}
+}

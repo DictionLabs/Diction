@@ -107,8 +107,9 @@ const (
 	// 6 dB above the floor, with no upper clamp, so a quiet last word is still sent.
 	liveActiveAboveDB = 6.0
 	liveTailActiveMs  = 60
-	// Audio held without any cut. Past this the engine gives up (whole clip instead), so
-	// a long stretch without pauses cannot grow memory without bound.
+	// Audio held (not yet committed). Past this the engine gives up (whole clip instead),
+	// so neither a long stretch without pauses nor a hung backend can grow memory without
+	// bound.
 	liveMaxOpenMs = 90000
 )
 
@@ -285,8 +286,14 @@ func (e *liveEngine) Write(p []byte) (int, error) {
 	if !e.finishing && e.failed == nil {
 		e.pcm = append(e.pcm, p...)
 		e.pending = append(e.pending, e.det.push(p)...)
-		if len(e.pending) == 0 && (e.audioEnd()-e.committed)*1000/liveSampleRate > liveMaxOpenMs {
-			e.fail(errLiveNoPause)
+		// Held audio is capped whether or not there are cuts: cuts waiting on a hung
+		// request hold their audio too.
+		if (e.audioEnd()-e.committed)*1000/liveSampleRate > liveMaxOpenMs {
+			if len(e.pending) == 0 {
+				e.fail(errLiveNoPause)
+			} else {
+				e.fail(errLiveBacklog)
+			}
 		}
 	}
 	e.mu.Unlock()
@@ -294,7 +301,10 @@ func (e *liveEngine) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-var errLiveNoPause = errors.New("live: no pause to cut at")
+var (
+	errLiveNoPause = errors.New("live: no pause to cut at")
+	errLiveBacklog = errors.New("live: backend too far behind")
+)
 
 // fail marks the engine failed and frees its audio. Caller holds mu.
 func (e *liveEngine) fail(err error) {
