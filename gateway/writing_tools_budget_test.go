@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // The phone cannot read a self-hoster's env, so /v1/models tells it how long Writing
@@ -76,4 +77,51 @@ func TestModelsAdvertisesPostDeliveryBudget(t *testing.T) {
 			t.Error("writing_tools must be absent without an LLM")
 		}
 	})
+}
+
+// /v1/text/process allows 30 s + 1 s per 400 bytes (cap 120 s); /v1/models says so, so the
+// app's deadline for that call follows it (.claude/plans/text-process-budget-plan.md).
+func TestModelsAdvertisesTextProcessBudget(t *testing.T) {
+	llm := map[string]string{"LLM_BASE_URL": "http://localhost:9/v1", "LLM_MODEL": "m"}
+	raw, ok := modelsBody(t, llm)["writing_tools"]
+	if !ok {
+		t.Fatal("writing_tools absent with an LLM")
+	}
+	var wt map[string]int
+	if err := json.Unmarshal(raw, &wt); err != nil {
+		t.Fatalf("writing_tools: %v (%s)", err, raw)
+	}
+	want := map[string]int{
+		"post_delivery_ms":          defaultLiveEnhanceTimeoutMs,
+		"process_base_ms":           30000,
+		"process_per_1000_bytes_ms": 2500,
+		"process_max_ms":            120000,
+	}
+	for k, v := range want {
+		if wt[k] != v {
+			t.Errorf("%s = %d, want %d (%s)", k, wt[k], v, raw)
+		}
+	}
+	if _, ok := modelsBody(t, nil)["writing_tools"]; ok {
+		t.Error("writing_tools must be absent without an LLM")
+	}
+}
+
+func TestTextProcessBudget(t *testing.T) {
+	cases := []struct {
+		bytes int
+		want  time.Duration
+	}{
+		{0, 30 * time.Second},
+		{400, 31 * time.Second},
+		{4000, 40 * time.Second},
+		{36000, 120 * time.Second},
+		{360000, 120 * time.Second},
+		{10 << 20, 120 * time.Second},
+	}
+	for _, c := range cases {
+		if got := textProcessBudget(c.bytes); got != c.want {
+			t.Errorf("textProcessBudget(%d) = %v, want %v", c.bytes, got, c.want)
+		}
+	}
 }

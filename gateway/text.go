@@ -11,6 +11,24 @@ import (
 	"unicode"
 )
 
+// The /v1/text/process budget: base + per 1,000 bytes of the request's UTF-8 text, capped.
+// Advertised on /v1/models (writing_tools.process_*) so the app waits as long as the gateway
+// allows (.claude/plans/text-process-budget-plan.md). Change these and the advert follows.
+const (
+	textProcessBaseMs         = 30000
+	textProcessPer1000BytesMs = 2500 // 1 s per 400 bytes
+	textProcessMaxMs          = 120000
+)
+
+// textProcessBudget is the time a text of n bytes gets on /v1/text/process.
+func textProcessBudget(n int) time.Duration {
+	ms := textProcessBaseMs + n*textProcessPer1000BytesMs/1000
+	if n > textProcessMaxMs || ms > textProcessMaxMs { // first check guards n*2500 overflow on 32-bit
+		ms = textProcessMaxMs
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
 // handleTextProcess handles POST /v1/text/process.
 // Wire contract (R11): plaintext JSON only, no E2E. Bearer token optional.
 // When LLM is not configured, returns 503 with {"error":"llm_not_configured"}.
@@ -48,11 +66,7 @@ func handleTextProcess(llm llmConfig) http.HandlerFunc {
 
 		intent := r.URL.Query().Get("intent")
 
-		timeoutSecs := 30 + len(body.Text)/400
-		if timeoutSecs > 120 {
-			timeoutSecs = 120
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), time.Duration(timeoutSecs)*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), textProcessBudget(len(body.Text)))
 		defer cancel()
 
 		resultText, err := llm.processWithIntent(ctx, body.Text, body.Context, intent)

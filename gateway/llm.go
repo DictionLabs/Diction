@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/DictionLabs/Diction/gateway/core"
 )
@@ -218,11 +217,8 @@ func (c llmConfig) callLLM(ctx context.Context, prompt, userMsg string, maxToken
 		req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
 
-	timeoutSecs := 30 + len(userMsg)/400
-	if timeoutSecs > 120 {
-		timeoutSecs = 120
-	}
-	client := &http.Client{Timeout: time.Duration(timeoutSecs) * time.Second}
+	// Same shape as the /v1/text/process budget, so the HTTP client never cuts it short.
+	client := &http.Client{Timeout: textProcessBudget(len(userMsg))}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("llm request: %w", err)

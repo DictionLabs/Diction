@@ -37,6 +37,8 @@ See `AGENTS.md` for the full wire format.
 | `DICTION_ENHANCE_TIMEOUT_MS` | No | How long the cleanup pass may run **while the user is waiting** — `/v1/audio/transcriptions`, and `/v1/audio/stream` on voice-edit intents. Default `20000` (20s), sized for a local model on CPU. On timeout the raw transcript is returned, so nothing is ever lost. Set `0` for no limit. |
 | `DICTION_LIVE_ENHANCE_TIMEOUT_MS` | No | How long the app waits for the cleanup pass before it inserts the raw transcript instead (`/v1/audio/stream?split_enhance=true`). Default `8000` (8s). Raise it if your LLM is slow and dictations often land uncleaned. The gateway reports the value on `/v1/models` (`writing_tools.post_delivery_ms`) and the app picks it up the next time it checks the server (opening Writing Tools, or the first dictation after an hour); app releases older than this field wait 9s whatever you set. The app waits this value plus 1s, never less than 9s or more than 121s. Set `0` for no limit (the app then waits 121s). |
 
+When speech runs on the phone (or on the Mac) and only the cleanup goes to your gateway, the app calls `/v1/text/process`. The gateway gives that call 30s plus 1s per 400 bytes of text (at most 120s), reports it on `/v1/models` (`writing_tools.process_*`), and the app waits that long plus 1s; app releases older than this field wait 6s (3ms per character for long texts).
+
 Both `LLM_BASE_URL` and `LLM_MODEL` must be set or the feature stays off.
 
 **What the LLM receives.** The cleanup call sends the transcript, followed by the user's My Words

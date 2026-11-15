@@ -55,7 +55,12 @@ Content-Type: application/json
     "text_process": true,
     "text_suggest": true
   },
-  "writing_tools": { "post_delivery_ms": 8000 }
+  "writing_tools": {
+    "post_delivery_ms": 8000,
+    "process_base_ms": 30000,
+    "process_per_1000_bytes_ms": 2500,
+    "process_max_ms": 120000
+  }
 }
 ```
 
@@ -76,6 +81,7 @@ Content-Type: application/json
 | Field | Type | Meaning |
 |-------|------|---------|
 | `post_delivery_ms` | int | `DICTION_LIVE_ENHANCE_TIMEOUT_MS`: how long cleanup may run after the raw transcript was sent on a `split_enhance` stream. The iOS app waits this long + 1s (at least 9s, at most 121s; `0` = 121s) before inserting the raw text. |
+| `process_base_ms`, `process_per_1000_bytes_ms`, `process_max_ms` | int | The `/v1/text/process` budget: `min(base + UTF-8 bytes of text × per_1000_bytes / 1000, max)` ms — 30s + 1s per 400 bytes, cap 120s. The app's deadline for that call is this budget + 1s (never below its own default, at most 121s). Absent → the app's default. |
 
 ### POST /v1/audio/transcriptions
 

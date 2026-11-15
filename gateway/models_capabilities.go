@@ -86,7 +86,14 @@ func withCapabilities(base http.HandlerFunc, flagsFor func(*http.Request) capabi
 		// Numbers do not fit the bool-only capabilities map, so the Writing Tools budget
 		// is its own object. Absent without an LLM: there is nothing to wait for.
 		if flags.llmEnabled {
-			wt, _ := json.Marshal(map[string]int{"post_delivery_ms": flags.postDeliveryMs})
+			// process_*: the /v1/text/process budget (textProcessBudget) — base + per 1,000
+			// UTF-8 bytes of the text, capped — so the app's deadline for that call follows it.
+			wt, _ := json.Marshal(map[string]int{
+				"post_delivery_ms":          flags.postDeliveryMs,
+				"process_base_ms":           textProcessBaseMs,
+				"process_per_1000_bytes_ms": textProcessPer1000BytesMs,
+				"process_max_ms":            textProcessMaxMs,
+			})
 			baseResp["writing_tools"] = wt
 		}
 
