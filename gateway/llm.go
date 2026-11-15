@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -117,6 +118,52 @@ func llmConfigFromEnv() llmConfig {
 // processWithPrompt sends userMsg to the LLM under the given system prompt.
 // It is the shared HTTP call used by process, processWithIntent, and suggestFixes.
 func (c llmConfig) processWithPrompt(ctx context.Context, prompt, userMsg string) (string, error) {
+	maxTokens := len(userMsg)/2 + reasoningAllowance
+	if maxTokens > maxCompletionTokensCap {
+		maxTokens = maxCompletionTokensCap
+	}
+	result, err := c.callLLM(ctx, prompt, userMsg, maxTokens)
+	var se *llmStatusError
+	if err != nil && errors.As(err, &se) && se.Status == http.StatusBadRequest && isContextLimitError(se.Body) {
+		// A server with a small context window (vLLM, llama.cpp: 8k is common) rejects the
+		// larger reasoning-aware budget on a long dictation. Retry once with the previous
+		// formula rather than losing cleanup.
+		smaller := len(userMsg)/2 + 200
+		if smaller < 4000 {
+			smaller = 4000
+		}
+		if smaller < maxTokens {
+			log.Printf("LLM: upstream rejected max_completion_tokens=%d (context limit), retrying with %d", maxTokens, smaller)
+			return c.callLLM(ctx, prompt, userMsg, smaller)
+		}
+	}
+	return result, err
+}
+
+// llmStatusError is a non-200 answer from the upstream.
+type llmStatusError struct {
+	Status int
+	Body   string
+}
+
+func (e *llmStatusError) Error() string {
+	return fmt.Sprintf("llm api error %d: %s", e.Status, e.Body)
+}
+
+// isContextLimitError matches the messages OpenAI-compatible servers use when the prompt plus
+// max tokens does not fit the model's context window.
+func isContextLimitError(body string) bool {
+	b := strings.ToLower(body)
+	for _, m := range []string{"maximum context length", "max_tokens", "context_length_exceeded", "exceeds the context", "context length"} {
+		if strings.Contains(b, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// callLLM performs one chat-completions request with the given output budget.
+func (c llmConfig) callLLM(ctx context.Context, prompt, userMsg string, maxTokens int) (string, error) {
 	type message struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
@@ -147,11 +194,6 @@ func (c llmConfig) processWithPrompt(ctx context.Context, prompt, userMsg string
 	// estimate PLUS a reasoning allowance, not the larger of the two. Capped at 16384, the
 	// smallest output limit among the common hosted models (gpt-4o-mini); a provider that
 	// allows less rejects the request and the caller keeps the raw transcript.
-	maxTokens := len(userMsg)/2 + reasoningAllowance
-	if maxTokens > maxCompletionTokensCap {
-		maxTokens = maxCompletionTokensCap
-	}
-
 	body, err := json.Marshal(request{
 		Model: c.Model,
 		Messages: []message{
@@ -193,7 +235,7 @@ func (c llmConfig) processWithPrompt(ctx context.Context, prompt, userMsg string
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("llm api error %d: %s", resp.StatusCode, respBody)
+		return "", &llmStatusError{Status: resp.StatusCode, Body: string(respBody)}
 	}
 
 	var result struct {
@@ -367,7 +409,9 @@ func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, int
 	// it: a context window smaller than the dictation, or a model that condensed it into notes.
 	// Same deletion guard the split answer applies (core/enhanceguard.go), so every audio path
 	// agrees on what counts as a cleanup. The caller keeps the raw transcript.
-	if !core.EnhancedAcceptable(text, result) {
+	// Only for the built-in prompt: an operator's own LLM_PROMPT may legitimately summarise,
+	// condense or translate, so a custom prompt is trusted.
+	if c.Prompt == DefaultPromptCleanup && !core.EnhancedAcceptable(text, result) {
 		return "", fmt.Errorf("cleanup dropped too many words (%d of %d kept)", len(strings.Fields(result)), len(strings.Fields(text)))
 	}
 	// A spoken "new paragraph" / "new line" ending the dictation becomes a trailing break that
