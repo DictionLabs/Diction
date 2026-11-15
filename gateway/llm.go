@@ -401,6 +401,12 @@ func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, int
 	if intent == "edit" || intent == "edit-selected" {
 		return result, nil
 	}
+	// A dictation that is only "new paragraph" / "new line": the answer is the break itself,
+	// which processWithPrompt's TrimSpace turned into "" (and the deletion guard below would
+	// then swap for the raw "New paragraph."). Deduplicated against the cursor's newlines.
+	if brk, ok := core.ApplySpokenBreakOnly(text, result, tc.Before, tc.After); ok {
+		return brk, nil
+	}
 	// A cleanup that lost a large share of the words did not clean the dictation, it shortened
 	// it: a context window smaller than the dictation, or a model that condensed it into notes.
 	// Same deletion guard the split answer applies (core/enhanceguard.go), so every audio path

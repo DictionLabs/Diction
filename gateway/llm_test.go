@@ -1047,6 +1047,9 @@ func TestProcessWithIntent_RestoresTrailingSpokenBreak(t *testing.T) {
 		{"model kept the phrase as content", "I added a new paragraph", "i added a new paragraph", "", "", "I added a new paragraph"},
 		{"no spoken command", "Buy milk.", "buy milk", "", "", "Buy milk."},
 		{"edit intent untouched", "Buy milk.", "buy milk new paragraph", `{"before":"x"}`, "edit", "Buy milk."},
+		{"dictation that is only new paragraph", "\n\n", "New paragraph.", `{"before":"Buy milk."}`, "", "\n\n"},
+		{"dictation that is only new line, model kept the words", "New line.", "new line", `{"before":"Buy milk."}`, "", "\n"},
+		{"break-only dictation deduped against the cursor", "\n\n", "new paragraph", `{"before":"Buy milk.\n"}`, "", "\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

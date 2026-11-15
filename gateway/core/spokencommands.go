@@ -172,6 +172,62 @@ func ApplySpokenLeadingBreak(transcript, cleaned, before string) string {
 	return cleaned
 }
 
+// SpokenBreakOnly returns the break a transcript made only of break commands stands for
+// ("New paragraph." → "\n\n", "new line" → "\n", "new line new line" → "\n\n"), capped at
+// one blank line, or "" when the transcript holds any other word or is empty.
+func SpokenBreakOnly(transcript string) string {
+	words := spokenWords(transcript)
+	if len(words) == 0 {
+		return ""
+	}
+	brk := ""
+	for i := 0; i < len(words); {
+		matched := 0
+		for n := maxSpokenPhraseWords; n >= 1; n-- {
+			if i+n <= len(words) && isBreakPhrase(strings.Join(words[i:i+n], " ")) {
+				matched = n
+				break
+			}
+		}
+		if matched == 0 {
+			return ""
+		}
+		brk += spokenBreakPhrases[strings.Join(words[i:i+matched], " ")]
+		i += matched
+	}
+	if len(brk) > 2 {
+		brk = "\n\n"
+	}
+	return brk
+}
+
+// ApplySpokenBreakOnly handles a dictation that is nothing but a break command. The cleanup
+// rightly drops the words and the answer's TrimSpace then leaves "", which the trailing and
+// leading restores (identity on blank text) cannot tell from a real empty result, so the
+// break was lost (BOW: a cloud "new paragraph" alone inserted nothing). When transcript is
+// break-only and cleaned is blank or still just the command words, returns the break minus
+// the newlines already around the cursor (before's trailing newlines, spaces/tabs skipped,
+// plus after's leading ones), so a join never exceeds the break; may be "" when the cursor
+// already sits on one. ok is false, and cleaned should be used unchanged, otherwise.
+func ApplySpokenBreakOnly(transcript, cleaned, before, after string) (brk string, ok bool) {
+	brk = SpokenBreakOnly(transcript)
+	if brk == "" {
+		return "", false
+	}
+	if strings.TrimSpace(cleaned) != "" && SpokenBreakOnly(cleaned) == "" {
+		return "", false
+	}
+	before = strings.ReplaceAll(before, "\r\n", "\n")
+	before = strings.TrimRight(before, " \t")
+	after = strings.ReplaceAll(after, "\r\n", "\n")
+	have := len(before) - len(strings.TrimRight(before, "\n"))
+	have += len(after) - len(strings.TrimLeft(after, "\n"))
+	if need := len(brk) - have; need > 0 {
+		return strings.Repeat("\n", need), true
+	}
+	return "", true
+}
+
 // commandMask marks which of words belong to a spoken formatting command phrase (break
 // phrase in any listed language, or an English mark name), matching longest phrases first.
 func commandMask(words []string) []bool {

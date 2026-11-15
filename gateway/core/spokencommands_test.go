@@ -96,6 +96,38 @@ func TestApplySpokenLeadingBreak_dedupsAgainstBefore(t *testing.T) {
 	}
 }
 
+func TestApplySpokenBreakOnly(t *testing.T) {
+	tests := []struct {
+		name, transcript, cleaned, before, after string
+		want                                     string
+		wantOK                                   bool
+	}{
+		{"paragraph only, blank cleanup", "New paragraph.", "", "Hi there.", "", "\n\n", true},
+		{"line only, blank cleanup", "new line", "", "Hi there.", "", "\n", true},
+		{"model kept the words", "New paragraph.", "New paragraph.", "Hi.", "", "\n\n", true},
+		{"two lines cap at one blank line", "new line new line new line", "", "Hi.", "", "\n\n", true},
+		{"German", "Neuer Absatz.", "", "Hallo.", "", "\n\n", true},
+		{"before already ends with a newline", "new paragraph", "", "Hi.\n", "", "\n", true},
+		{"before ends with a blank line and spaces", "new paragraph", "", "Hi.\n\n  ", "", "", true},
+		{"after starts with a newline", "new paragraph", "", "Hi.", "\nNext", "\n", true},
+		{"empty field still gets the break", "new paragraph", "", "", "", "\n\n", true},
+		{"truly empty transcript", "", "", "Hi.", "", "", false},
+		{"punctuation-only transcript", " . ", "", "Hi.", "", "", false},
+		{"command plus content is not break-only", "thanks new paragraph", "Thanks.", "", "", "", false},
+		{"blank cleanup of other words untouched", "um", "", "", "", "", false},
+		{"break-only transcript but cleanup has content", "new line", "New line of credit.", "", "", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := ApplySpokenBreakOnly(tt.transcript, tt.cleaned, tt.before, tt.after)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("ApplySpokenBreakOnly(%q, %q, %q, %q) = %q, %v; want %q, %v",
+					tt.transcript, tt.cleaned, tt.before, tt.after, got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestSpokenCommandWordCount(t *testing.T) {
 	tests := []struct {
 		raw  string
