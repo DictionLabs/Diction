@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -35,13 +36,9 @@ func (c *transcriptionCall) buildProxy(proxyTarget *url.URL, proxyBackend *Backe
 			}
 			req.URL.Path = path
 			req.Host = proxyTarget.Host
-			req.Header.Set("Content-Type", c.proxyContentType)
 			req.Body = io.NopCloser(bytes.NewReader(c.proxyBody))
 			req.ContentLength = int64(len(c.proxyBody))
-			if proxyBackend.AuthHeader != "" {
-				req.Header.Set("Authorization", proxyBackend.AuthHeader)
-			}
-			keepInboundForwarding(pr)
+			c.keepDirectorParity(pr, proxyBackend.AuthHeader)
 		},
 		ModifyResponse: func(resp *http.Response) error {
 			return c.modifyResponse(resp, proxyBackend)
@@ -53,21 +50,44 @@ func (c *transcriptionCall) buildProxy(proxyTarget *url.URL, proxyBackend *Backe
 	}
 }
 
-// keepInboundForwarding restores the inbound forwarding headers that Rewrite strips, as Director did.
-func keepInboundForwarding(pr *httputil.ProxyRequest) {
+// keepDirectorParity makes Rewrite send what Director did: hop-by-hop removal ran after Director.
+func (c *transcriptionCall) keepDirectorParity(pr *httputil.ProxyRequest, auth string) {
+	named := connectionNamedHeaders(pr.In.Header)
+	if pr.In.Form == nil {
+		pr.Out.URL.RawQuery = pr.In.URL.RawQuery
+	}
+	if !named["Content-Type"] {
+		pr.Out.Header.Set("Content-Type", c.proxyContentType)
+	}
+	if auth != "" && !named["Authorization"] {
+		pr.Out.Header.Set("Authorization", auth)
+	}
 	for _, h := range []string{"Forwarded", "X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto"} {
-		if vals, ok := pr.In.Header[h]; ok {
-			pr.Out.Header[h] = append([]string(nil), vals...)
+		if vals, ok := pr.In.Header[h]; ok && !named[h] {
+			pr.Out.Header[h] = slices.Clone(vals)
 		}
 	}
 	ip, _, err := net.SplitHostPort(pr.In.RemoteAddr)
-	if err != nil {
+	prior, hasPrior := pr.Out.Header["X-Forwarded-For"]
+	if err != nil || (hasPrior && prior == nil) {
 		return
 	}
-	if prior, ok := pr.Out.Header["X-Forwarded-For"]; ok {
+	if len(prior) > 0 {
 		ip = strings.Join(prior, ", ") + ", " + ip
 	}
 	pr.Out.Header.Set("X-Forwarded-For", ip)
+}
+
+func connectionNamedHeaders(h http.Header) map[string]bool {
+	named := map[string]bool{}
+	for _, line := range h["Connection"] {
+		for _, f := range strings.Split(line, ",") {
+			if f = strings.Trim(f, " \t\r\n"); f != "" {
+				named[http.CanonicalHeaderKey(f)] = true
+			}
+		}
+	}
+	return named
 }
 
 func (c *transcriptionCall) handleProxyError(rw http.ResponseWriter, req *http.Request, err error, proxyBackend *Backend) {
