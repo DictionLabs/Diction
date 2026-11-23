@@ -2,10 +2,6 @@ package core
 
 import "testing"
 
-// TestLangSet_ReturnsCopy asserts langSet never hands out a live reference to
-// a package-level language set. Nothing mutates euLanguages/cohereSupported
-// today (DefaultBackends() runs once at startup), so this guards against a
-// future bug rather than a present one — see langSet's doc comment.
 func TestLangSet_ReturnsCopy(t *testing.T) {
 	src := map[string]bool{"en": true, "fr": true}
 	got := langSet(src)

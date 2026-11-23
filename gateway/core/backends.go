@@ -1,58 +1,27 @@
 package core
 
-// Backend describes a speech-to-text model backend.
 type Backend struct {
 	Name            string
 	URL             string
 	Aliases         []string
-	CanonicalID     string // HuggingFace-style ID advertised in /v1/models data[]
+	CanonicalID     string
 	DisplayName     string
 	Description     string
-	Provider        string // "whisper", "parakeet", or "canary"
-	NeedsWAV        bool   // if true, gateway converts audio to WAV before proxying
-	ForwardModel    string // model name to inject into forwarded request; empty = don't inject
-	AuthHeader      string // Authorization header value to inject into backend requests; empty = none
-	SkipHealthCheck bool   // if true, skip health polling (custom/external backends)
-	TargetPath      string // HTTP path for the transcription endpoint; empty defaults to /v1/audio/transcriptions
-	Disabled        bool   // if true, backend is registered (aliases/models reference) but not deployed — skip warmup + health polling
+	Provider        string
+	NeedsWAV        bool
+	ForwardModel    string
+	AuthHeader      string
+	SkipHealthCheck bool
+	TargetPath      string
+	Disabled        bool
 
-	// Languages is the set of language codes this backend can serve, lowercase
-	// BCP-47. nil means "serves every language" (the Whisper models, and any
-	// third-party custom backend, where we cannot know its coverage and would
-	// rather forward a request it might reject than block a self-hoster's own
-	// server). Consulted by ModelForLanguage's health fallbacks so a backend
-	// is never substituted for a language it cannot serve — see languages.go
-	// backendServes. Added 2026-09 after a demoted large-v3-turbo caused the
-	// fallback to route zh/ja/ko/ar/tr/sr to canary-v2, which returned 400
-	// "Unsupported language" 218 times; see .claude/bow/stt-failure-rate-2026-09-13.md.
 	Languages map[string]bool
 
-	// NeedsExplicitLanguage is true when the backend cannot perform its own
-	// language identification and must be told a concrete code — so it must
-	// never be routed a language=auto request. Canary is the case: it errors
-	// on the literal string "auto". Parakeet and the Whisper models do their
-	// own LID and leave this false.
 	NeedsExplicitLanguage bool
 
-	// AcceptsCustomWords is true when the backend reads the `custom_words`
-	// multipart field (a JSON array of the user's My Words) and biases its own
-	// decoding toward them — the STT custom-word boost. Our Cohere, Parakeet
-	// and Canary (canary-v2) containers do. The gateway sends the field to no
-	// other backend, so custom backends (always false) never see a field they
-	// do not expect. Self-hosters' Parakeet (achetronic/parakeet) reads named
-	// form fields only and ignores it; an older Canary container ignores it too.
-	// See .claude/plans/cohere-custom-word-boost-plan.md,
-	// .claude/plans/parakeet-custom-word-boost-plan.md and
-	// .claude/plans/canary-custom-word-boost-plan.md.
 	AcceptsCustomWords bool
 }
 
-// langSet returns a fresh copy of a language-code set, so a Backend never
-// holds a live reference to a package-level set (euLanguages, cohereSupported)
-// that could be mutated out from under it. Nothing mutates those sets today —
-// DefaultBackends() runs once at startup — so this prevents no current bug;
-// it exists so the day Canary's coverage diverges from Parakeet's, the change
-// is a one-line literal instead of an aliasing hunt.
 func langSet(codes map[string]bool) map[string]bool {
 	out := make(map[string]bool, len(codes))
 	for k, v := range codes {
@@ -61,16 +30,6 @@ func langSet(codes map[string]bool) map[string]bool {
 	return out
 }
 
-// CustomBackendFromEnv builds a custom backend from environment variables.
-// Returns nil if CUSTOM_BACKEND_URL is not set.
-//
-// Supported env vars:
-//
-//	CUSTOM_BACKEND_URL          (required) base URL of the backend, e.g. http://192.168.1.50:8000
-//	CUSTOM_BACKEND_MODEL        model name to forward in the request, e.g. Systran/faster-whisper-large-v3-turbo
-//	CUSTOM_BACKEND_NEEDS_WAV    set to "true" if the backend only accepts WAV audio (default: false)
-//	CUSTOM_BACKEND_AUTH         Authorization header value, e.g. "Bearer sk-xxx" (default: none)
-//	CUSTOM_BACKEND_CANONICAL_ID HuggingFace-style ID advertised via /v1/models (default: CUSTOM_BACKEND_MODEL, else "custom")
 func CustomBackendFromEnv() *Backend {
 	rawURL := EnvOrDefault("CUSTOM_BACKEND_URL", "")
 	if rawURL == "" {
@@ -82,16 +41,16 @@ func CustomBackendFromEnv() *Backend {
 		canonical = forwardModel
 	}
 	if canonical == "" {
-		canonical = "custom"
+		canonical = nameCustom
 	}
 	return &Backend{
-		Name:            "custom",
+		Name:            nameCustom,
 		URL:             rawURL,
-		Aliases:         []string{"custom"},
+		Aliases:         []string{nameCustom},
 		CanonicalID:     canonical,
 		DisplayName:     "Custom",
 		Description:     "custom backend",
-		Provider:        "custom",
+		Provider:        nameCustom,
 		NeedsWAV:        EnvBoolOrDefault("CUSTOM_BACKEND_NEEDS_WAV", false),
 		ForwardModel:    forwardModel,
 		AuthHeader:      EnvOrDefault("CUSTOM_BACKEND_AUTH", ""),
@@ -99,44 +58,127 @@ func CustomBackendFromEnv() *Backend {
 	}
 }
 
-// DefaultBackends returns the standard set of STT backends.
 func DefaultBackends() []Backend {
+	return append(whisperBackends(), speechBackends()...)
+}
+
+func whisperBackends() []Backend {
 	return []Backend{
-		// Whisper models (faster-whisper-server, accepts any audio format)
-		// Tiny is reserved for on-device inference, not exposed via gateway
-		// {Name: "tiny", URL: "http://whisper-tiny:8000", Aliases: []string{"tiny", "Systran/faster-whisper-tiny"}, DisplayName: "Tiny", Description: "fastest, best for quick notes in quiet environments", Provider: "whisper"},
-		// These serve our own fp16 CTranslate2 builds of openai/whisper-*, so both the
-		// advertised id (CanonicalID) and the forwarded one name DictionLabs. Advertising a
-		// third party's id while serving ours would be untrue to anyone reading /v1/models.
-		// The old Systran and deepdml ids stay in Aliases forever so stored client config and
-		// existing scripts keep resolving.
-		{Name: "small", URL: "http://whisper-small:8000", Aliases: []string{"small", "Systran/faster-whisper-small", "DictionLabs/whisper-small-ct2"}, CanonicalID: "DictionLabs/whisper-small-ct2", ForwardModel: "DictionLabs/whisper-small-ct2", DisplayName: "Small", Description: "fast, good for everyday dictation", Provider: "whisper"},
-		{Name: "medium", URL: "http://whisper-medium:8000", Aliases: []string{"medium", "Systran/faster-whisper-medium", "DictionLabs/whisper-medium-ct2"}, CanonicalID: "DictionLabs/whisper-medium-ct2", ForwardModel: "DictionLabs/whisper-medium-ct2", DisplayName: "Medium", Description: "slower, handles accents and background noise better", Provider: "whisper"},
-		// ForwardModel intentionally does NOT match CanonicalID here, unlike small/medium.
-		// deepdml/faster-whisper-large-v3-turbo-ct2 is byte-identical weights, always
-		// correctly configured, and pre-warmed on Cara via WHISPER__MODEL — pointing our
-		// own cloud at it keeps Diction's production critical path off a mirror repo whose
-		// audience and maintenance owner is self-hosters. See stt-backend-5xx BOW entry.
-		{Name: "large-v3-turbo", URL: "http://whisper-large-turbo:8000", Aliases: []string{"large-v3-turbo", "turbo", "deepdml/faster-whisper-large-v3-turbo-ct2", "DictionLabs/whisper-large-v3-turbo-ct2"}, CanonicalID: "DictionLabs/whisper-large-v3-turbo-ct2", ForwardModel: "deepdml/faster-whisper-large-v3-turbo-ct2", DisplayName: "Large", Description: "highest accuracy Whisper model, best for difficult audio", Provider: "whisper"},
-		{Name: "distil-large-v3", URL: "http://whisper-distil-large:8000", Aliases: []string{"distil-large-v3", "Systran/faster-distil-whisper-large-v3"}, CanonicalID: "Systran/faster-distil-whisper-large-v3", DisplayName: "Large", Description: "highest accuracy Whisper model, English only", Provider: "whisper", Languages: langSet(map[string]bool{"en": true})},
+		{
+			Name:         "small",
+			URL:          "http://whisper-small:8000",
+			Aliases:      []string{"small", "Systran/faster-whisper-small", modelWhisperSmallCT2},
+			CanonicalID:  modelWhisperSmallCT2,
+			ForwardModel: modelWhisperSmallCT2,
+			DisplayName:  "Small",
+			Description:  "fast, good for everyday dictation",
+			Provider:     nameWhisper,
+		},
+		{
+			Name:         "medium",
+			URL:          "http://whisper-medium:8000",
+			Aliases:      []string{"medium", "Systran/faster-whisper-medium", modelWhisperMediumCT2},
+			CanonicalID:  modelWhisperMediumCT2,
+			ForwardModel: modelWhisperMediumCT2,
+			DisplayName:  "Medium",
+			Description:  "slower, handles accents and background noise better",
+			Provider:     nameWhisper,
+		},
+		{
+			Name:         "large-v3-turbo",
+			URL:          "http://whisper-large-turbo:8000",
+			Aliases:      []string{"large-v3-turbo", "turbo", "deepdml/faster-whisper-large-v3-turbo-ct2", "DictionLabs/whisper-large-v3-turbo-ct2"},
+			CanonicalID:  "DictionLabs/whisper-large-v3-turbo-ct2",
+			ForwardModel: "deepdml/faster-whisper-large-v3-turbo-ct2",
+			DisplayName:  "Large",
+			Description:  "highest accuracy Whisper model, best for difficult audio",
+			Provider:     nameWhisper,
+		},
+		{
+			Name:        "distil-large-v3",
+			URL:         "http://whisper-distil-large:8000",
+			Aliases:     []string{"distil-large-v3", "Systran/faster-distil-whisper-large-v3"},
+			CanonicalID: "Systran/faster-distil-whisper-large-v3",
+			DisplayName: "Large",
+			Description: "highest accuracy Whisper model, English only",
+			Provider:    nameWhisper,
+			Languages:   langSet(map[string]bool{"en": true}),
+		},
+	}
+}
 
-		// Parakeet (NVIDIA, OpenAI-compatible API, WAV only) — available for public/community gateway self-hosters
-		{Name: "parakeet-v3", URL: "http://parakeet:5092", Aliases: []string{"parakeet-v3", "parakeet", "parakeet-tdt-0.6b-v3", "nvidia/parakeet-tdt-0.6b-v3"}, CanonicalID: "nvidia/parakeet-tdt-0.6b-v3", DisplayName: "Parakeet", Description: "best overall accuracy and speed, 25 European languages", Provider: "parakeet", NeedsWAV: true, Languages: langSet(euLanguages), AcceptsCustomWords: true},
+func speechBackends() []Backend {
+	return []Backend{
+		{
+			Name: "parakeet-v3",
+			URL:  "http://parakeet:5092",
+			Aliases: []string{
+				"parakeet-v3", nameParakeet, "parakeet-tdt-0.6b-v3", "nvidia/parakeet-tdt-0.6b-v3",
+				"parakeet-ultra", "DictionLabs/parakeet-ultra",
+			},
+			CanonicalID:        "nvidia/parakeet-tdt-0.6b-v3",
+			DisplayName:        "Parakeet",
+			Description:        "best overall accuracy and speed, 25 European languages",
+			Provider:           nameParakeet,
+			NeedsWAV:           true,
+			Languages:          langSet(euLanguages),
+			AcceptsCustomWords: true,
+		},
 
-		// Canary (NVIDIA, custom /inference API, WAV only, GPU-accelerated) — default for private cloud gateway
-		{Name: "canary-v2", URL: "http://canary:9000", Aliases: []string{"canary-v2", "canary", "nvidia/canary-1b-v2"}, CanonicalID: "nvidia/canary-1b-v2", DisplayName: "Canary", Description: "highest accuracy for 25 European languages, GPU-accelerated", Provider: "canary", NeedsWAV: true, TargetPath: "/inference", Languages: langSet(euLanguages), NeedsExplicitLanguage: true, AcceptsCustomWords: true},
+		{
+			Name:                  "canary-v2",
+			URL:                   "http://canary:9000",
+			Aliases:               []string{"canary-v2", nameCanary, "nvidia/canary-1b-v2"},
+			CanonicalID:           "nvidia/canary-1b-v2",
+			DisplayName:           "Canary",
+			Description:           "highest accuracy for 25 European languages, GPU-accelerated",
+			Provider:              nameCanary,
+			NeedsWAV:              true,
+			TargetPath:            "/inference",
+			Languages:             langSet(euLanguages),
+			NeedsExplicitLanguage: true,
+			AcceptsCustomWords:    true,
+		},
 
-		// Canary-Qwen (NVIDIA, English-only, SALM architecture, #1 HF ASR leaderboard) — English tier for private cloud gateway.
-		// Disabled: 9.86 GiB VRAM doesn't fit alongside canary-v2 + whisper on the 16GB GPU (see server/docker-compose.yml).
-		// English routing uses canary-v2; this entry stays for alias/models reference but is skipped for warmup + health polling.
-		{Name: "canary-qwen", URL: "http://canary-qwen:9000", Aliases: []string{"canary-qwen", "nvidia/canary-qwen-2.5b"}, CanonicalID: "nvidia/canary-qwen-2.5b", DisplayName: "Canary Qwen", Description: "best-in-class English speech recognition, 5.63% WER", Provider: "canary", NeedsWAV: true, TargetPath: "/inference", Disabled: true, Languages: langSet(map[string]bool{"en": true}), NeedsExplicitLanguage: true},
+		{
+			Name:                  "canary-qwen",
+			URL:                   "http://canary-qwen:9000",
+			Aliases:               []string{"canary-qwen", "nvidia/canary-qwen-2.5b"},
+			CanonicalID:           "nvidia/canary-qwen-2.5b",
+			DisplayName:           "Canary Qwen",
+			Description:           "best-in-class English speech recognition, 5.63% WER",
+			Provider:              nameCanary,
+			NeedsWAV:              true,
+			TargetPath:            "/inference",
+			Disabled:              true,
+			Languages:             langSet(map[string]bool{"en": true}),
+			NeedsExplicitLanguage: true,
+		},
 
-		// Cohere Transcribe (CohereLabs, OpenAI-compatible /v1/audio/transcriptions, WAV only,
-		// GPU-accelerated) — serves the languages the cloud STT model table assigns to the Cohere
-		// slot (core/languages.go cloudSTTModels; measured, .claude/bow/server-stt-routing-2026-10.md). Empty TargetPath
-		// (defaults to /v1/audio/transcriptions) matches its native contract exactly, same posture
-		// as parakeet-v3 — no response normalization/adapter needed. NOT Disabled: it must be
-		// health-polled to be routable by ModelForLanguage/ModelForAutoDetect.
-		{Name: "cohere-transcribe", URL: "http://cohere:5093", Aliases: []string{"cohere-transcribe", "cohere", "CohereLabs/cohere-transcribe-03-2026"}, CanonicalID: "CohereLabs/cohere-transcribe-03-2026", DisplayName: "Cohere Transcribe", Description: "fast multilingual speech recognition, 14 languages", Provider: "cohere", NeedsWAV: true, Languages: langSet(cohereSupported), AcceptsCustomWords: true},
+		{
+			Name:               "qwen3-asr",
+			URL:                "http://qwen-asr:5096",
+			Aliases:            []string{"qwen3-asr", "qwen-asr", "Qwen/Qwen3-ASR-1.7B", "DictionLabs/Qwen3-ASR-1.7B"},
+			CanonicalID:        "Qwen/Qwen3-ASR-1.7B",
+			DisplayName:        "Qwen3-ASR",
+			Description:        "Chinese and Cantonese speech recognition",
+			Provider:           "qwen",
+			NeedsWAV:           true,
+			Languages:          langSet(map[string]bool{"zh": true, langYue: true}),
+			AcceptsCustomWords: true,
+		},
+
+		{
+			Name:               "cohere-transcribe",
+			URL:                "http://cohere:5093",
+			Aliases:            []string{"cohere-transcribe", nameCohere, "CohereLabs/cohere-transcribe-03-2026"},
+			CanonicalID:        "CohereLabs/cohere-transcribe-03-2026",
+			DisplayName:        "Cohere Transcribe",
+			Description:        "fast multilingual speech recognition, 14 languages",
+			Provider:           nameCohere,
+			NeedsWAV:           true,
+			Languages:          langSet(cohereSupported),
+			AcceptsCustomWords: true,
+		},
 	}
 }

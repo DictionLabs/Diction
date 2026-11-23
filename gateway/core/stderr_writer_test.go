@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// A write that crosses the cap must still report its full length. A short count makes
-// os/exec stop draining stderr, and the child dies on SIGPIPE at its next write.
 func TestLimitedStderrWriter_ReportsFullWritePastCap(t *testing.T) {
 	lw := &limitedStderrWriter{cap: 10}
 	for _, chunk := range []string{"123456", "7890abcdef", "more"} {
@@ -25,7 +23,6 @@ func TestLimitedStderrWriter_ChildSurvivesNoisyStderr(t *testing.T) {
 		t.Skip("no sh")
 	}
 	lw := &limitedStderrWriter{cap: 4096}
-	// ~20 KB of 80-byte lines on stderr, then a clean exit.
 	cmd := exec.Command("sh", "-c", `i=0; while [ $i -lt 250 ]; do printf '%079d\n' 0 >&2; i=$((i+1)); done`)
 	cmd.Stderr = lw
 	if err := cmd.Run(); err != nil {

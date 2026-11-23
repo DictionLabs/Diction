@@ -14,16 +14,6 @@ import (
 	"github.com/coder/websocket"
 )
 
-// The split answer's contract, in one place:
-//
-//	raw frame  → always first, transcribe intents only
-//	enhanced   → always exactly one, whatever happens to the LLM
-//
-// A client that opted in must never be left waiting for a frame that cannot come,
-// so every failure path is asserted to still produce status="failed".
-
-// startSplitServer builds a streaming server whose enhance closure is supplied by the
-// test. `postDelivery` may be nil to exercise the community-build wiring.
 func startSplitServer(
 	t *testing.T,
 	transcript string,
@@ -49,8 +39,6 @@ func startSplitServer(
 	return srv
 }
 
-// dialAndFinish opens the socket, sends silence + done, and returns every text frame
-// the server wrote before closing.
 func dialAndFinish(t *testing.T, srv *httptest.Server, query string) []string {
 	t.Helper()
 
@@ -87,10 +75,6 @@ func echoEnhance(text string) func(context.Context, string, string, string) (str
 	}
 }
 
-// The context handed to the enhance function must carry the gateway-resolved `language`
-// from the query — not whatever (or nothing) the client's context blob carried. See
-// `.claude/plans/on-device-language-fix-plan.md`: the Writing Tools cleanup prompt reads
-// this to write in the transcript's language and fix diacritics.
 func TestSplitEnhance_ContextCarriesLanguageFromQuery(t *testing.T) {
 	var gotContext string
 	capture := func(_ context.Context, _, contextJSON, _ string) (string, string, error) {
@@ -110,7 +94,6 @@ func TestSplitEnhance_ContextCarriesLanguageFromQuery(t *testing.T) {
 	}
 }
 
-// Same override on the non-split inline `?enhance=true` path.
 func TestInlinePostProcess_ContextCarriesLanguageFromQuery(t *testing.T) {
 	var gotContext string
 	capture := func(_ context.Context, _, contextJSON, _ string) (string, string, error) {
@@ -156,8 +139,6 @@ func TestSplitEnhance_RawThenEnhanced(t *testing.T) {
 	}
 }
 
-// The post-delivery budget must be the one that runs: it is the whole point of the
-// split. Passing distinguishable closures is the only way to observe which was called.
 func TestSplitEnhance_UsesPostDeliveryClosure(t *testing.T) {
 	srv := startSplitServer(t, "one two three four five six seven eight",
 		echoEnhance("INLINE"), echoEnhance("POST DELIVERY BUDGET RAN HERE OK"))
@@ -173,7 +154,6 @@ func TestSplitEnhance_UsesPostDeliveryClosure(t *testing.T) {
 	}
 }
 
-// Community build: one closure, nil post-delivery. The split still works.
 func TestSplitEnhance_NilPostDeliveryFallsBackToInline(t *testing.T) {
 	srv := startSplitServer(t, "one two three four five six seven eight",
 		echoEnhance("One, two, three, four, five, six, seven, eight."), nil)
@@ -189,8 +169,6 @@ func TestSplitEnhance_NilPostDeliveryFallsBackToInline(t *testing.T) {
 	}
 }
 
-// Back-compat: without the opt-in the response must be byte-identical to today —
-// one frame, already enhanced.
 func TestSplitEnhance_AbsentParamKeepsSingleFrame(t *testing.T) {
 	srv := startSplitServer(t, "hello there world friend",
 		echoEnhance("Hello there, world friend."), echoEnhance("SPLIT"))
@@ -206,9 +184,6 @@ func TestSplitEnhance_AbsentParamKeepsSingleFrame(t *testing.T) {
 	}
 }
 
-// The destructive-regression guard. On an edit intent the transcript is the user's
-// spoken *instruction*; emitting it as a raw text frame would type "make this formal"
-// into their document. There must be no raw frame, split_enhance or not.
 func TestSplitEnhance_EditIntentNeverEmitsRawFrame(t *testing.T) {
 	failing := func(context.Context, string, string, string) (string, string, error) {
 		return "", "", errors.New("llm down")
@@ -252,8 +227,6 @@ func TestSplitEnhance_LLMErrorStillSendsFailedFrame(t *testing.T) {
 	signals.assertSilentSkip(t, EnhanceSkipError)
 }
 
-// A closure that outlives its own deadline behaves like any other error: the client
-// still gets its one enhanced frame.
 func TestSplitEnhance_TimeoutStillSendsFailedFrame(t *testing.T) {
 	signals := captureCleanupSignals(t)
 	slow := func(ctx context.Context, _, _, _ string) (string, string, error) {
@@ -276,11 +249,8 @@ func TestSplitEnhance_TimeoutStillSendsFailedFrame(t *testing.T) {
 	signals.assertSilentSkip(t, EnhanceSkipTimeout)
 }
 
-// The deletion guard is shared with the realtime socket. An enhancement that drops
-// most of the words must be rejected, leaving the user with the raw text they can see.
 func TestSplitEnhance_DeletionGuardRejectsTruncation(t *testing.T) {
 	signals := captureCleanupSignals(t)
-	// Not number words: a run of those may legitimately collapse into digits.
 	srv := startSplitServer(t, "alpha bravo charlie delta echo foxtrot golf hotel india juliet",
 		echoEnhance("alpha bravo"), echoEnhance("alpha bravo"))
 
@@ -296,7 +266,6 @@ func TestSplitEnhance_DeletionGuardRejectsTruncation(t *testing.T) {
 	signals.assertSilentSkip(t, EnhanceSkipRejected)
 }
 
-// Influx must not double-count a split session: one dictation, one `requests` row.
 func TestSplitEnhance_ReportsTranscriptionExactlyOnce(t *testing.T) {
 	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"text":"hello there world friend"}`)

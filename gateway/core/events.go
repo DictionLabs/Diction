@@ -5,37 +5,21 @@ import (
 	"net/http"
 )
 
-// ErrorEvent is a structured error observation emitted by the gateway.
-//
-// Public API: this is the contract between core/ (open-source) and private
-// gateway wiring (metrics.go, which writes to InfluxDB). Community builds
-// leave OnError == nil and the struct is inert.
-//
-// Stability: treat this struct as public API — field renames or removals
-// require a major-version bump of the gateway module. Adding new optional
-// fields is additive and safe.
-//
-// PII rule: callers MUST set Hint to a short, human-curated description
-// — never err.Error() verbatim. See plan-review concern #3 in
-// .claude/influxdb-gateway-logging-plan.md.
 type ErrorEvent struct {
-	Source       string // closed vocabulary: middleware | llm | e2e | auth | stt | streaming | startup | panic | ios_app | ios_keyboard
-	Kind         string // closed vocabulary per source — e.g. jws_chain, llm_timeout
-	Reason       string // optional closed-vocabulary sub-classifier (e.g. ws close reason). Empty = not set, omitted from tags.
-	Endpoint     string // HTTP path, e.g. /v1/audio/transcriptions
-	Provider     string // upstream provider name, empty if N/A
-	ProviderCode string // structured upstream code, empty if N/A
-	HTTPStatus   int    // HTTP status returned to client
-	Hint         string // short curated description, ≤200 chars, never raw err.Error()
-	InputChars   int    // size of input in chars, never content
+	Source       string
+	Kind         string
+	Reason       string
+	Endpoint     string
+	Provider     string
+	ProviderCode string
+	HTTPStatus   int
+	Hint         string
+	InputChars   int
 	LatencyMs    int64
-	DeviceHash   string // SHA-256 hex of device id, empty if anonymous
+	DeviceHash   string
 
-	// Optional iOS error fields (source=ios_app|ios_keyboard). Each emitted
-	// as an Influx field when non-zero / non-empty so we never pollute the
-	// errors measurement with always-blank columns for gateway-internal sources.
-	LastOperation         string // closed enum: kbkill_heartbeat_stale only — kb_op_*
-	TerminationReason     string // closed enum: kbkill_metrickit_crash only — oom|watchdog|signal|other|unknown
+	LastOperation         string
+	TerminationReason     string
 	PhysFootprintMB       int64
 	RSSMB                 int64
 	SecondsSinceHeartbeat int64
@@ -43,60 +27,37 @@ type ErrorEvent struct {
 	HangDurationMs        int64
 	PeakMemoryMB          int64
 	OSStatus              int64
-	ModelID               string // closed enum populated per model_load_failed
-	AliveCount            int64  // kbkill_heartbeat_stale: alive VC count at last beat
-	QwertyVisible         int64  // kbkill_heartbeat_stale: 1=visible, 2=hidden, 0=unknown
-	AppearFpMB            int64  // kbkill_heartbeat_stale: phys_footprint at viewWillAppear-end
-	CrashStack            string // kbkill_metrickit_crash: leaf-first binary+offset frames, ≤200 chars, empty when stack unavailable
-	AttributedTo          string // kbkill_metrickit_crash|_hang: closed enum keyboard|app|unknown — which process the diagnostic belongs to
-	ThreadSel             string // kbkill_metrickit_crash: closed enum attributed|aggregated|ownBinary|firstNonParked|arbitrary — how CrashStack's thread was chosen, i.e. how far to trust it
-	ExceptionType         int64  // kbkill_metrickit_crash: Mach exception type — diagnoses a crash even when CrashStack is unusable
-	ExceptionCode         int64  // kbkill_metrickit_crash: Mach exception code; 0 is a real value but reads as unset, same convention as the other optional numerics
-	UptimeSeconds         int64  // kbkill_onscreen_kill|kbkill_hidden_exit: seconds the killed process had run
-	FPHighWaterMB         int64  // kbkill_onscreen_kill|kbkill_hidden_exit: highest phys_footprint the killed process reached
-	HeadroomMB            int64  // kbkill_onscreen_kill|kbkill_hidden_exit: task_vm_info.limit_bytes_remaining at last beat; -1 = unavailable
-	ErrorDesc             string // coreml_ane_inference_failed[_after_recovery]: redacted underlying CoreML message, ≤200 chars
-	OSVersion             string // ANE kinds: OS version string, e.g. "Version 26.0 (Build 23A340)", ≤64 chars
-	AppBuild              string // ANE kinds: CFBundleVersion, e.g. "531", ≤16 chars
+	ModelID               string
+	AliveCount            int64
+	QwertyVisible         int64
+	AppearFpMB            int64
+	CrashStack            string
+	AttributedTo          string
+	ThreadSel             string
+	ExceptionType         int64
+	ExceptionCode         int64
+	UptimeSeconds         int64
+	FPHighWaterMB         int64
+	HeadroomMB            int64
+	ErrorDesc             string
+	OSVersion             string
+	AppBuild              string
 }
 
-// OnError is called with a structured error event. Nil by default —
-// community builds leave it nil. The private gateway main() assigns
-// a metrics writer. Implementations must be non-blocking.
 var OnError func(ctx context.Context, e ErrorEvent)
 
-// OnRequestFailed marks the in-flight request as failed with a closed-vocabulary
-// error type. Nil by default — community builds leave it nil. The private gateway
-// main() assigns a hook that flips the request log entry's Success=false and
-// sets ErrorType. Callers must invoke this on every error-return path where the
-// `requests` measurement would otherwise record success=true.
 var OnRequestFailed func(ctx context.Context, errorType string)
 
-// OnEnhanceSkipped records that a transcribe-intent Writing Tools pass did not land —
-// the user got the raw transcript, silently. Not an error: the private gateway main()
-// stamps the reason (EnhanceSkip* vocabulary) on the request's own `requests` row as
-// `enhance_skipped`. Nil by default — community builds leave it nil. Edit intents never
-// use it: their failure is still an error the user is told about.
 var OnEnhanceSkipped func(ctx context.Context, reason string)
 
-// ReportEnhanceSkipped is the nil-safe call for OnEnhanceSkipped.
 func ReportEnhanceSkipped(ctx context.Context, reason string) {
 	if OnEnhanceSkipped != nil {
 		OnEnhanceSkipped(ctx, reason)
 	}
 }
 
-// ResolveIntent lets the private gateway turn a plain-tap request into an Edit
-// (**Auto-edit**, .claude/plans/intent-auto-edit-plan.md). It runs right after STT and
-// before the split-answer decision, because a split answer ships the raw transcript
-// immediately and an Edit must never do that. Given the client-requested intent it
-// returns the intent to use and whether it changed it: ("edit", true) for an Auto-edit,
-// (intent, false) otherwise. Implementations must fail open (any error → unchanged)
-// and bound their own latency. Nil by default — community builds leave it nil, and the
-// Live (realtime) route never calls it.
 var ResolveIntent func(ctx context.Context, r *http.Request, transcript, contextJSON, intent string) (string, bool)
 
-// resolveIntent is the nil-safe call for ResolveIntent.
 func resolveIntent(ctx context.Context, r *http.Request, transcript, contextJSON, intent string) (string, bool) {
 	if ResolveIntent == nil {
 		return intent, false

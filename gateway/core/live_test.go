@@ -18,23 +18,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DictionLabs/Diction/gateway/core/transcript"
+
 	"github.com/coder/websocket"
 )
 
-// pcmPattern renders alternating speech-like tone and quiet noise. Each entry is a
-// duration in ms; even indexes are tone, odd ones are pauses.
 func pcmPattern(ms ...int) []byte {
 	rng := rand.New(rand.NewSource(1))
 	var buf bytes.Buffer
 	n := 0
 	for i, d := range ms {
 		for s := 0; s < d*liveSampleRate/1000; s++ {
-			v := rng.NormFloat64() * 32768 * math.Pow(10, -55.0/20) // noise floor
+			v := rng.NormFloat64() * 32768 * math.Pow(10, -55.0/20)
 			if i%2 == 0 {
-				v += 0.1 * 32768 * math.Sin(2*math.Pi*220*float64(n)/liveSampleRate) // ~-23 dBFS
+				v += 0.1 * 32768 * math.Sin(2*math.Pi*220*float64(n)/liveSampleRate)
 			}
 			n++
-			binary.Write(&buf, binary.LittleEndian, int16(v)) //nolint:errcheck
+			binary.Write(&buf, binary.LittleEndian, int16(v))
 		}
 	}
 	return buf.Bytes()
@@ -44,9 +44,6 @@ func testLiveConfig() LiveConfig {
 	return LiveConfig{PauseMs: 700, MinSegMs: 3000, MaxSegMs: 20000, ShortPauseMs: 300, PartialEveryMs: 100}
 }
 
-// feedLive feeds pcm in 100 ms writes and lets the worker drain after each one, like
-// audio arriving in real time (audio that arrives all at once folds pending cuts into
-// the tail, which is correct but makes the request count timing-dependent).
 func feedLive(t *testing.T, e *liveEngine, pcm []byte) {
 	t.Helper()
 	for len(pcm) > 0 {
@@ -54,7 +51,7 @@ func feedLive(t *testing.T, e *liveEngine, pcm []byte) {
 		if n > len(pcm) {
 			n = len(pcm)
 		}
-		e.Write(pcm[:n]) //nolint:errcheck
+		e.Write(pcm[:n])
 		pcm = pcm[n:]
 		deadline := time.Now().Add(5 * time.Second)
 		for {
@@ -71,10 +68,9 @@ func feedLive(t *testing.T, e *liveEngine, pcm []byte) {
 
 func TestPauseDetector_CutsOnlyAtLongPauses(t *testing.T) {
 	d := pauseDetector{cfg: testLiveConfig()}
-	// 4 s speech, 0.3 s gap (too short), 2 s speech, 1 s gap (cut), 4 s speech.
 	pcm := pcmPattern(4000, 300, 2000, 1000, 4000)
 	var cuts []liveCut
-	for i := 0; i < len(pcm); i += 682 { // odd chunk size, like the app's PCM frames
+	for i := 0; i < len(pcm); i += 682 {
 		end := i + 682
 		if end > len(pcm) {
 			end = len(pcm)
@@ -92,7 +88,6 @@ func TestPauseDetector_CutsOnlyAtLongPauses(t *testing.T) {
 
 func TestPauseDetector_RespectsMinSegment(t *testing.T) {
 	d := pauseDetector{cfg: testLiveConfig()}
-	// 1 s speech then a long pause: shorter than MinSegMs, so no cut yet.
 	if cuts := d.push(pcmPattern(1000, 1500)); len(cuts) != 0 {
 		t.Fatalf("want no cut, got %+v", cuts)
 	}
@@ -102,7 +97,6 @@ func TestPauseDetector_ShortPauseAfterMaxSegment(t *testing.T) {
 	cfg := testLiveConfig()
 	cfg.MaxSegMs = 5000
 	d := pauseDetector{cfg: cfg}
-	// 6 s speech, then a 400 ms pause: past MaxSegMs the 300 ms short pause is enough.
 	if cuts := d.push(pcmPattern(6000, 400, 1000)); len(cuts) != 1 {
 		t.Fatalf("want 1 cut, got %+v", cuts)
 	}
@@ -110,10 +104,10 @@ func TestPauseDetector_ShortPauseAfterMaxSegment(t *testing.T) {
 
 type fakeASR struct {
 	mu    sync.Mutex
-	calls []float64 // seconds of audio per call
+	calls []float64
 	fail  func(call int) error
 	delay time.Duration
-	hold  chan struct{} // non-nil: every reply waits until the test closes it
+	hold  chan struct{}
 }
 
 func (f *fakeASR) transcribe(ctx context.Context, wav []byte) (string, error) {
@@ -166,16 +160,14 @@ func TestLiveEngine_PartialsCarryWholeTranscript(t *testing.T) {
 		}
 	}()
 	pcm := pcmPattern(4000, 1000, 3000)
-	for i := 0; i < len(pcm); i += 6400 { // 200 ms per write, paced
+	for i := 0; i < len(pcm); i += 6400 {
 		end := i + 6400
 		if end > len(pcm) {
 			end = len(pcm)
 		}
-		e.Write(pcm[i:end]) //nolint:errcheck
+		e.Write(pcm[i:end])
 		time.Sleep(5 * time.Millisecond)
 	}
-	// After the pause the first segment is committed; the next interim is that text
-	// plus the open segment's.
 	whole := func() bool {
 		mu.Lock()
 		defer mu.Unlock()
@@ -196,14 +188,13 @@ func TestLiveEngine_PartialsCarryWholeTranscript(t *testing.T) {
 	}
 }
 
-// segmentBackend answers every request with a counter; fail(n) can make call n fail.
 func segmentBackend(t *testing.T, fail func(n int) bool) (*httptest.Server, *int32, *atomic.Value) {
 	t.Helper()
 	var n int32
 	var lastName atomic.Value
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		call := int(atomic.AddInt32(&n, 1))
-		r.ParseMultipartForm(50 << 20) //nolint:errcheck
+		r.ParseMultipartForm(50 << 20)
 		if _, fh, err := r.FormFile("file"); err == nil {
 			lastName.Store(fh.Filename)
 		}
@@ -223,7 +214,6 @@ func liveGateway(t *testing.T, backendURL string, cfg LiveConfig) *httptest.Serv
 	return liveGatewayFor(t, backendURL, false, cfg)
 }
 
-// liveGatewayFor: needsWAV=false is a backend that takes Ogg as-is (passthrough).
 func liveGatewayFor(t *testing.T, backendURL string, needsWAV bool, cfg LiveConfig) *httptest.Server {
 	t.Helper()
 	g := makeGateway(backendURL, needsWAV, 50<<20)
@@ -233,7 +223,6 @@ func liveGatewayFor(t *testing.T, backendURL string, needsWAV bool, cfg LiveConf
 	return srv
 }
 
-// streamPCM sends pcm in 682-byte frames (like the app), then done; returns all text frames.
 func streamPCM(t *testing.T, srv *httptest.Server, query string, pcm []byte, pace time.Duration) []string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -273,7 +262,7 @@ func streamPCM(t *testing.T, srv *httptest.Server, query string, pcm []byte, pac
 		}
 	}
 	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done) //nolint:errcheck
+	conn.Write(ctx, websocket.MessageText, done)
 	<-readDone
 	mu.Lock()
 	defer mu.Unlock()
@@ -289,7 +278,7 @@ func lastResultText(t *testing.T, frames []string) string {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	}
-	json.Unmarshal([]byte(frames[len(frames)-1]), &r) //nolint:errcheck
+	json.Unmarshal([]byte(frames[len(frames)-1]), &r)
 	if r.Type != "" {
 		t.Fatalf("last frame is %q, not a result: %v", r.Type, frames)
 	}
@@ -303,7 +292,6 @@ func TestStreaming_BuiltinPreview_InterimsThenResult(t *testing.T) {
 	if interimCount(t, frames) == 0 {
 		t.Fatalf("no interim frames: %v", frames)
 	}
-	// The final is the whole-clip request, the last one the backend saw.
 	if got, want := lastResultText(t, frames), fmt.Sprintf("r%d", atomic.LoadInt32(calls)); got != want {
 		t.Fatalf("final %q, want the whole-clip answer %q", got, want)
 	}
@@ -319,13 +307,11 @@ func TestStreaming_BuiltinPreview_IgnoredWithoutParam(t *testing.T) {
 }
 
 func TestJoinSegments_RepairsMidSentenceCuts(t *testing.T) {
-	// A backend punctuates each segment as a sentence; this is a dictation with mid-sentence pauses.
 	got := joinSegments([]string{
 		"The plan for the trip starts with.", "The second meeting.", "And.", "After that we book the train at a low fare and.",
 		"We leave within two weeks.", "If the forecast shows.", "Heavy rain.", "We will take the car.",
 		"I also want a paper map.", "Copy Mr.", "Smith?", "Done.",
 	}, "en")
-	// Only function words are lowercased; "Heavy" keeps its capital (it could be a name).
 	want := "The plan for the trip starts with the second meeting and after that we book the train at a low fare and " +
 		"we leave within two weeks. If the forecast shows Heavy rain. We will take the car. " +
 		"I also want a paper map. Copy Mr. Smith? Done."
@@ -338,15 +324,12 @@ func TestJoinSegments_KeepsCapitalsThatMatter(t *testing.T) {
 	if got := joinSegments([]string{"Book an.", "SUV for the weekend.", "And.", "I will call."}, "en"); got != "Book an SUV for the weekend and I will call." {
 		t.Fatalf("got %q", got)
 	}
-	// Names after a removed stop keep their capital.
 	if got := joinSegments([]string{"He had lunch with.", "John at the office.", "Seen with.", "Émile."}, "en"); got != "He had lunch with John at the office. Seen with Émile." {
 		t.Fatalf("got %q", got)
 	}
-	// Real sentence ends stay: "not", "her", "that" can end a sentence; "When" can start one.
 	if got := joinSegments([]string{"The printer did not.", "Her laptop was fine.", "I told her.", "When she called, I said that.", "Then we left."}, "en"); got != "The printer did not. Her laptop was fine. I told her. When she called, I said that. Then we left." {
 		t.Fatalf("got %q", got)
 	}
-	// Copulas and "to" end spoken sentences; "Of course", "To be fair" and "Plus" start them.
 	if got := joinSegments([]string{"I know what it is.", "Anyway, it works.", "I'd love to.", "Of course it rained.", "It was.", "To be fair, it was cheap.", "That is how it was.", "Plus, it's quick."}, "en"); got != "I know what it is. Anyway, it works. I'd love to. Of course it rained. It was. To be fair, it was cheap. That is how it was. Plus, it's quick." {
 		t.Fatalf("got %q", got)
 	}
@@ -366,9 +349,7 @@ func TestJoinSegments_SpacelessScripts(t *testing.T) {
 		{"ja", []string{"明日は会議があります。", "資料を準備してください。"}, "明日は会議があります。資料を準備してください。"},
 		{"yue", []string{"我哋聽日去", "飲茶。"}, "我哋聽日去飲茶。"},
 		{"th", []string{"วันนี้อากาศดี", "เราไปเที่ยวกัน"}, "วันนี้อากาศดีเราไปเที่ยวกัน"},
-		// A spaceless session joins Latin text to Chinese without a space.
 		{"zh", []string{"我买了", "iPhone。"}, "我买了iPhone。"},
-		// Auto-detect: by script, both sides must be spaceless.
 		{"auto", []string{"我们明天去北京，", "然后坐火车回来。"}, "我们明天去北京，然后坐火车回来。"},
 		{"auto", []string{"I bought an", "iPhone today."}, "I bought an iPhone today."},
 		{"auto", []string{"Meeting with 王先生.", "Then lunch."}, "Meeting with 王先生. Then lunch."},
@@ -381,7 +362,6 @@ func TestJoinSegments_SpacelessScripts(t *testing.T) {
 }
 
 func TestJoinSegments_OnlyRepairsEnglish(t *testing.T) {
-	// Czech "a" (and) / "to" (it): "Je to." is a whole sentence. No repair outside English.
 	in := []string{"Je to.", "Über alles a.", "Říkal to."}
 	if got := joinSegments(in, "cs"); got != "Je to. Über alles a. Říkal to." {
 		t.Fatalf("got %q", got)
@@ -391,7 +371,7 @@ func TestJoinSegments_OnlyRepairsEnglish(t *testing.T) {
 func feedChunksNoWait(e *liveEngine, pcm []byte) {
 	for len(pcm) > 0 {
 		n := min(3200, len(pcm))
-		e.Write(pcm[:n]) //nolint:errcheck
+		e.Write(pcm[:n])
 		pcm = pcm[n:]
 	}
 }
@@ -408,12 +388,10 @@ func TestLiveConfigFromEnv_ClampsNonsense(t *testing.T) {
 }
 
 func TestLiveEngine_SegmentReplyAfterGivingUpDoesNotPanic(t *testing.T) {
-	// The reply is held until the test releases it, so it always arrives after the
-	// engine gave up (a timed reply raced the 92 s of audio under -race).
 	asr := &fakeASR{hold: make(chan struct{})}
 	e := newLiveEngine(context.Background(), testLiveConfig(), asr.transcribe, nil)
 	defer e.Close()
-	feedChunksNoWait(e, pcmPattern(4000, 1000)) // a cut: the segment request starts
+	feedChunksNoWait(e, pcmPattern(4000, 1000))
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		e.mu.Lock()
@@ -427,12 +405,10 @@ func TestLiveEngine_SegmentReplyAfterGivingUpDoesNotPanic(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	// While it is in flight, talk past the no-pause cap: the engine gives up and frees
-	// its audio. The late reply must then be ignored, not committed into a nil buffer.
 	feedChunksNoWait(e, pcmPattern(liveMaxOpenMs+2000))
 	close(asr.hold)
 	select {
-	case <-e.workerDone: // the worker handled the late reply and stopped
+	case <-e.workerDone:
 	case <-time.After(5 * time.Second):
 		t.Fatal("worker did not stop after the late reply")
 	}
@@ -449,13 +425,12 @@ func previewConfig() LiveConfig {
 	return c
 }
 
-// interimCount counts interim frames; none may be empty or follow the result.
 func interimCount(t *testing.T, frames []string) int {
 	t.Helper()
 	n := 0
 	for i, f := range frames {
 		var r struct{ Type, Text string }
-		json.Unmarshal([]byte(f), &r) //nolint:errcheck
+		json.Unmarshal([]byte(f), &r)
 		if r.Type != "interim" {
 			continue
 		}
@@ -482,7 +457,6 @@ func TestLiveEngine_CommitsSegmentsWhileRecording(t *testing.T) {
 	if text != "part1. part2." {
 		t.Fatalf("committed %q", text)
 	}
-	// Committed audio is dropped: only the part after the second pause is still held.
 	if d := asr.durations(); len(d) != 2 || open > 3.0 || math.Abs(d[0]+d[1]+open-12.0) > 0.05 {
 		t.Fatalf("requests %v, %.2fs still open, of 12 s", d, open)
 	}
@@ -517,9 +491,8 @@ func TestLiveEngine_GivesUpWithoutPauses(t *testing.T) {
 	}
 }
 
-// A segment that comes back with more text than its audio can hold is not committed.
 func TestLiveEngine_InventedSegmentStopsTheEngine(t *testing.T) {
-	invent := func(ctx context.Context, wav []byte) (string, error) {
+	invent := func(_ context.Context, _ []byte) (string, error) {
 		return strings.Repeat("Some Term, ", 60), nil
 	}
 	e := newLiveEngine(context.Background(), testLiveConfig(), invent, nil)
@@ -527,7 +500,7 @@ func TestLiveEngine_InventedSegmentStopsTheEngine(t *testing.T) {
 	feedLive(t, e, pcmPattern(4000, 1000, 2000))
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if !errors.Is(e.failed, errSTTHallucination) || len(e.texts) != 0 {
+	if !errors.Is(e.failed, transcript.ErrSTTHallucination) || len(e.texts) != 0 {
 		t.Fatalf("failed = %v, texts %q", e.failed, e.texts)
 	}
 }
@@ -541,14 +514,13 @@ func TestImplausibleText(t *testing.T) {
 	}
 }
 
-// A writer that falls behind gets the newest interim, and the engine never blocks on it.
 func TestLiveEngine_UnreadInterimIsReplaced(t *testing.T) {
 	asr := &fakeASR{}
 	e := newLiveEngine(context.Background(), testLiveConfig(), asr.transcribe, asr.transcribe)
 	defer e.Close()
 	pcm := pcmPattern(2000)
-	for i := 0; i < len(pcm); i += 3200 { // 100 ms per write, paced so each can start a partial
-		e.Write(pcm[i:min(i+3200, len(pcm))]) //nolint:errcheck
+	for i := 0; i < len(pcm); i += 3200 {
+		e.Write(pcm[i:min(i+3200, len(pcm))])
 		time.Sleep(5 * time.Millisecond)
 	}
 	if n := len(asr.durations()); n < 3 {
@@ -576,21 +548,19 @@ func TestPreviewCapabilities(t *testing.T) {
 	if pcm, opus := g.PreviewCapabilities(); !pcm || opus != (lookupFfmpeg() != "") {
 		t.Fatalf("built-in preview: pcm=%v opus=%v (ffmpeg %q)", pcm, opus, lookupFfmpeg())
 	}
-	// A relay hook serves PCM sessions only, whatever DICTION_PREVIEW says.
 	PreviewRelay = func(context.Context, string) PreviewSession { return nil }
 	if pcm, opus := g.PreviewCapabilities(); !pcm || opus {
 		t.Fatalf("relay: pcm=%v opus=%v", pcm, opus)
 	}
 }
 
-// DICTION_PREVIEW_URL: partials go to the separate backend, the final to the session's.
 func TestStreaming_BuiltinPreview_SeparateBackend(t *testing.T) {
 	backend, calls, _ := segmentBackend(t, nil)
 	fast, fastCalls, _ := segmentBackend(t, nil)
 	cfg := previewConfig()
 	cfg.PreviewURL, cfg.PreviewModel = fast.URL, "fast"
 	srv := liveGateway(t, backend.URL, cfg)
-	frames := streamPCM(t, srv, "preview=cloud", pcmPattern(2000), 20*time.Millisecond) // no pause: partials only
+	frames := streamPCM(t, srv, "preview=cloud", pcmPattern(2000), 20*time.Millisecond)
 	lastResultText(t, frames)
 	if atomic.LoadInt32(fastCalls) == 0 || atomic.LoadInt32(calls) != 1 {
 		t.Fatalf("preview backend calls %d, session backend calls %d; want partials on the first and one final on the second",
@@ -610,7 +580,6 @@ func TestStreaming_BuiltinPreview_BadPreviewURLUsesSessionBackend(t *testing.T) 
 	}
 }
 
-// testOgg renders seconds of "3 s tone, 1 s silence" as Ogg Opus in 200 ms pages.
 func testOgg(t *testing.T, seconds int) []byte {
 	t.Helper()
 	cmd := exec.Command(ensureFfmpeg(t), "-loglevel", "error", "-f", "lavfi",
@@ -624,8 +593,6 @@ func testOgg(t *testing.T, seconds int) []byte {
 	return ogg.Bytes()
 }
 
-// streamOpusFrames sends ogg in paced chunks on an Opus session, then done, and returns
-// all text frames. With waitInterim it sends done only once an interim has arrived.
 func streamOpusFrames(t *testing.T, srv *httptest.Server, query string, ogg []byte, waitInterim bool) []string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -673,15 +640,13 @@ func streamOpusFrames(t *testing.T, srv *httptest.Server, query string, ogg []by
 		}
 	}
 	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done) //nolint:errcheck
+	conn.Write(ctx, websocket.MessageText, done)
 	<-readDone
 	mu.Lock()
 	defer mu.Unlock()
 	return got
 }
 
-// Opus to a backend that takes Ogg as-is: interims come from a side decode, and the
-// final request still carries the original Ogg, exactly as without live text.
 func TestStreaming_BuiltinPreview_OpusKeepsOriginalForPassthrough(t *testing.T) {
 	ogg := testOgg(t, 10)
 	backend, calls, lastName := segmentBackend(t, nil)
@@ -698,7 +663,6 @@ func TestStreaming_BuiltinPreview_OpusKeepsOriginalForPassthrough(t *testing.T) 
 	}
 }
 
-// Opus to a backend that needs WAV: the one decode feeds both the final and the interims.
 func TestStreaming_BuiltinPreview_OpusDecodedForWAVBackend(t *testing.T) {
 	ogg := testOgg(t, 10)
 	backend, calls, lastName := segmentBackend(t, nil)
@@ -715,7 +679,6 @@ func TestStreaming_BuiltinPreview_OpusDecodedForWAVBackend(t *testing.T) {
 	}
 }
 
-// Without ?preview=cloud an Opus session is untouched: one request, the original Ogg.
 func TestStreaming_BuiltinPreview_OpusIgnoredWithoutParam(t *testing.T) {
 	ogg := testOgg(t, 6)
 	backend, calls, lastName := segmentBackend(t, nil)
@@ -726,8 +689,6 @@ func TestStreaming_BuiltinPreview_OpusIgnoredWithoutParam(t *testing.T) {
 	}
 }
 
-// The side decode is best effort: with every slot taken the session runs without live
-// text, and the final is unaffected.
 func TestStreaming_BuiltinPreview_OpusDecodeSlotsBusy(t *testing.T) {
 	ogg := testOgg(t, 6)
 	for {
@@ -745,8 +706,6 @@ func TestStreaming_BuiltinPreview_OpusDecodeSlotsBusy(t *testing.T) {
 	}
 }
 
-// Partials are capped gateway-wide: while one session's partial holds the only slot,
-// another session sends no partials, but its segments still go through.
 func TestLiveEngine_PartialsShareAGatewayWideCap(t *testing.T) {
 	cfg := testLiveConfig()
 	cfg.partialSlots = make(chan struct{}, 1)
@@ -754,7 +713,7 @@ func TestLiveEngine_PartialsShareAGatewayWideCap(t *testing.T) {
 	held := &fakeASR{hold: make(chan struct{})}
 	a := newLiveEngine(context.Background(), cfg, held.transcribe, held.transcribe)
 	defer a.Close()
-	a.Write(pcmPattern(1000)) //nolint:errcheck — enough speech for a partial, no cut
+	a.Write(pcmPattern(1000))
 	for deadline := time.Now().Add(5 * time.Second); len(held.durations()) == 0; {
 		if time.Now().After(deadline) {
 			t.Fatal("first session's partial never started")
@@ -766,7 +725,7 @@ func TestLiveEngine_PartialsShareAGatewayWideCap(t *testing.T) {
 	parts := &fakeASR{}
 	b := newLiveEngine(context.Background(), cfg, segs.transcribe, parts.transcribe)
 	defer b.Close()
-	feedLive(t, b, pcmPattern(4000, 1000, 1000)) // one cut, then an open segment
+	feedLive(t, b, pcmPattern(4000, 1000, 1000))
 	if n := len(segs.durations()); n != 1 {
 		t.Fatalf("second session sent %d segment requests while the slot was taken, want 1", n)
 	}
@@ -774,12 +733,12 @@ func TestLiveEngine_PartialsShareAGatewayWideCap(t *testing.T) {
 		t.Fatalf("second session sent %d partials while the only slot was taken, want 0", n)
 	}
 
-	close(held.hold) // the first partial finishes and frees the slot
+	close(held.hold)
 	for deadline := time.Now().Add(5 * time.Second); len(parts.durations()) == 0; {
 		if time.Now().After(deadline) {
 			t.Fatal("second session never sent a partial after the slot was freed")
 		}
-		b.Write(pcmPattern(200)) //nolint:errcheck — new audio is what retries a skipped partial
+		b.Write(pcmPattern(200))
 		time.Sleep(5 * time.Millisecond)
 	}
 }
@@ -794,15 +753,13 @@ func TestLiveConfigFromEnv_PartialCap(t *testing.T) {
 	}
 }
 
-// A hung segment request does not let the audio behind it grow without bound: the
-// 90 s cap counts cuts that are waiting too.
 func TestLiveEngine_HungRequestStillCapsHeldAudio(t *testing.T) {
 	asr := &fakeASR{hold: make(chan struct{})}
 	defer close(asr.hold)
 	e := newLiveEngine(context.Background(), testLiveConfig(), asr.transcribe, nil)
 	defer e.Close()
 	var pattern []int
-	for i := 0; i < 20; i++ { // 100 s of speech with a pause every 5 s
+	for i := 0; i < 20; i++ {
 		pattern = append(pattern, 4000, 1000)
 	}
 	feedChunksNoWait(e, pcmPattern(pattern...))

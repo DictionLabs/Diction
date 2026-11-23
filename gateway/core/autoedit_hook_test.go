@@ -14,13 +14,6 @@ import (
 	"testing"
 )
 
-// Auto-edit through core.ResolveIntent (.claude/plans/intent-auto-edit-plan.md). The
-// contract this pins: a switched request behaves exactly like an explicit intent=edit
-// — no raw frame ever, the edit intent reaches post-process — and the client is told,
-// early on the socket and on the result. A nil hook (community build) changes nothing.
-
-// stubResolveIntent installs a ResolveIntent that switches every empty intent to edit,
-// and restores the previous hook when the test ends. It records the intent it was given.
 func stubResolveIntent(t *testing.T, switchIt bool) *string {
 	t.Helper()
 	prev := ResolveIntent
@@ -36,7 +29,6 @@ func stubResolveIntent(t *testing.T, switchIt bool) *string {
 	return seen
 }
 
-// recordIntent is a post-process that echoes the intent it received as the mode.
 func recordIntent(text string) func(context.Context, string, string, string) (string, string, error) {
 	return func(_ context.Context, _, _, intent string) (string, string, error) {
 		if intent == "" {
@@ -195,7 +187,6 @@ func TestAutoEdit_HTTPKeptHasNoFlag(t *testing.T) {
 	}
 }
 
-// testE2EClientKey is a fresh X25519 public key, the X-Diction-E2E header value.
 func testE2EClientKey(t *testing.T) string {
 	t.Helper()
 	priv, err := ecdh.X25519().GenerateKey(rand.Reader)

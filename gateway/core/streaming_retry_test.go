@@ -14,14 +14,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DictionLabs/Diction/gateway/core/transcript"
+
 	"github.com/coder/websocket"
 )
 
-// Backend fallback on /v1/audio/stream — parity with the HTTP path's demote-and-retry
-// (proxy.go). The audio is already fully buffered when the backend call fails, so a
-// retry costs one more POST. Plan: .claude/plans/stream-fallback-cleanup-signal-plan.md.
-
-// countingBackend answers every request with status (and text when 200) and counts hits.
 func countingBackend(t *testing.T, status int, text string) (*httptest.Server, *atomic.Int32) {
 	t.Helper()
 	var hits atomic.Int32
@@ -39,8 +36,6 @@ func countingBackend(t *testing.T, status int, text string) (*httptest.Server, *
 	return srv, &hits
 }
 
-// twoBackendStreamServer wires primary as the default model and fallback as the
-// routing fallback, both healthy — the same shape the HTTP retry tests use.
 func twoBackendStreamServer(t *testing.T, primary, fallback Backend) (*httptest.Server, *Gateway) {
 	t.Helper()
 	g := &Gateway{
@@ -57,7 +52,6 @@ func twoBackendStreamServer(t *testing.T, primary, fallback Backend) (*httptest.
 	return srv, g
 }
 
-// streamPCMAndRead sends silence + done and returns the result frame, or the read error.
 func streamPCMAndRead(t *testing.T, srv *httptest.Server) (map[string]string, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -85,7 +79,6 @@ func streamPCMAndRead(t *testing.T, srv *httptest.Server) (map[string]string, er
 	return result, nil
 }
 
-// capturedEvents is a race-safe OnError sink: the handler goroutine writes, the test reads.
 type capturedEvents struct {
 	mu     sync.Mutex
 	events []ErrorEvent
@@ -99,8 +92,6 @@ func (c *capturedEvents) snapshot() []ErrorEvent {
 
 func captureStreamHooks(t *testing.T) (*capturedEvents, *atomic.Int32) {
 	t.Helper()
-	// Same contract as withCapturedOnError: wait for the previous test's handlers
-	// (the outcome is emitted from the handler's last defer) before swapping hooks.
 	waitHandlers(t)
 	ev := &capturedEvents{}
 	var failed atomic.Int32
@@ -149,7 +140,7 @@ func TestStreamRetry_PrimaryUnreachable_FallbackRescuesTheDictation(t *testing.T
 	_, failed := captureStreamHooks(t)
 	dead := httptest.NewServer(http.NotFoundHandler())
 	deadURL := dead.URL
-	dead.Close() // connection refused — the 2026-08-26 redeploy shape
+	dead.Close()
 	fallback, fallbackHits := countingBackend(t, http.StatusOK, "rescued text")
 	srv, g := twoBackendStreamServer(t,
 		Backend{Name: "primary", URL: deadURL, Aliases: []string{"primary"}},
@@ -223,8 +214,6 @@ func TestStreamRetry_NotRetried_On4xxOrHallucination(t *testing.T) {
 	}
 }
 
-// Passthrough primary (raw Ogg forwarded) failing over to a NeedsWAV backend: the
-// buffered container must be converted, or the retry backend gets bytes it cannot read.
 func TestStreamRetry_PassthroughPrimary_ConvertsForNeedsWAVFallback(t *testing.T) {
 	ogg := genOggOpus(t)
 	primary, _ := countingBackend(t, http.StatusInternalServerError, "")
@@ -248,10 +237,6 @@ func TestStreamRetry_PassthroughPrimary_ConvertsForNeedsWAVFallback(t *testing.T
 	}
 }
 
-// A single-backend (typical self-hosted) gateway has nowhere to retry. A transport
-// fault there must not take its only backend out of rotation for 120 s — before the
-// retry existed the socket path never demoted on transport faults, and demoting buys
-// nothing when there is no alternative to route to. A 5xx keeps demoting (f9bb47ee).
 func TestStreamRetry_NoAlternative_TransportFaultKeepsTheOnlyBackend(t *testing.T) {
 	_, failed := captureStreamHooks(t)
 	dead := httptest.NewServer(http.NotFoundHandler())
@@ -285,7 +270,7 @@ func TestIsRetryableBackendFailure(t *testing.T) {
 		{errors.New("backend returned 503: warming"), true},
 		{fmt.Errorf("backend request: %w", errors.New("dial tcp: connection refused")), true},
 		{errors.New("backend returned 422: bad"), false},
-		{errSTTHallucination, false},
+		{transcript.ErrSTTHallucination, false},
 		{fmt.Errorf("backend request: %w", context.Canceled), false},
 		{fmt.Errorf("backend request: %w", context.DeadlineExceeded), false},
 		{errors.New("decode response: unexpected EOF"), false},

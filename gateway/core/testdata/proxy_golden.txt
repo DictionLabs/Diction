@@ -1,0 +1,553 @@
+=== method_get
+status 405
+header Content-Type: text/plain; charset=utf-8
+header X-Content-Type-Options: nosniff
+body "{\"error\":\"method not allowed\"}\n"
+=== body_read_error
+status 400
+header Content-Type: text/plain; charset=utf-8
+header X-Content-Type-Options: nosniff
+body "{\"error\":\"failed to read request body\"}\n"
+=== body_too_large
+status 413
+header Content-Type: text/plain; charset=utf-8
+header X-Content-Type-Options: nosniff
+body "{\"error\":\"request body exceeds 10 bytes\"}\n"
+=== unsupported_format
+status 400
+header Content-Type: text/plain; charset=utf-8
+header X-Content-Type-Options: nosniff
+body "{\"error\":\"response_format 'srt' not supported; gateway supports 'json' and 'text' only\"}\n"
+=== text_with_e2e_rejected
+status 400
+header Content-Type: text/plain; charset=utf-8
+header X-Content-Type-Options: nosniff
+body "{\"error\":\"response_format=text is incompatible with X-Diction-E2E (E2E requires JSON envelope)\"}\n"
+=== text_format_ok
+status 200
+header Content-Length: 11
+header Content-Type: text/plain; charset=utf-8
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "plain words"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=11 audioMs=0 enhance=false e2e=false
+=== wav_duration_reported
+status 200
+header Content-Length: 16
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"hello\"}"
+hook OnAudioReceived ms=2000
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=64364 [language="en"] [file name="file" filename="audio.wav" ct="" len=64044 head="RIFF$\xfa\x00\x00WAVE"]
+hook OnTranscription model=primary chars=5 audioMs=2000 enhance=false e2e=false
+=== no_backend_configured
+status 400
+header Content-Type: text/plain; charset=utf-8
+header X-Content-Type-Options: nosniff
+header X-Diction-Route-Model: 
+body "{\"error\":\"backend unavailable\"}\n"
+hook OnError source=stt kind=stt_route_fail endpoint=/v1/audio/transcriptions provider= status=400 inputChars=0 hint="no healthy backend for this language"
+hook OnRequestFailed type=stt_error
+=== json_body_not_multipart
+status 200
+header Content-Length: 20
+header Content-Type: application/json
+header X-Diction-Route-Lang: 
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"json path\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=application/json auth="" cl=7 body="{\"a\":1}"
+hook OnTranscription model=primary chars=9 audioMs=0 enhance=false e2e=false
+=== garbage_multipart
+status 500
+header Content-Type: text/plain; charset=utf-8
+header X-Content-Type-Options: nosniff
+header X-Diction-Route-Lang: 
+header X-Diction-Route-Model: primary
+body "{\"error\":\"request processing failed\"}\n"
+hook OnError source=stt kind=stt_multipart endpoint=/v1/audio/transcriptions provider=primary status=500 inputChars=0 hint="multipart rewrite failed"
+=== backend_config_forwarding
+status 200
+header Content-Length: 22
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"hello there\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /inference ct=multipart/form-data auth="Bearer k" cl=899 [language="en"] [prompt="p"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"] [model="whisper-1"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+hook OnTranscription model=primary chars=11 audioMs=0 enhance=false e2e=false
+=== custom_words_backend_refuses
+status 200
+header Content-Length: 22
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"hello there\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=515 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."]
+hook OnTranscription model=primary chars=11 audioMs=0 enhance=false e2e=false
+=== prompt_echo_stripped_remainder
+status 200
+header Content-Length: 21
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"real words\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=515 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."]
+hook OnTranscription model=primary chars=10 audioMs=0 enhance=false e2e=false
+=== prompt_echo_only
+status 200
+header Content-Length: 11
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=515 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."]
+=== filler_cleaned
+status 200
+header Content-Length: 25
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"so hello world\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=20 audioMs=0 enhance=false e2e=false
+=== empty_text_passthrough
+status 200
+header Content-Length: 11
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+=== backend_nonjson_200
+status 200
+header Content-Length: 8
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "not json"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+=== backend_404_passthrough
+status 404
+header Content-Length: 16
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"error\":\"nope\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+=== backend_truncated_body
+status 200
+header Content-Length: 100
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"tex"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+=== quirk_stale_content_length_autodetect_whisper_language
+status 200
+header Content-Length: 21
+header Content-Type: application/json
+header X-Diction-Route-Detect: true
+header X-Diction-Route-Lang: auto
+header X-Diction-Route-Model: whisper
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"hallo welt\"}"
+hook OnAutoDetect tier="whisper_history" lang=""
+hook OnAudioReceived ms=0
+backend whisper hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=347 [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"] [response_format="verbose_json"]
+hook OnAutoDetect tier="" lang="de"
+hook OnTranscription model=whisper chars=10 audioMs=0 enhance=false e2e=false
+=== autodetect_canary_confident
+status 200
+header Content-Length: 37
+header Content-Type: application/json
+header X-Diction-Route-Detect: true
+header X-Diction-Route-Lang: auto
+header X-Diction-Route-Model: canary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"hallo welt\",\"language\":\"de\"}"
+hook OnAutoDetect tier="canary_confident" lang=""
+hook OnAudioReceived ms=0
+backend canary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"] [language="de"]
+hook OnTranscription model=canary chars=10 audioMs=0 enhance=false e2e=false
+=== autodetect_no_device
+status 200
+header Content-Length: 23
+header Content-Type: application/json
+header X-Diction-Route-Detect: true
+header X-Diction-Route-Lang: auto
+header X-Diction-Route-Model: whisper
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"whisper text\"}"
+hook OnAutoDetect tier="whisper_safe" lang=""
+hook OnAudioReceived ms=0
+backend whisper hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=347 [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"] [response_format="verbose_json"]
+hook OnTranscription model=whisper chars=12 audioMs=0 enhance=false e2e=false
+=== autodetect_empty_device_hash
+status 200
+header Content-Length: 23
+header Content-Type: application/json
+header X-Diction-Route-Detect: true
+header X-Diction-Route-Lang: auto
+header X-Diction-Route-Model: whisper
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"whisper text\"}"
+hook OnAutoDetect tier="whisper_safe" lang=""
+hook OnAudioReceived ms=0
+backend whisper hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=347 [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"] [response_format="verbose_json"]
+hook OnTranscription model=whisper chars=12 audioMs=0 enhance=false e2e=false
+=== autodetect_5xx_reroutes
+status 200
+header Content-Length: 18
+header Content-Type: application/json
+header X-Diction-Route-Detect: true
+header X-Diction-Route-Lang: auto
+header X-Diction-Route-Model: whisper
+header X-Diction-Route-Retry: true
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"rescued\"}"
+hook OnAutoDetect tier="canary_confident" lang=""
+hook OnAudioReceived ms=0
+backend canary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"] [language="de"]
+hook OnError source=stt kind=stt_backend_5xx endpoint=/v1/audio/transcriptions provider=canary status=500 inputChars=0 hint="backend returned 500; demoted and retrying"
+backend whisper hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"] [language="de"]
+hook OnTranscription model=whisper chars=7 audioMs=0 enhance=false e2e=false
+=== quirk_duplicate_route_model_header_on_retry
+status 200
+header Content-Length: 22
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: fallback
+header X-Diction-Route-Retry: true
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"fallback ok\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_backend_5xx endpoint=/v1/audio/transcriptions provider=primary status=500 inputChars=0 hint="backend returned 500; demoted and retrying"
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=fallback chars=11 audioMs=0 enhance=false e2e=false
+=== retry_5xx_both_fail
+status 503
+header Content-Length: 7
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: fallback
+header X-Diction-Route-Retry: true
+header X-Diction-Whisper-Ms: <ms>
+body "{\"e\":2}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_backend_5xx endpoint=/v1/audio/transcriptions provider=primary status=500 inputChars=0 hint="backend returned 500; demoted and retrying"
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnRequestFailed type=stt_error
+=== retry_5xx_no_alternative
+status 500
+header Content-Length: 7
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"e\":1}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_backend_5xx endpoint=/v1/audio/transcriptions provider=primary status=500 inputChars=0 hint="backend returned 500; demoted and retrying"
+hook OnRequestFailed type=stt_error
+=== retry_target_unresolvable
+status 500
+header Content-Length: 7
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"e\":1}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_backend_5xx endpoint=/v1/audio/transcriptions provider=primary status=500 inputChars=0 hint="backend returned 500; demoted and retrying"
+hook OnRequestFailed type=stt_error
+=== backend_unreachable
+status 502
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+body ""
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_backend_error endpoint=/v1/audio/transcriptions provider=primary status=502 inputChars=0 hint="backend transport failed"
+hook OnError source=stt kind=stt_backend_5xx endpoint=/v1/audio/transcriptions provider=primary status=502 inputChars=0 hint="backend returned 502; demoted and retrying"
+hook OnRequestFailed type=stt_error
+=== client_canceled
+status 499
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+body ""
+hook OnAudioReceived ms=0
+hook OnError source=stt kind=stt_upstream_canceled endpoint=/v1/audio/transcriptions provider=primary status=499 inputChars=0 hint="upstream canceled (client disconnect or new request)"
+=== hallucination_retry_success
+status 200
+header Content-Length: 16
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: fallback
+header X-Diction-Route-Retry: true
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"clean\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_hallucination endpoint=/v1/audio/transcriptions provider=primary status=502 inputChars=0 hint="backend returned repeated-token hallucination"
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=fallback chars=5 audioMs=0 enhance=false e2e=false
+=== hallucination_no_alternative
+status 502
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+body ""
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_hallucination endpoint=/v1/audio/transcriptions provider=primary status=502 inputChars=0 hint="backend returned repeated-token hallucination"
+hook OnRequestFailed type=stt_error
+=== hallucination_both
+status 502
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: fallback
+header X-Diction-Route-Retry: true
+body ""
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_hallucination endpoint=/v1/audio/transcriptions provider=primary status=502 inputChars=0 hint="backend returned repeated-token hallucination"
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_hallucination endpoint=/v1/audio/transcriptions provider=fallback status=502 inputChars=0 hint="backend returned repeated-token hallucination"
+hook OnRequestFailed type=stt_error
+=== postprocess_success
+status 200
+header Content-Length: 37
+header Content-Type: application/json
+header X-Diction-Llm-Ms: <ms>
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"mode\":\"cleanup\",\"text\":\"Polished.\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=515 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."]
+hook OnTranscription model=primary chars=8 audioMs=0 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="cleanup" boosted=false
+=== postprocess_error_skips
+status 200
+header Content-Length: 19
+header Content-Type: application/json
+header X-Diction-Llm-Ms: <ms>
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"raw text\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=8 audioMs=0 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"language\":\"en\"}" intent="" boosted=false
+hook OnEnhanceSkipped reason=error
+=== postprocess_error_canceled
+status 200
+header Content-Length: 19
+header Content-Type: application/json
+header X-Diction-Llm-Ms: <ms>
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"raw text\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=8 audioMs=0 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"language\":\"en\"}" intent="" boosted=false
+hook OnEnhanceSkipped reason=canceled
+=== postprocess_edit_failure
+status 200
+header Content-Length: 43
+header Content-Type: application/json
+header X-Diction-Llm-Ms: <ms>
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"mode\":\"edit\",\"status\":\"failed\",\"text\":\"\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=15 audioMs=0 enhance=true e2e=false
+postProcess text="make it shorter" ctx="{\"language\":\"en\"}" intent="edit" boosted=false
+hook OnError source=stt kind=stt_post_process endpoint=/v1/audio/transcriptions provider=primary status=200 inputChars=15 hint="edit intent post-process failed; returning status=failed"
+=== postprocess_edit_selected_failure_e2e
+status 200
+header Content-Length: 147
+header Content-Type: application/json
+header X-Diction-Llm-Ms: <ms>
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body <e2e envelope keys=[e2e mode status]>
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=15 audioMs=0 enhance=true e2e=true
+postProcess text="make it shorter" ctx="{\"language\":\"en\"}" intent="edit-selected" boosted=false
+hook OnError source=stt kind=stt_post_process endpoint=/v1/audio/transcriptions provider=primary status=200 inputChars=15 hint="edit intent post-process failed; returning status=failed"
+=== postprocess_auto_edit
+status 200
+header Content-Length: 47
+header Content-Type: application/json
+header X-Diction-Llm-Ms: <ms>
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"auto_edit\":true,\"mode\":\"edit\",\"text\":\"short\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=12 audioMs=0 enhance=true e2e=false
+postProcess text="shorten this" ctx="{\"language\":\"en\"}" intent="edit" boosted=false
+=== postprocess_auto_edit_e2e
+status 200
+header Content-Length: 143
+header Content-Type: application/json
+header X-Diction-Llm-Ms: <ms>
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body <e2e envelope keys=[auto_edit e2e mode]>
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=12 audioMs=0 enhance=true e2e=true
+postProcess text="shorten this" ctx="{\"language\":\"en\"}" intent="edit" boosted=false
+=== postprocess_auto_flag_other_mode
+status 200
+header Content-Length: 32
+header Content-Type: application/json
+header X-Diction-Llm-Ms: <ms>
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"mode\":\"cleanup\",\"text\":\"text\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=12 audioMs=0 enhance=true e2e=false
+postProcess text="shorten this" ctx="{\"language\":\"en\"}" intent="cleanup" boosted=false
+=== postprocess_text_format
+status 200
+header Content-Length: 13
+header Content-Type: text/plain; charset=utf-8
+header X-Diction-Llm-Ms: <ms>
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "Polished text"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=3 audioMs=0 enhance=true e2e=false
+postProcess text="raw" ctx="{\"language\":\"en\"}" intent="" boosted=false
+=== enhance_without_postprocess
+status 200
+header Content-Length: 14
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"raw\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=3 audioMs=0 enhance=true e2e=false
+=== e2e_success
+status 200
+header Content-Length: 122
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body <e2e envelope keys=[e2e]>
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=12 audioMs=0 enhance=false e2e=true
+=== e2e_bad_key_falls_back
+status 200
+header Content-Length: 23
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"secret words\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=primary chars=12 audioMs=0 enhance=false e2e=true
+hook OnError source=e2e kind=e2e_encrypt endpoint=/v1/audio/transcriptions provider= status=200 inputChars=0 hint="transcript e2e encrypt failed; falling back to plain"
+=== decode_busy
+status 503
+header Content-Type: text/plain; charset=utf-8
+header Retry-After: 2
+header X-Content-Type-Options: nosniff
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+body "{\"error\":\"server busy; try again\"}\n"
+hook OnError source=stt kind=stt_decode_busy endpoint=/v1/audio/transcriptions provider=primary status=503 inputChars=0 hint="audio decode semaphore saturated"
+=== decode_busy_on_retry
+status 503
+header Content-Type: text/plain; charset=utf-8
+header Retry-After: 2
+header X-Content-Type-Options: nosniff
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+body "{\"error\":\"server busy; try again\"}\n"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_backend_5xx endpoint=/v1/audio/transcriptions provider=primary status=500 inputChars=0 hint="backend returned 500; demoted and retrying"
+hook OnError source=stt kind=stt_decode_busy endpoint=/v1/audio/transcriptions provider=wav status=503 inputChars=0 hint="audio decode semaphore saturated (retry)"
+=== decode_failure_primary
+status 500
+header Content-Type: text/plain; charset=utf-8
+header X-Content-Type-Options: nosniff
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: primary
+body "{\"error\":\"request processing failed\"}\n"
+hook OnError source=stt kind=stt_multipart endpoint=/v1/audio/transcriptions provider=primary status=500 inputChars=0 hint="multipart rewrite failed"
+=== decode_failure_on_retry_uses_original_body
+status 200
+header Content-Length: 21
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: wav
+header X-Diction-Route-Retry: true
+header X-Diction-Whisper-Ms: <ms>
+body "{\"text\":\"retry text\"}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_backend_5xx endpoint=/v1/audio/transcriptions provider=primary status=500 inputChars=0 hint="backend returned 500; demoted and retrying"
+backend wav hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnTranscription model=wav chars=10 audioMs=0 enhance=false e2e=false
+=== retry_hallucination_second_backend_5xx
+status 500
+header Content-Length: 2
+header Content-Type: application/json
+header X-Diction-Route-Lang: en
+header X-Diction-Route-Model: fallback
+header X-Diction-Route-Retry: true
+header X-Diction-Whisper-Ms: <ms>
+body "{}"
+hook OnAudioReceived ms=0
+backend primary hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnError source=stt kind=stt_hallucination endpoint=/v1/audio/transcriptions provider=primary status=502 inputChars=0 hint="backend returned repeated-token hallucination"
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=330 [language="en"] [file name="file" filename="audio.m4a" ct="" len=10 head="fake-audio"]
+hook OnRequestFailed type=stt_error

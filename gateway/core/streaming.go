@@ -4,23 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
-	"log"
-	"mime/multipart"
+	"math"
 	"net/http"
-	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"github.com/coder/websocket"
 )
@@ -33,44 +27,26 @@ const (
 	wsCloseTooLarge = 4003
 	wsCloseNoAudio  = 4004
 
-	// Per-message WebSocket read limit. coder/websocket defaults to 32 KiB,
-	// which is far below what a batching or whole-file client sends. 8 MiB is
-	// ~44 min of 24 kb/s Opus in a single frame; the session total is still
-	// bounded by maxBodySize and the decoded-size cap.
 	maxWSMessageBytes = 8 << 20
 )
 
-// errTypeSTTError mirrors ErrTypeSTTError in gateway/metrics.go. Kept as a
-// local constant because the ErrType* closed vocabulary lives in the private
-// main package; core/ cannot import it.
 const errTypeSTTError = "stt_error"
 
-// errTypeNoAudio mirrors ErrTypeNoAudio in gateway/metrics.go. See that
-// constant's doc comment.
 const errTypeNoAudio = "no_audio"
 
-// errTypeClientAbort mirrors ErrTypeClientAbort in gateway/metrics.go. See that
-// constant's doc comment.
 const errTypeClientAbort = "client_abort"
 
-// opusSubprotocol is the WebSocket subprotocol used for Ogg/Opus negotiation.
-// The client offers this in the Upgrade request; the server echoes it only when
-// it can actually honour Opus decoding. Self-hosters on older gateways never
-// see the echo and fall back to PCM silently.
 const opusSubprotocol = "diction.opus.v1"
 
-// ffmpegBin and opusSem are initialized once per process lifetime.
 var (
 	ffmpegLookMu   sync.Mutex
 	ffmpegLookDone bool
-	ffmpegBinPath  string // empty string means "not found"
+	ffmpegBinPath  string
 
 	opusSemOnce sync.Once
 	opusSemCh   chan struct{}
 )
 
-// lookupFfmpeg probes PATH for ffmpeg once and caches the result.
-// Tests may call testSetFfmpegPath to override the cached value.
 func lookupFfmpeg() string {
 	ffmpegLookMu.Lock()
 	defer ffmpegLookMu.Unlock()
@@ -84,7 +60,6 @@ func lookupFfmpeg() string {
 	return ffmpegBinPath
 }
 
-// testSetFfmpegPath overrides the cached ffmpeg path for test isolation.
 func testSetFfmpegPath(path string) {
 	ffmpegLookMu.Lock()
 	defer ffmpegLookMu.Unlock()
@@ -92,8 +67,6 @@ func testSetFfmpegPath(path string) {
 	ffmpegLookDone = true
 }
 
-// getOpusSem returns the process-wide semaphore that limits concurrent ffmpeg
-// decode processes. Sized from DICTION_OPUS_CONCURRENCY or GOMAXPROCS.
 func getOpusSem() chan struct{} {
 	opusSemOnce.Do(func() {
 		n := runtime.GOMAXPROCS(0)
@@ -107,69 +80,51 @@ func getOpusSem() chan struct{} {
 	return opusSemCh
 }
 
-// audioPayload carries the audio bytes and the filename that proxyToBackend
-// will use when building the multipart body. The caller always assembles the
-// payload (including any WAV header) before calling proxyToBackend, so the
-// function never needs to guess the format from magic bytes.
 type audioPayload struct {
 	data     []byte
 	filename string
 }
 
-// limitedStderrWriter is a Write-only sink that accepts at most cap bytes and
-// then silently discards. Used to bound ffmpeg stderr capture.
 type limitedStderrWriter struct {
 	buf bytes.Buffer
 	cap int
 }
 
 func (lw *limitedStderrWriter) Write(p []byte) (int, error) {
-	// The full length, taken before p is cut to fit: returning the cut length is a
-	// short write. os/exec then stops draining stderr and reports the short write as
-	// the command's error from Wait, even when the process itself finished cleanly;
-	// a process that keeps writing can also be killed by SIGPIPE.
 	n := len(p)
 	remaining := lw.cap - lw.buf.Len()
 	if remaining > 0 {
 		if len(p) > remaining {
 			p = p[:remaining]
 		}
-		lw.buf.Write(p) //nolint:errcheck — writing to a bytes.Buffer is infallible
+		lw.buf.Write(p)
 	}
-	return n, nil // always report full write so exec doesn't get a short-write error
+	return n, nil
 }
 
-// readOggGranulepos returns the granule position from the last Ogg page in
-// data, or -1 if no valid page is found. The search scans backwards so it
-// finds the last page without walking the whole stream.
 func readOggGranulepos(data []byte) int64 {
-	// OggS capture pattern (4 bytes) + stream structure version (1 byte, must be 0) = 5 bytes minimum,
-	// then 9 more before granulepos ends = i+14 must be within data.
 	for i := len(data) - 27; i >= 0; i-- {
 		if data[i] != 'O' || data[i+1] != 'g' || data[i+2] != 'g' || data[i+3] != 'S' {
 			continue
 		}
-		if data[i+4] != 0 { // stream structure version
+		if data[i+4] != 0 {
 			continue
 		}
 		if i+14 > len(data) {
 			continue
 		}
-		// Granulepos: bytes 6–13 of the page header, int64 little-endian.
-		// The special value -1 (0xFFFFFFFFFFFFFFFF) means "not yet determined";
-		// skip it and keep looking backwards.
-		gp := int64(binary.LittleEndian.Uint64(data[i+6 : i+14]))
-		if gp != -1 {
-			return gp
+		raw := binary.LittleEndian.Uint64(data[i+6 : i+14])
+		if raw == math.MaxUint64 {
+			continue
 		}
+		if raw > math.MaxInt64 {
+			return -1
+		}
+		return int64(raw)
 	}
 	return -1
 }
 
-// readOggPreSkip reads the pre-skip value from the OpusHead packet on the
-// first Ogg page. Pre-skip is in 48 kHz samples; subtract it from granulepos
-// before dividing by 48 to get milliseconds. Returns 0 on any parse failure
-// (slightly overstates duration by ~6.5 ms — conservative and harmless).
 func readOggPreSkip(data []byte) uint16 {
 	if len(data) < 28 {
 		return 0
@@ -183,16 +138,12 @@ func readOggPreSkip(data []byte) uint16 {
 		return 0
 	}
 	head := data[headerLen:]
-	// OpusHead: 8 bytes magic + 1 version + 1 channels + 2 pre-skip (LE)
 	if len(head) < 12 || !bytes.Equal(head[0:8], []byte("OpusHead")) {
 		return 0
 	}
 	return binary.LittleEndian.Uint16(head[10:12])
 }
 
-// oggDurationMs returns the duration of an Ogg/Opus stream in milliseconds,
-// derived from the last page's granule position and the pre-skip in OpusHead.
-// Returns 0 for WebM or any stream that can't be parsed (safe fallback).
 func oggDurationMs(data []byte) int64 {
 	gp := readOggGranulepos(data)
 	if gp < 0 {
@@ -203,37 +154,29 @@ func oggDurationMs(data []byte) int64 {
 	if adjusted <= 0 {
 		return 0
 	}
-	return adjusted / 48 // granulepos is in 48 kHz ticks; /48 gives ms
+	return adjusted / 48
 }
 
 type streamAction struct {
 	Action   string `json:"action"`
 	Language string `json:"language,omitempty"`
-	// Model and Text belong to the device_transcript action (merge=1, streaming_merge.go).
-	Model string `json:"model,omitempty"`
-	Text  string `json:"text,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Text     string `json:"text,omitempty"`
 }
 
 type streamResult struct {
-	Text   string `json:"text"`
-	Mode   string `json:"mode,omitempty"`
-	Status string `json:"status,omitempty"`
-	// AutoEdit marks a result the gateway turned into an Edit itself (ResolveIntent).
-	AutoEdit bool `json:"auto_edit,omitempty"`
+	Text     string `json:"text"`
+	Mode     string `json:"mode,omitempty"`
+	Status   string `json:"status,omitempty"`
+	AutoEdit bool   `json:"auto_edit,omitempty"`
 }
 
-// intentFrame tells the client, before the Writing Tools pass runs, that the gateway
-// turned its plain tap into an Edit — so the keyboard can show Edit in progress instead
-// of transcribing. Sent only on an Auto-edit, and only clients that sent `auto_edit=1`
-// can get one, so no older client ever sees this frame type.
 type intentFrame struct {
-	Type   string `json:"type"`   // "intent"
-	Intent string `json:"intent"` // "edit"
-	Source string `json:"source"` // "auto"
+	Type   string `json:"type"`
+	Intent string `json:"intent"`
+	Source string `json:"source"`
 }
 
-// Reason — closed vocabulary for ws_read close classification. Kept in sync
-// with the `reason` tag constants in gateway/metrics.go (Reason*).
 const (
 	wsReasonEOF           = "eof"
 	wsReasonGoingAway     = "going_away"
@@ -244,11 +187,6 @@ const (
 	wsReasonUnknown       = "unknown"
 )
 
-// ClassifyWSError maps a conn.Read error to a closed-vocabulary reason tag.
-// Idle-timeout classification is done by the caller via the external
-// time.AfterFunc watchdog (see the main read loop); when this function sees
-// a context error it always means the outer 90-min stream cap fired or the
-// HTTP request ctx was canceled by the framework.
 func ClassifyWSError(err error) string {
 	if err == nil {
 		return ""
@@ -272,8 +210,6 @@ func ClassifyWSError(err error) string {
 	s := err.Error()
 	switch {
 	case strings.Contains(s, "StatusAbnormalClosure"):
-		// iOS URLSessionWebSocketTask.cancel(with: .abnormalClosure) sends 1006
-		// on the wire, which coder/websocket rejects as an invalid payload.
 		return wsReasonAbnormalClose
 	case strings.Contains(s, "EOF"):
 		return wsReasonEOF
@@ -285,9 +221,6 @@ func ClassifyWSError(err error) string {
 	return wsReasonUnknown
 }
 
-// CloseWSWithTimeout calls conn.Close with a bounded write budget so a
-// NAT-orphaned half-open socket cannot re-introduce the multi-minute hang
-// we are trying to end. defer conn.CloseNow() remains as a final safety net.
 func CloseWSWithTimeout(conn *websocket.Conn, code websocket.StatusCode, reason string, budget time.Duration) {
 	done := make(chan struct{})
 	go func() {
@@ -300,1115 +233,20 @@ func CloseWSWithTimeout(conn *websocket.Conn, code websocket.StatusCode, reason 
 	}
 }
 
-// StreamingHandler returns the handler for WS /v1/audio/stream.
-//
-// Protocol:
-//
-//	Client connects: ws(s)://host/v1/audio/stream?language=en[&codec=opus]
-//	Client → Server: binary frames of PCM audio (16-bit LE, mono, 16kHz)
-//	           — or — Ogg/Opus frames when codec=opus was negotiated
-//	Client → Server: text frame {"action":"done"}
-//	Server → Client: text frame {"text":"transcribed text"}
-//	Server closes connection.
 func (g *Gateway) StreamingHandler() http.HandlerFunc {
 	return g.StreamingHandlerWithPostProcess(nil)
 }
 
-// StreamingHandlerWithPostProcess is like StreamingHandler but calls postProcess
-// on the transcript when ?enhance=true is requested. Pass nil for no post-processing.
-// postProcess receives (ctx, transcript, contextJSON, intent) and returns (resultText, mode, error).
-func (g *Gateway) StreamingHandlerWithPostProcess(postProcess func(context.Context, string, string, string) (string, string, error)) http.HandlerFunc {
+func (g *Gateway) StreamingHandlerWithPostProcess(
+	postProcess func(context.Context, string, string, string) (string, string, error),
+) http.HandlerFunc {
 	return g.StreamingHandlerWithSplitEnhance(postProcess, nil)
 }
 
-// StreamingHandlerWithSplitEnhance adds the two-frame answer to the batch socket.
-//
-// A client that sends `?split_enhance=true` (with `?enhance=true`, transcribe intent)
-// gets the **raw final** the moment STT returns, then one **enhanced frame**
-// (`{"type":"enhanced","text":…}` or `{"type":"enhanced","status":"failed"}`) once the
-// Writing Tools pass completes — the same shape the realtime socket has always used.
-// Everyone else gets exactly today's single already-enhanced frame.
-//
-// Why: holding the only frame behind the LLM made the client's local-vs-cloud race
-// compare on-device raw STT against cloud STT + LLM, which the cloud could not win.
-// See .claude/ARCHITECTURE.md → "Cloud/on-device race and enhance timeouts", invariant 1.
-//
-// `inline` bounds the pass while the user is still waiting (short); `postDelivery`
-// bounds it after the raw text has already been delivered (long — the only cost of
-// waiting is how long the on-screen text stays raw). Pass nil for `postDelivery` to
-// use `inline` for both, which is what the community build does today.
 func (g *Gateway) StreamingHandlerWithSplitEnhance(
 	inline, postDelivery func(context.Context, string, string, string) (string, string, error),
 ) http.HandlerFunc {
-	postProcess := inline
 	return func(w http.ResponseWriter, r *http.Request) {
-		// --- Codec validation (before WS upgrade) ---
-		// Unknown codec values get a 400 *before* the upgrade so the error is a
-		// plain HTTP response rather than a close frame, making client-side
-		// debugging far easier.
-		codec := r.URL.Query().Get("codec")
-		switch codec {
-		case "", "pcm", "opus":
-			// valid
-		default:
-			http.Error(w, `{"error":"unsupported codec; accepted values: pcm, opus"}`, http.StatusBadRequest)
-			return
-		}
-
-		// --- Backend resolution (must run before websocket.Accept) ---
-		// Resolve backend before upgrade — route to best model for the language.
-		// Auto-detect: when ?language=auto is present, route to a detect-capable
-		// model and instruct proxyToBackend to omit the language field upstream
-		// so native LID can run. Old clients send a concrete code and fall
-		// through to existing routing.
-		language := r.URL.Query().Get("language")
-		var (
-			model                 string
-			stripUpstreamLanguage bool
-			detectActive          = IsAutoDetect(language)
-			adResult              AutoDetectResult
-			// Hoisted so a backend failure can re-run auto-detect routing for the retry.
-			adCtx AutoDetectContext
-		)
-		if detectActive {
-			if g.DeviceHashFromContext != nil {
-				adCtx.DeviceHash = g.DeviceHashFromContext(r.Context())
-			}
-			if adCtx.DeviceHash != "" && g.profileStore != nil {
-				adCtx.Profile = g.profileStore.GetProfile(r.Context(), adCtx.DeviceHash)
-			}
-			adResult = g.ModelForAutoDetect(adCtx)
-			if adResult.Model != "" {
-				model = adResult.Model
-				stripUpstreamLanguage = adResult.UpstreamLanguage == ""
-			}
-		}
-		if model == "" {
-			model = g.ModelForLanguage(language)
-		}
-		target, backend := g.resolveBackend(model)
-		if target == nil || (!backend.SkipHealthCheck && !g.health.get(model)) {
-			// Set the routing header before returning (normally done further
-			// below) so this row carries the backend it *wanted* rather than
-			// landing in the unknown bucket — this was, until now, the single
-			// largest silent failure branch. See gateway/KindGuide.md
-			// "stt_route_fail".
-			w.Header().Set("X-Diction-Route-Model", model)
-			if OnError != nil {
-				OnError(r.Context(), ErrorEvent{
-					Source:     "stt",
-					Kind:       "stt_route_fail",
-					Endpoint:   "/v1/audio/stream",
-					Provider:   model,
-					HTTPStatus: http.StatusServiceUnavailable,
-					Hint:       "no healthy backend for this language",
-				})
-			}
-			if OnRequestFailed != nil {
-				OnRequestFailed(r.Context(), errTypeSTTError)
-			}
-			http.Error(w, `{"error":"backend unavailable"}`, http.StatusServiceUnavailable)
-			return
-		}
-		if g.fallbackModel != "" {
-			log.Printf("Route: language=%s detect=%v → model=%s",
-				language, detectActive, model)
-		}
-		w.Header().Set("X-Diction-Route-Lang", language)
-		w.Header().Set("X-Diction-Route-Model", model)
-		if detectActive {
-			w.Header().Set("X-Diction-Route-Detect", "true")
-		}
-
-		// --- Subprotocol negotiation ---
-		// NB: resolveBackend (above) MUST precede websocket.Accept so that
-		// backend.NeedsWAV is known when we decide whether to offer the Opus
-		// subprotocol. Reordering those two calls would silently break
-		// capability negotiation.
-		ffmpegAvail := lookupFfmpeg() != ""
-		canOfferOpus := ffmpegAvail || !backend.NeedsWAV
-
-		// Check whether the client offered the subprotocol in the Upgrade request
-		// BEFORE Accept erases the header.
-		clientOfferedOpus := strings.Contains(r.Header.Get("Sec-WebSocket-Protocol"), opusSubprotocol)
-
-		acceptOpts := &websocket.AcceptOptions{
-			InsecureSkipVerify: true, // allow any origin for now
-		}
-		if canOfferOpus {
-			acceptOpts.Subprotocols = []string{opusSubprotocol}
-		}
-
-		conn, err := websocket.Accept(w, r, acceptOpts)
-		if err != nil {
-			log.Printf("ws accept: %v", err)
-			if OnError != nil {
-				OnError(r.Context(), ErrorEvent{
-					Source:   "streaming",
-					Kind:     "ws_accept",
-					Endpoint: "/v1/audio/stream",
-					Hint:     "websocket accept failed",
-				})
-			}
-			if OnRequestFailed != nil {
-				OnRequestFailed(r.Context(), errTypeSTTError)
-			}
-			return
-		}
-		defer conn.CloseNow()
-
-		// socketOpenedAt marks a successful upgrade. Used only by the no-audio
-		// branch below to distinguish a user abort (sub-second, zero frames)
-		// from a broken mic session (full recording length) — see ws_no_audio
-		// in gateway/KindGuide.md.
-		socketOpenedAt := time.Now()
-
-		// coder/websocket defaults Read to 32 KiB per message. That default was
-		// never hit by our own client (PCM chunks are ~682 B every 20-30 ms), but
-		// it silently kills any client that batches — which is exactly what a
-		// compressed codec encourages on a bad network, and what a browser
-		// MediaRecorder or a whole-file uploader does by default. The total
-		// payload stays bounded by maxBodySize / the decoded-size cap below;
-		// this only bounds a single message's allocation.
-		conn.SetReadLimit(maxWSMessageBytes)
-
-		ctx, cancel := context.WithTimeout(r.Context(), streamTimeout)
-		defer cancel()
-
-		// Determine effective codec for this connection.
-		//
-		// Three cases:
-		//   1. negotiatedOpus — client offered diction.opus.v1 AND server accepted it.
-		//      The connection carries an Ogg/Opus stream.
-		//   2. clientOfferedOpus && !negotiatedOpus — client tried but server declined
-		//      (no ffmpeg + NeedsWAV). Per the spec the client MUST fall back to PCM.
-		//      We also fall back on our side so a non-conforming client gets PCM transcription.
-		//   3. codec==opus, no subprotocol offered — non-negotiating client (curl, etc.)
-		//      Old path: serve if we can, fail explicitly if we can't.
-		negotiatedOpus := conn.Subprotocol() == opusSubprotocol
-		isOpus := false
-		negotiationOutcome := "" // "accepted" | "offered" | "unavailable" | ""
-		if codec == "opus" {
-			switch {
-			case negotiatedOpus:
-				isOpus = true
-				negotiationOutcome = "accepted"
-			case clientOfferedOpus:
-				// Declined — safe PCM fallback. isOpus stays false.
-				log.Printf("ws: client offered %s but server declined; falling back to PCM", opusSubprotocol)
-				negotiationOutcome = "unavailable"
-			default:
-				// Non-negotiating client.
-				if !ffmpegAvail && backend.NeedsWAV {
-					log.Printf("ws: codec=opus requested but ffmpeg not in PATH")
-					if OnError != nil {
-						OnError(ctx, ErrorEvent{
-							Source:   "streaming",
-							Kind:     "opus_decode",
-							Endpoint: "/v1/audio/stream",
-							Hint:     "ffmpeg not found; cannot decode Opus for this backend",
-						})
-					}
-					if OnRequestFailed != nil {
-						OnRequestFailed(ctx, errTypeSTTError)
-					}
-					CloseWSWithTimeout(conn, wsCloseFailed, "opus unavailable: ffmpeg not in PATH", 2*time.Second)
-					return
-				}
-				isOpus = true
-			}
-		} else if canOfferOpus && clientOfferedOpus && !negotiatedOpus {
-			// Client offered but codec!=opus → "offered, not used" signal.
-			negotiationOutcome = "offered"
-		}
-
-		// Report codec + negotiation outcome before the read loop so it lands in
-		// the log entry even when the connection is aborted early.
-		codecTag := "pcm"
-		if isOpus {
-			codecTag = "opus"
-		}
-		if g.OnStreamingCodec != nil {
-			g.OnStreamingCodec(ctx, codecTag, negotiationOutcome)
-		}
-
-		// Passthrough: when the backend can accept Ogg/WebM directly, skip the
-		// ffmpeg decode and forward the accumulated Opus bytes as-is.
-		//
-		// Live features (live.go) need PCM while the user talks, so ffmpeg also
-		// decodes the Opus as it arrives. With a passthrough backend the original
-		// Ogg/WebM is still kept (keepOriginal): the whole-clip request then sends
-		// exactly what it sends today, and any decode trouble only turns live off.
-		previewParam := r.URL.Query().Get("preview") == "cloud"
-		builtinPreview := previewParam && PreviewRelay == nil && g.live.Preview
-		liveOn := (g.live.Segmented || builtinPreview) && (!isOpus || ffmpegAvail)
-		keepOriginal := isOpus && !backend.NeedsWAV && liveOn
-		if keepOriginal {
-			// A best-effort decode never waits for a slot or rejects the session.
-			if release, ok := tryLiveDecodeSlot(); ok {
-				defer release()
-			} else {
-				log.Printf("live: decode slots busy; live off for this session")
-				liveOn, keepOriginal = false, false
-			}
-		}
-		builtinPreview = builtinPreview && liveOn
-		usePassthrough := isOpus && !backend.NeedsWAV && !liveOn
-
-		// --- Semaphore (NeedsWAV decode path only) ---
-		// Every cloud backend is NeedsWAV, so cloud traffic spawns one ffmpeg
-		// process per concurrent dictation. The semaphore bounds that.
-		if isOpus && backend.NeedsWAV {
-			sem := getOpusSem()
-			waitTimer := time.NewTimer(5 * time.Second)
-			defer waitTimer.Stop()
-			select {
-			case sem <- struct{}{}:
-				defer func() { <-sem }()
-			case <-waitTimer.C:
-				log.Printf("ws: Opus semaphore saturated; rejecting connection")
-				if OnError != nil {
-					OnError(ctx, ErrorEvent{
-						Source:   "streaming",
-						Kind:     "ws_busy",
-						Endpoint: "/v1/audio/stream",
-						Hint:     "opus decode semaphore saturated after 5s",
-					})
-				}
-				if OnRequestFailed != nil {
-					OnRequestFailed(ctx, errTypeSTTError)
-				}
-				CloseWSWithTimeout(conn, wsCloseFailed, "server busy; too many concurrent Opus decodes", 2*time.Second)
-				return
-			case <-ctx.Done():
-				return
-			}
-		}
-
-		// --- State for the read loop ---
-		var (
-			pcmBuf           bytes.Buffer
-			opusInputBuf     bytes.Buffer // accumulates Ogg/WebM bytes for passthrough
-			contextJSON      string
-			maxPCM           = g.maxBodySize
-			contextRead      bool
-			audioBytesRx     int64
-			framesRx         int    // binary frames received — see ws_no_audio
-			containerFile    string // "audio.ogg" or "audio.webm" — set on first sniff
-			containerSniffed bool
-
-			// ffmpeg decode state — populated on first Opus binary frame
-			ffmpegCmd      *exec.Cmd
-			ffmpegStdin    io.WriteCloser
-			ffmpegStderr   = limitedStderrWriter{cap: 4096}
-			stdoutDone     chan struct{}
-			ffmpegWriteErr error
-
-			// keepOriginal only: the decode for the live engine failed or fell short,
-			// so the segmented final must not be trusted (the original is sent instead).
-			liveBroken       bool
-			liveDecodedBytes int64 // PCM bytes the live decoder produced (atomic)
-		)
-
-		// ffmpegCleanup closes stdin and waits for the process to exit + stdout to drain.
-		// It is idempotent — safe to call explicitly after the loop AND again from the
-		// defer so that early returns in the post-loop section also reap the process.
-		var ffmpegCleaned bool
-		var ffmpegWaitErr error // read only by the keepOriginal checks
-		ffmpegCleanup := func() {
-			if ffmpegCleaned || ffmpegStdin == nil {
-				return
-			}
-			ffmpegCleaned = true
-			ffmpegStdin.Close()
-			if stdoutDone != nil {
-				<-stdoutDone
-			}
-			ffmpegWaitErr = ffmpegCmd.Wait() // stderr is captured separately
-		}
-		defer ffmpegCleanup()
-
-		idleTimeout := g.streamIdleTimeout
-		if idleTimeout <= 0 {
-			idleTimeout = defaultStreamIdleTimeout
-		}
-
-		// Cloud preview (preview.go): PCM sessions only, opened on the first PCM frame.
-		// The deferred stop covers every early return; the explicit stop after the loop
-		// is what orders the last interim before the at-stop frames.
-		wantPreview := previewParam && PreviewRelay != nil
-		if wantPreview && isOpus {
-			reportPreviewRelay(ctx, "failed")
-			wantPreview = false
-		}
-		var preview *previewPump
-		defer func() { preview.stop() }()
-
-		// The upstream language for a given client language (see the whole-clip POST).
-		upstreamLanguageFor := func(lang string) string {
-			if adResult.UpstreamLanguage != "" {
-				return adResult.UpstreamLanguage
-			}
-			if stripUpstreamLanguage {
-				return ""
-			}
-			return lang
-		}
-
-		// Live engine (live.go): opened on the first audio frame, by which time the
-		// context frame (custom words → prompt) has been read.
-		var live *liveEngine
-		var liveLanguage string
-		defer func() { live.close() }()
-
-		for {
-			// Idle watchdog: if no frame arrives within idleTimeout, call
-			// conn.Close from a goroutine so a close frame is written before
-			// the underlying connection is torn down. A per-frame
-			// context.WithTimeout is NOT usable here: coder/websocket's
-			// context.AfterFunc hook calls c.close() on ctx expiry, which
-			// kills TCP before we can send StatusPolicyViolation.
-			idleFired := make(chan struct{})
-			idleTimer := time.AfterFunc(idleTimeout, func() {
-				CloseWSWithTimeout(conn, websocket.StatusPolicyViolation, "idle_timeout", 2*time.Second)
-				close(idleFired)
-			})
-			msgType, data, err := conn.Read(ctx)
-			stopped := idleTimer.Stop()
-			// Stop returns false if the timer already fired — wait for the
-			// callback to finish so we know the close frame has been written
-			// (or its 2s budget is exhausted).
-			if !stopped {
-				<-idleFired
-			}
-			if err != nil {
-				log.Printf("ws read: %v", err)
-				var reason string
-				if !stopped {
-					reason = wsReasonIdleTimeout
-				} else {
-					reason = ClassifyWSError(err)
-				}
-				if OnError != nil {
-					OnError(ctx, ErrorEvent{
-						Source:   "streaming",
-						Kind:     "ws_read",
-						Reason:   reason,
-						Endpoint: "/v1/audio/stream",
-						Hint:     "websocket read failed: " + reason,
-					})
-				}
-				// The backend has not been called yet: whatever ended the
-				// socket happened between the client and us, not in STT.
-				if OnRequestFailed != nil {
-					OnRequestFailed(ctx, errTypeClientAbort)
-				}
-				if stopped {
-					// Non-idle error: issue our own bounded close.
-					CloseWSWithTimeout(conn, websocket.StatusInternalError, reason, 2*time.Second)
-				}
-				return
-			}
-			if !stopped {
-				// Race: a valid frame arrived as the idle timer fired. From
-				// the user's perspective the stream terminated due to idle
-				// timeout — emit the matching ws_read/idle_timeout error so
-				// dashboards don't see an orphan success=false request.
-				if OnError != nil {
-					OnError(ctx, ErrorEvent{
-						Source:   "streaming",
-						Kind:     "ws_read",
-						Reason:   wsReasonIdleTimeout,
-						Endpoint: "/v1/audio/stream",
-						Hint:     "websocket read failed: " + wsReasonIdleTimeout,
-					})
-				}
-				if OnRequestFailed != nil {
-					OnRequestFailed(ctx, errTypeClientAbort)
-				}
-				return
-			}
-
-			if msgType == websocket.MessageBinary {
-				framesRx++
-				audioBytesRx += int64(len(data))
-				if audioBytesRx > maxPCM {
-					if OnError != nil {
-						OnError(ctx, ErrorEvent{
-							Source:   "streaming",
-							Kind:     "ws_audio_too_large",
-							Reason:   "compressed",
-							Endpoint: "/v1/audio/stream",
-							Hint:     "received audio exceeded maxPCM before decode",
-						})
-					}
-					if OnRequestFailed != nil {
-						OnRequestFailed(ctx, errTypeSTTError)
-					}
-					CloseWSWithTimeout(conn, wsCloseTooLarge, "audio too large", 2*time.Second)
-					return
-				}
-
-				if liveOn && live == nil {
-					liveLanguage = language
-					live = g.startLive(ctx, target, backend, language, upstreamLanguageFor(language), contextJSON, builtinPreview)
-					if builtinPreview {
-						preview = startPreviewPumpWith(ctx, conn, livePreview{live})
-					}
-				}
-
-				if isOpus && !containerSniffed {
-					// First binary Opus frame: sniff the container to pick the right
-					// ffmpeg input format and a meaningful filename.
-					containerSniffed = true
-					switch {
-					case bytes.HasPrefix(data, []byte("OggS")):
-						containerFile = "audio.ogg"
-					case bytes.HasPrefix(data, []byte("\x1a\x45\xdf\xa3")):
-						containerFile = "audio.webm"
-					default:
-						log.Printf("ws: codec=opus but first frame is neither Ogg nor WebM")
-						if OnError != nil {
-							OnError(ctx, ErrorEvent{
-								Source:   "streaming",
-								Kind:     "opus_decode",
-								Endpoint: "/v1/audio/stream",
-								Hint:     "expected Ogg or WebM container; got unknown magic bytes",
-							})
-						}
-						if OnRequestFailed != nil {
-							OnRequestFailed(ctx, errTypeSTTError)
-						}
-						CloseWSWithTimeout(conn, wsCloseUnknown, "expected Ogg or WebM container", 2*time.Second)
-						return
-					}
-
-					// Start ffmpeg now that we know the container format. This deferred
-					// start means `-f ogg` or `-f webm` is always explicit, preventing
-					// ffmpeg from probe-blocking on a live pipe.
-					if keepOriginal {
-						// Best effort: a decoder that cannot start only turns live off.
-						cmd, stdin, done, derr := startLiveDecoder(ctx, strings.TrimPrefix(containerFile, "audio."), &ffmpegStderr, live, &liveDecodedBytes)
-						if derr != nil {
-							log.Printf("live: decoder did not start; live off for this session")
-							liveBroken = true
-						} else {
-							ffmpegCmd, ffmpegStdin, stdoutDone = cmd, stdin, done
-						}
-					} else if !usePassthrough {
-						inputFmt := strings.TrimPrefix(containerFile, "audio.")
-						cmd := exec.CommandContext(ctx, lookupFfmpeg(),
-							"-loglevel", "error",
-							"-f", inputFmt, "-i", "pipe:0",
-							"-f", "s16le", "-ar", "16000", "-ac", "1", "pipe:1")
-						cmd.Stderr = &ffmpegStderr
-
-						stdin, serr := cmd.StdinPipe()
-						if serr != nil {
-							log.Printf("ws ffmpeg stdin pipe: %v", serr)
-							if OnError != nil {
-								OnError(ctx, ErrorEvent{
-									Source:   "streaming",
-									Kind:     "opus_decode",
-									Endpoint: "/v1/audio/stream",
-									Hint:     "ffmpeg stdin pipe failed",
-								})
-							}
-							CloseWSWithTimeout(conn, websocket.StatusInternalError, "ffmpeg error", 2*time.Second)
-							if OnRequestFailed != nil {
-								OnRequestFailed(ctx, errTypeSTTError)
-							}
-							return
-						}
-						stdout, serr := cmd.StdoutPipe()
-						if serr != nil {
-							log.Printf("ws ffmpeg stdout pipe: %v", serr)
-							if OnError != nil {
-								OnError(ctx, ErrorEvent{
-									Source:   "streaming",
-									Kind:     "opus_decode",
-									Endpoint: "/v1/audio/stream",
-									Hint:     "ffmpeg stdout pipe failed",
-								})
-							}
-							CloseWSWithTimeout(conn, websocket.StatusInternalError, "ffmpeg error", 2*time.Second)
-							if OnRequestFailed != nil {
-								OnRequestFailed(ctx, errTypeSTTError)
-							}
-							return
-						}
-						if serr = cmd.Start(); serr != nil {
-							log.Printf("ws ffmpeg start: %v", serr)
-							if OnError != nil {
-								OnError(ctx, ErrorEvent{
-									Source:   "streaming",
-									Kind:     "opus_decode",
-									Endpoint: "/v1/audio/stream",
-									Hint:     "ffmpeg start failed",
-								})
-							}
-							CloseWSWithTimeout(conn, websocket.StatusInternalError, "ffmpeg error", 2*time.Second)
-							if OnRequestFailed != nil {
-								OnRequestFailed(ctx, errTypeSTTError)
-							}
-							return
-						}
-						ffmpegCmd = cmd
-						ffmpegStdin = stdin
-						done := make(chan struct{})
-						stdoutDone = done
-						// The live engine sees the PCM as ffmpeg decodes it.
-						var sink io.Writer = &pcmBuf
-						if live != nil {
-							sink = io.MultiWriter(&pcmBuf, live)
-						}
-						go func() {
-							// Bound the decoded output to maxPCM+1 so an amplified
-							// decode cannot exhaust memory. The +1 lets us distinguish
-							// "exactly maxPCM" from "exceeded" after the drain.
-							io.Copy(sink, io.LimitReader(stdout, maxPCM+1)) //nolint:errcheck
-							close(done)
-						}()
-					}
-				}
-
-				if usePassthrough {
-					opusInputBuf.Write(data)
-				} else if keepOriginal {
-					opusInputBuf.Write(data)
-					if ffmpegStdin != nil && !liveBroken {
-						if _, werr := ffmpegStdin.Write(data); werr != nil {
-							log.Printf("live: decoder stopped mid-stream; live off for this session")
-							liveBroken = true
-						}
-					}
-				} else if isOpus {
-					if _, werr := ffmpegStdin.Write(data); werr != nil {
-						// ffmpeg died mid-stream. Break the read loop and handle below.
-						ffmpegWriteErr = werr
-						break
-					}
-				} else {
-					pcmBuf.Write(data)
-					if live != nil {
-						live.Write(data) //nolint:errcheck — never fails
-					}
-					if wantPreview && preview == nil && len(data) > 0 {
-						preview = startPreviewPump(ctx, conn, language)
-						wantPreview = false
-					}
-					preview.send(data)
-				}
-				contextRead = true // context frame must come before any audio
-				continue
-			}
-
-			// Text message - check for done action or context
-			if msgType == websocket.MessageText {
-				var action streamAction
-				if err := json.Unmarshal(data, &action); err != nil {
-					// Not valid JSON action - treat as context if first text frame
-					if !contextRead {
-						contextJSON = string(data)
-						contextRead = true
-					}
-					continue
-				}
-				if action.Action == "done" {
-					// Mid-stream language override is a re-routing hint for single-language
-					// clients. When auto-detect is active on this connection we've already
-					// committed to a detect-capable model, so honouring the hint would either
-					// re-introduce a wrong code or re-route to a non-detect model. Ignore it.
-					if action.Language != "" && !detectActive {
-						language = action.Language
-					}
-					break
-				}
-				// First text frame without action field is context JSON
-				if !contextRead && action.Action == "" {
-					contextJSON = string(data)
-					contextRead = true
-					continue
-				}
-			}
-		}
-
-		// Recording is over: end the preview and join its writer before anything
-		// else is written, so no interim can follow the intent/result frames.
-		preview.stop()
-
-		// Merge (C3): keep reading after `done` for the phone transcripts while STT runs.
-		// Only when the merge can actually happen — an explicit edit, split_enhance, Clean up
-		// off or no hook (community) leave merge=1 ignored and the session exactly as today.
-		var phoneTranscripts *deviceTranscripts
-		if r.URL.Query().Get("merge") == "1" && MergeProcess != nil && postProcess != nil &&
-			r.URL.Query().Get("enhance") == "true" && r.URL.Query().Get("split_enhance") != "true" &&
-			!isEditIntentParam(r.URL.Query().Get("intent")) {
-			phoneTranscripts = startDeviceTranscriptReader(ctx, conn, expectedPhoneTranscripts(r.URL.Query().Get("phones")))
-		}
-
-		// ffmpegCleanup is deferred; it runs here on normal exit and on every
-		// early return below, so no explicit call is needed. The check below is
-		// after cleanup has drained stdout and reaped the process.
-		ffmpegCleanup()
-
-		// keepOriginal: trust the live engine only if ffmpeg exited cleanly and
-		// decoded (about) as much audio as the Ogg holds.
-		if keepOriginal && !liveBroken {
-			decodedMs := atomic.LoadInt64(&liveDecodedBytes) * 1000 / pcmBytesPerSecond
-			oggMs := int64(-1)
-			if containerFile == "audio.ogg" {
-				oggMs = oggDurationMs(opusInputBuf.Bytes())
-			}
-			if ffmpegWaitErr != nil || (oggMs >= 0 && absInt64(decodedMs-oggMs) > 500) {
-				log.Printf("live: decode incomplete (decoded %dms of %dms, decoder_exit_ok=%v, decoder_stderr=%d bytes); using the whole clip",
-					decodedMs, oggMs, ffmpegWaitErr == nil, ffmpegStderr.buf.Len())
-				liveBroken = true
-			}
-		}
-
-		// After draining, handle any write error that broke the read loop.
-		if ffmpegWriteErr != nil {
-			hint := fmt.Sprintf("ffmpeg stdin write error: %v", ffmpegWriteErr)
-			if s := strings.TrimSpace(ffmpegStderr.buf.String()); s != "" {
-				hint += "; ffmpeg: " + s
-			}
-			log.Printf("ws opus decode: %s", hint)
-			if OnError != nil {
-				OnError(ctx, ErrorEvent{
-					Source:   "stt",
-					Kind:     "opus_decode",
-					Endpoint: "/v1/audio/stream",
-					Hint:     hint,
-				})
-			}
-			if OnRequestFailed != nil {
-				OnRequestFailed(ctx, errTypeSTTError)
-			}
-			CloseWSWithTimeout(conn, wsCloseFailed, "opus decode error", 2*time.Second)
-			return
-		}
-
-		// Check the decoded-side size cap. audioBytesRx guards the compressed
-		// input; this guards the amplified output. At 200 MB compressed and
-		// ~16 kb/s that would be ~28 h of audio → ~3 GB decoded, so this is
-		// not merely theoretical.
-		if isOpus && !usePassthrough && int64(pcmBuf.Len()) > maxPCM {
-			if OnError != nil {
-				OnError(ctx, ErrorEvent{
-					Source:   "streaming",
-					Kind:     "ws_audio_too_large",
-					Reason:   "decoded",
-					Endpoint: "/v1/audio/stream",
-					Hint:     "decoded PCM exceeded maxPCM",
-				})
-			}
-			if OnRequestFailed != nil {
-				OnRequestFailed(ctx, errTypeSTTError)
-			}
-			CloseWSWithTimeout(conn, wsCloseTooLarge, "decoded audio too large", 2*time.Second)
-			return
-		}
-
-		if pcmBuf.Len() == 0 && opusInputBuf.Len() == 0 {
-			// See socketOpenedAt above: LatencyMs/InputChars are repurposed here
-			// as socket-open duration and frame count, the only signal that
-			// separates a user abort (sub-second, zero frames) from a broken
-			// mic session (full recording length, or frames that decoded to
-			// nothing). Documented in gateway/KindGuide.md under ws_no_audio.
-			if OnError != nil {
-				OnError(ctx, ErrorEvent{
-					Source:     "streaming",
-					Kind:       "ws_no_audio",
-					Endpoint:   "/v1/audio/stream",
-					Hint:       "socket closed with zero audio bytes",
-					LatencyMs:  time.Since(socketOpenedAt).Milliseconds(),
-					InputChars: framesRx,
-				})
-			}
-			if OnRequestFailed != nil {
-				OnRequestFailed(ctx, errTypeNoAudio)
-			}
-			CloseWSWithTimeout(conn, wsCloseNoAudio, "no audio received", 2*time.Second)
-			return
-		}
-
-		// Wrap PCM in WAV header and POST to backend.
-		// canary_confident: inject known language code (e.g. "cs") for best accuracy.
-		// Other detect tiers: strip language so the model runs native auto-LID.
-		// Non-detect: pass through the client's language unchanged.
-		upstreamLanguage := upstreamLanguageFor(language)
-
-		// Build the audio payload for proxyToBackend. The caller (us) is
-		// responsible for WAV wrapping — proxyToBackend just forwards whatever
-		// bytes we hand it, using the filename to set Content-Disposition.
-		var payload audioPayload
-		var audioDurationMs int64
-		if usePassthrough || keepOriginal { // keepOriginal: send the original, exactly as today
-			payload = audioPayload{data: opusInputBuf.Bytes(), filename: containerFile}
-			if containerFile == "audio.ogg" {
-				audioDurationMs = oggDurationMs(opusInputBuf.Bytes())
-			}
-			// WebM: audioDurationMs stays 0 (no granulepos parser for EBML); one log line.
-			if audioDurationMs == 0 && opusInputBuf.Len() > 0 {
-				log.Printf("ws passthrough: could not derive duration from %s; reporting 0", containerFile)
-			}
-		} else {
-			// PCM path (both raw PCM and decoded-from-Opus): wrap in WAV.
-			var wavBuf bytes.Buffer
-			if err := WriteWAVHeader(&wavBuf, pcmBuf.Len()); err != nil {
-				log.Printf("ws wav header: %v", err)
-				if OnError != nil {
-					OnError(ctx, ErrorEvent{
-						Source:   "stt",
-						Kind:     "wav_encode",
-						Endpoint: "/v1/audio/stream",
-						Hint:     "WAV header write failed",
-					})
-				}
-				if OnRequestFailed != nil {
-					OnRequestFailed(ctx, errTypeSTTError)
-				}
-				CloseWSWithTimeout(conn, wsCloseFailed, "internal error", 2*time.Second)
-				return
-			}
-			wavBuf.Write(pcmBuf.Bytes())
-			payload = audioPayload{data: wavBuf.Bytes(), filename: "audio.wav"}
-			audioDurationMs = int64(pcmBuf.Len()) * 1000 / pcmBytesPerSecond
-		}
-
-		// Record audio duration regardless of what happens next — success and
-		// failure both need it, and OnTranscription below only fires on success.
-		if g.OnAudioReceived != nil {
-			g.OnAudioReceived(ctx, audioDurationMs)
-		}
-
-		whisperPrompt := buildWhisperPrompt(contextJSON)
-		customWordsJSON := buildCustomWordsField(contextJSON)
-		sttStart := time.Now()
-		var (
-			text   string
-			sttErr error
-		)
-		// Segmented final: most of the audio was transcribed while the user talked.
-		// Anything short of a clean result falls through to the whole-clip request.
-		segmented := false
-		if live != nil && g.live.Segmented && !liveBroken {
-			if language != liveLanguage {
-				log.Printf("live: language changed at done; using the whole clip")
-			} else {
-				t, ok, st := live.Finish(ctx)
-				segmented = ok
-				if ok {
-					text = t
-				}
-
-				if st.invented {
-					// The whole recording already came back as invented text (typically a
-					// near-silent clip answered with the backend's own prompt). Asking again
-					// would cost seconds for the same answer.
-					log.Printf("live: more text than %.2fs of audio can hold; empty result", st.tailSec)
-					segmented = true
-				}
-			}
-		}
-		live.close() // nothing may compete with the whole-clip request for the backend
-		if !segmented {
-			text, sttErr = g.proxyToBackend(ctx, target, payload, backend, upstreamLanguage, whisperPrompt, customWordsJSON)
-			// Pieces mode holds every piece to a plausibility bound; hold the whole clip
-			// to it too, so an invented answer is not typed into the user's text.
-			if sttErr == nil && g.live.Segmented && audioDurationMs > 0 &&
-				int64(utf8.RuneCountInString(text)) > liveMaxCharsPerSec*audioDurationMs/1000+20 && !hasDegenerateRepetition(text) {
-				log.Printf("live: %d chars is more text than %dms of audio can hold; failing the dictation",
-					utf8.RuneCountInString(text), audioDurationMs)
-				sttErr = errImplausibleLength
-			}
-		}
-		sttMs := time.Since(sttStart).Milliseconds()
-		if sttErr == nil && hasDegenerateRepetition(text) {
-			sttErr = errSTTHallucination
-		}
-		if sttErr != nil {
-			log.Printf("ws proxy: %v", sttErr)
-			retry := streamRetryInput{
-				model: model, language: language, detectActive: detectActive,
-				adResult: adResult, adCtx: adCtx, payload: payload,
-				usePassthrough: usePassthrough || keepOriginal, upstreamLanguage: upstreamLanguage,
-				whisperPrompt: whisperPrompt, customWordsJSON: customWordsJSON,
-			}
-			// stt_ms includes the retry, same as the HTTP path's `whisperMs`.
-			var retryMs int64
-			var ok bool
-			if text, backend, retryMs, ok = g.handleStreamBackendFailure(ctx, sttErr, backend, retry); !ok {
-				CloseWSWithTimeout(conn, wsCloseFailed, "transcription failed", 2*time.Second)
-				return
-			}
-			sttMs += retryMs
-		}
-		sttDoneAt := time.Now()
-		// Whether the backend that finally served (after any retry) was sent the list: the
-		// cleanup's My Words shortlist trusts a boosted STT's spelling of a lone real name
-		// (requireCorroboration).
-		ctx = WithSTTBoosted(ctx, customWordsFor(backend, customWordsJSON) != "")
-
-		// Report the successful transcription on the same hook the HTTP path uses,
-		// so this path gets stt_ms. Side effect: audio_duration_ms was 0 on every
-		// stream row until now, and output_chars was 0 on the non-enhance ones
-		// (the enhance closure below already set it on the rest).
-		enhanceEnabled := r.URL.Query().Get("enhance") == "true"
-		if g.OnTranscription != nil {
-			g.OnTranscription(ctx, backend.Name, sttMs, len(text), audioDurationMs, enhanceEnabled, false)
-		}
-
-		// Split answer: ship the raw final now, enhance after. Only for transcribe
-		// intents — on an edit intent the transcript is the user's spoken *instruction*,
-		// so emitting it as a text frame would type the instruction into their document.
-		intentParam := r.URL.Query().Get("intent")
-		isEdit := intentParam == "edit" || intentParam == "edit-selected"
-		// The gateway-resolved `language` is more authoritative than whatever the client put
-		// in the context blob: it's the value routing actually used, and it repairs older
-		// clients that injected a stale picker value under auto-detect. Under auto-detect
-		// `language` is the literal "auto" sentinel, so this is a no-op there — this path
-		// (unlike the HTTP proxy's `effectiveLang`) has no STT-detected language to prefer.
-		enhanceContextJSON := WithContextLanguage(contextJSON, language)
-		// Auto-edit decides here, before the split answer below could ship the transcript
-		// as raw text. Live never reaches this handler.
-		autoEdit := false
-		if postProcess != nil && enhanceEnabled && text != "" {
-			intentParam, autoEdit = resolveIntent(ctx, r, text, enhanceContextJSON, intentParam)
-			if autoEdit {
-				isEdit = true
-				frame, _ := json.Marshal(intentFrame{Type: "intent", Intent: intentParam, Source: "auto"})
-				if err := conn.Write(ctx, websocket.MessageText, frame); err != nil {
-					// The result frame is what matters; a failed write here surfaces there.
-					log.Printf("ws write intent frame: %v", err)
-				}
-			}
-		}
-		if r.URL.Query().Get("split_enhance") == "true" && postProcess != nil &&
-			enhanceEnabled && text != "" && !isEdit {
-			g.writeSplitEnhanceFrames(ctx, conn, splitEnhanceInput{
-				raw:         text,
-				contextJSON: enhanceContextJSON,
-				intent:      intentParam,
-				enhance:     postDeliveryOrInline(inline, postDelivery),
-			})
-			return
-		}
-
-		// Apply post-processing if provided (e.g. ?enhance=true)
-		var mode, status string
-		mergeHandled := false
-		ppCtx := ctx
-		if phoneTranscripts != nil && !isEdit {
-			var cleanupBy time.Time
-			text, mode, mergeHandled, cleanupBy = mergeInline(ctx, text, phoneTranscripts.waitAndReport(ctx, sttDoneAt), enhanceContextJSON)
-			if !cleanupBy.IsZero() {
-				var cancel context.CancelFunc
-				ppCtx, cancel = context.WithDeadline(ctx, cleanupBy)
-				defer cancel()
-			}
-		}
-		if !mergeHandled && postProcess != nil && enhanceEnabled && text != "" {
-			intent := intentParam
-			if resultText, resultMode, err := postProcess(ppCtx, text, enhanceContextJSON, intent); err == nil {
-				text = resultText
-				mode = resultMode
-			} else {
-				log.Printf("ws post-process: %v", err)
-				isEditIntent := intent == "edit" || intent == "edit-selected"
-				if isEditIntent && OnError != nil {
-					OnError(ctx, ErrorEvent{
-						Source:     "stt",
-						Kind:       "stt_post_process",
-						Endpoint:   "/v1/audio/stream",
-						InputChars: len(text),
-						Hint:       "edit intent post-process failed; returning status=failed",
-					})
-				}
-				if isEditIntent {
-					// Return a failure signal rather than the raw transcript so the
-					// client never inserts the spoken instruction as content.
-					// Old clients (no status parsing) hit their empty-text no-op guard
-					// (KeyboardSessionBridge validateDoneResult:77) — non-destructive.
-					result, _ := json.Marshal(streamResult{Text: "", Mode: intent, Status: "failed", AutoEdit: autoEdit})
-					if err := conn.Write(ctx, websocket.MessageText, result); err != nil {
-						log.Printf("ws write edit-failed result: %v", err)
-						if OnRequestFailed != nil {
-							OnRequestFailed(ctx, errTypeSTTError)
-						}
-					}
-					CloseWSWithTimeout(conn, websocket.StatusNormalClosure, "", 2*time.Second)
-					return
-				}
-				// Non-edit: Clean up did not land in time. The raw transcript goes out
-				// exactly as if Clean up were off — no status, no error event; the skip is
-				// recorded on the request's own row.
-				ReportEnhanceSkipped(ctx, EnhanceSkipReason(ctx, err))
-			}
-		}
-
-		result, _ := json.Marshal(streamResult{Text: text, Mode: mode, Status: status, AutoEdit: autoEdit && mode == "edit"})
-		if err := conn.Write(ctx, websocket.MessageText, result); err != nil {
-			log.Printf("ws write result: %v", err)
-			if OnError != nil {
-				OnError(ctx, ErrorEvent{
-					Source:   "streaming",
-					Kind:     "ws_write",
-					Endpoint: "/v1/audio/stream",
-					Hint:     "client gone before result write",
-				})
-			}
-			// Not OnRequestFailed: the transcription succeeded and only the
-			// client walked away before the write. Same rule this handler
-			// already applies to kindSTTUpstreamCanceled — "a client that
-			// walked away is not a backend fault and must not inflate the
-			// failure rate". This row is not counted as a failed dictation.
-			return
-		}
-
-		CloseWSWithTimeout(conn, websocket.StatusNormalClosure, "", 2*time.Second)
+		g.newStreamSession(w, r, inline, postDelivery).serve()
 	}
-}
-
-// proxyToBackend POSTs multipart audio to the whisper-compatible backend.
-// The caller is responsible for preparing p.data (WAV-wrapped PCM for backends
-// that need WAV, or raw Ogg/WebM for passthrough backends) so this function
-// never needs to sniff magic bytes.
-// STT failure kinds shared with the /v1/audio/transcriptions path. Named
-// constants because the socket path previously spelled only one of them and
-// collapsed the other two into it — 389 of 416 stt_backend_error events in a
-// 60-day window were this endpoint, unsplittable, while the HTTP path recorded
-// the same failures as three distinct kinds.
-const (
-	kindSTTBackendError     = "stt_backend_error"
-	kindSTTBackend5xx       = "stt_backend_5xx"
-	kindSTTUpstreamCanceled = "stt_upstream_canceled"
-	kindSTTHallucination    = "stt_hallucination"
-)
-
-// classifyBackendFailure maps a proxyToBackend error onto the kind vocabulary
-// the HTTP path already uses, so the two transcription routes are readable
-// against each other instead of one being a single opaque bucket.
-//
-// The returned hint is curated and the status is a bare number: the underlying
-// error text embeds up to 1 KiB of the backend's response body, which is the
-// transcription payload and therefore the user's own words. It must never reach
-// telemetry — only the digits of the status are ever copied out.
-func classifyBackendFailure(err error) (kind, hint string, status int) {
-	switch {
-	case errors.Is(err, errSTTHallucination):
-		return kindSTTHallucination, "backend returned repeated-token hallucination", 0
-	case errors.Is(err, context.Canceled):
-		return kindSTTUpstreamCanceled, "upstream canceled (client disconnect or new request)", 0
-	case errors.Is(err, context.DeadlineExceeded):
-		// streamTimeout is 3 h, so this is the backend stalling, not a long dictation.
-		return kindSTTBackendError, "backend timed out", 0
-	}
-	if code := backendStatusFromErr(err.Error()); code > 0 {
-		if code >= 500 {
-			return kindSTTBackend5xx, fmt.Sprintf("backend returned %d", code), code
-		}
-		// 4xx is a request we built wrong (bad model, unsupported audio), not a
-		// sick backend — same kind as a transport fault, but the status says why.
-		return kindSTTBackendError, fmt.Sprintf("backend returned %d", code), code
-	}
-	if strings.HasPrefix(err.Error(), "decode response:") {
-		return kindSTTBackendError, "backend response decode failed", 0
-	}
-	return kindSTTBackendError, "backend transport failed", 0
-}
-
-// backendStatusFromErr recovers the status from proxyToBackend's
-// `backend returned <code>: <body>` error. Returns 0 when absent. Exactly three
-// digits are accepted, which matches every HTTP status and bounds how much of a
-// malformed message can be read.
-func backendStatusFromErr(s string) int {
-	const marker = "backend returned "
-	i := strings.Index(s, marker)
-	if i < 0 {
-		return 0
-	}
-	rest := s[i+len(marker):]
-	n := 0
-	for n < len(rest) && rest[n] >= '0' && rest[n] <= '9' {
-		n++
-	}
-	if n != 3 {
-		return 0
-	}
-	code, err := strconv.Atoi(rest[:3])
-	if err != nil {
-		return 0
-	}
-	return code
-}
-
-// customWordsJSON is the rendered custom_words field; it is written only when the backend
-// has AcceptsCustomWords, so a retry onto any other backend drops it automatically.
-func (g *Gateway) proxyToBackend(ctx context.Context, target *url.URL, p audioPayload, backend *Backend, language, whisperPrompt, customWordsJSON string) (string, error) {
-	// Build multipart body
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-
-	filePart, err := writer.CreateFormFile("file", p.filename)
-	if err != nil {
-		return "", fmt.Errorf("create form file: %w", err)
-	}
-	if _, err := io.Copy(filePart, bytes.NewReader(p.data)); err != nil {
-		return "", fmt.Errorf("copy audio: %w", err)
-	}
-
-	if backend.ForwardModel != "" {
-		writer.WriteField("model", backend.ForwardModel) //nolint:errcheck
-	}
-	if language != "" {
-		writer.WriteField("language", language) //nolint:errcheck
-	}
-	if whisperPrompt != "" {
-		writer.WriteField("prompt", whisperPrompt) //nolint:errcheck
-	}
-	if cw := customWordsFor(backend, customWordsJSON); cw != "" {
-		writer.WriteField(customWordsField, cw) //nolint:errcheck
-	}
-	writer.Close()
-
-	// POST to backend
-	transcriptionPath := "/v1/audio/transcriptions"
-	if backend.TargetPath != "" {
-		transcriptionPath = backend.TargetPath
-	}
-	backendURL := target.String() + transcriptionPath
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, backendURL, &body)
-	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	if backend.AuthHeader != "" {
-		req.Header.Set("Authorization", backend.AuthHeader)
-	}
-
-	client := &http.Client{Timeout: 90 * time.Minute}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("backend request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return "", fmt.Errorf("backend returned %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	var result struct {
-		Text string `json:"text"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
-	}
-
-	if whisperPrompt != "" {
-		return stripWhisperPromptEcho(result.Text), nil
-	}
-	return result.Text, nil
 }

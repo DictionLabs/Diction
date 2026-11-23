@@ -19,42 +19,39 @@ type providerInfo struct {
 	Models []modelInfo `json:"models"`
 }
 
-// openaiModel is one entry in the OpenAI-compatible /v1/models data[] array.
 type openaiModel struct {
 	ID      string `json:"id"`
-	Object  string `json:"object"`   // always "model"
-	Created int64  `json:"created"`  // always 0 — backends are static config, no install date
-	OwnedBy string `json:"owned_by"` // HuggingFace org prefix (e.g. "Systran", "nvidia") or "custom"
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	OwnedBy string `json:"owned_by"`
 }
 
 type capabilities struct {
 	LLM         bool `json:"llm"`
 	TextProcess bool `json:"text_process"`
 	TextSuggest bool `json:"text_suggest"`
-	Pairing     bool `json:"pairing"`      // /v1/auth/key exists and gateway keys are accepted
-	KeyRotation bool `json:"key_rotation"` // /v1/auth/rotate usable (false when key is env-pinned)
+	Pairing     bool `json:"pairing"`
+	KeyRotation bool `json:"key_rotation"`
+	Preview     bool `json:"preview"`
+	PreviewOpus bool `json:"preview_opus"`
+	Chat        bool `json:"chat"`
 }
 
 type modelsResponse struct {
-	Object       string         `json:"object"`       // "list" — OpenAI list envelope
-	Data         []openaiModel  `json:"data"`         // OpenAI-compatible model list
-	Providers    []providerInfo `json:"providers"`    // Diction legacy grouping (consumed by iOS app)
-	Capabilities capabilities   `json:"capabilities"` // Advertises optional backend features
+	Object       string         `json:"object"`
+	Data         []openaiModel  `json:"data"`
+	Providers    []providerInfo `json:"providers"`
+	Capabilities capabilities   `json:"capabilities"`
 }
 
-// provider display names
 var providerNames = map[string]string{
-	"whisper":  "Faster Whisper",
-	"parakeet": "NVIDIA Parakeet",
-	"canary":   "NVIDIA Canary",
-	"cohere":   "Cohere",
+	nameWhisper:  "Faster Whisper",
+	nameParakeet: "NVIDIA Parakeet",
+	nameCanary:   "NVIDIA Canary",
+	nameCohere:   "Cohere",
+	"qwen":       "Qwen",
 }
 
-// ModelsHandler returns the handler for GET /v1/models.
-//
-// Response shape is a superset: OpenAI-compatible `object` + `data[]` for SDK clients
-// (openai-python, openai-node, LangChain, Speaches-targeting tools), alongside
-// Diction's legacy `providers[]` grouping still consumed by the iOS app.
 func (g *Gateway) ModelsHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -62,71 +59,79 @@ func (g *Gateway) ModelsHandler() http.HandlerFunc {
 			return
 		}
 
-		// OpenAI-compatible data[]: one entry per configured backend, no health filtering.
-		data := make([]openaiModel, 0, len(g.backends))
-		for _, b := range g.backends {
-			id := b.CanonicalID
-			if id == "" {
-				id = b.Name
-			}
-			owner := "custom"
-			if idx := strings.Index(id, "/"); idx > 0 {
-				owner = id[:idx]
-			}
-			data = append(data, openaiModel{
-				ID:      id,
-				Object:  "model",
-				Created: 0,
-				OwnedBy: owner,
-			})
-		}
-
-		// Legacy providers[]: grouped by provider kind, reflects runtime health.
-		grouped := make(map[string][]modelInfo)
-		providerOrder := make([]string, 0)
-		for _, b := range g.backends {
-			m := modelInfo{
-				ID:          b.Name,
-				Name:        b.DisplayName,
-				Description: b.Description,
-				Available:   g.health.get(b.Name),
-			}
-			p := b.Provider
-			if p == "" {
-				p = "whisper"
-			}
-			if _, exists := grouped[p]; !exists {
-				providerOrder = append(providerOrder, p)
-			}
-			grouped[p] = append(grouped[p], m)
-		}
-
-		providers := make([]providerInfo, 0, len(grouped))
-		for _, p := range providerOrder {
-			name := providerNames[p]
-			if name == "" {
-				name = p
-			}
-			providers = append(providers, providerInfo{
-				ID:     p,
-				Name:   name,
-				Models: grouped[p],
-			})
-		}
-
+		previewPCM, previewOpus := g.PreviewCapabilities()
 		resp := modelsResponse{
 			Object:    "list",
-			Data:      data,
-			Providers: providers,
+			Data:      g.openaiModels(),
+			Providers: g.providerGroups(),
 			Capabilities: capabilities{
 				LLM:         g.llmEnabled,
 				TextProcess: g.llmEnabled,
 				TextSuggest: g.llmEnabled,
 				Pairing:     g.pairingEnabled,
 				KeyRotation: g.keyRotationEnabled,
+				Preview:     previewPCM,
+				PreviewOpus: previewOpus,
+				Chat:        g.chatEnabled,
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}
+}
+
+func (g *Gateway) openaiModels() []openaiModel {
+	data := make([]openaiModel, 0, len(g.backends))
+	for _, b := range g.backends {
+		id := b.CanonicalID
+		if id == "" {
+			id = b.Name
+		}
+		owner := nameCustom
+		if idx := strings.Index(id, "/"); idx > 0 {
+			owner = id[:idx]
+		}
+		data = append(data, openaiModel{
+			ID:      id,
+			Object:  "model",
+			Created: 0,
+			OwnedBy: owner,
+		})
+	}
+	return data
+}
+
+func (g *Gateway) providerGroups() []providerInfo {
+	grouped := make(map[string][]modelInfo)
+	providerOrder := make([]string, 0)
+	for _, b := range g.backends {
+		m := modelInfo{
+			ID:          b.Name,
+			Name:        b.DisplayName,
+			Description: b.Description,
+			Available:   g.healthy(b.Name),
+		}
+		p := b.Provider
+		if p == "" {
+			p = nameWhisper
+		}
+		if _, exists := grouped[p]; !exists {
+			providerOrder = append(providerOrder, p)
+		}
+		grouped[p] = append(grouped[p], m)
+	}
+
+	providers := make([]providerInfo, 0, len(grouped))
+	for _, p := range providerOrder {
+		name := providerNames[p]
+		if name == "" {
+			name = p
+		}
+		providers = append(providers, providerInfo{
+			ID:     p,
+			Name:   name,
+			Models: grouped[p],
+		})
+	}
+	return providers
 }

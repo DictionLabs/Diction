@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -60,7 +61,6 @@ func TestModelsHandler_GroupsByProvider(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 
-	// Expect 2 providers: whisper (2 models) and parakeet (1 model)
 	if len(resp.Providers) != 2 {
 		t.Fatalf("providers: want 2, got %d", len(resp.Providers))
 	}
@@ -112,7 +112,6 @@ func TestModelsHandler_AvailabilityReflectsHealth(t *testing.T) {
 		defaultModel: "small",
 	}
 
-	// Mark backend as available
 	g.health.set("small", true)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
@@ -126,7 +125,6 @@ func TestModelsHandler_AvailabilityReflectsHealth(t *testing.T) {
 		t.Error("expected model to be available")
 	}
 
-	// Mark backend as unavailable
 	g.health.set("small", false)
 
 	req = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
@@ -139,11 +137,7 @@ func TestModelsHandler_AvailabilityReflectsHealth(t *testing.T) {
 	}
 }
 
-// --- OpenAI-compatible /v1/models shape ---
-
 func TestModelsHandler_OpenAIFormat(t *testing.T) {
-	// /v1/models must include the OpenAI list envelope (object="list", data[]) so
-	// the openai-python / openai-node / LangChain SDKs parse it.
 	g := &Gateway{
 		backends: []Backend{
 			{Name: "small", Aliases: []string{"small"}, CanonicalID: "Systran/faster-whisper-small", Provider: "whisper"},
@@ -182,7 +176,6 @@ func TestModelsHandler_OpenAIFormat(t *testing.T) {
 }
 
 func TestModelsHandler_OneDataEntryPerBackend(t *testing.T) {
-	// Clients see one model entry per configured backend — not one per alias.
 	g := &Gateway{
 		backends: []Backend{
 			{Name: "small", Aliases: []string{"small", "Systran/faster-whisper-small"}, CanonicalID: "Systran/faster-whisper-small"},
@@ -227,8 +220,8 @@ func TestModelsHandler_OwnedByFromHFPrefix(t *testing.T) {
 		backends: []Backend{
 			{Name: "small", Aliases: []string{"small"}, CanonicalID: "Systran/faster-whisper-small"},
 			{Name: "parakeet-v3", Aliases: []string{"parakeet-v3"}, CanonicalID: "nvidia/parakeet-tdt-0.6b-v3"},
-			{Name: "custom", Aliases: []string{"custom"}, CanonicalID: ""},           // no canonical, no slash
-			{Name: "house-model", Aliases: []string{"house-model"}, CanonicalID: ""}, // fallback to Name
+			{Name: "custom", Aliases: []string{"custom"}, CanonicalID: ""},
+			{Name: "house-model", Aliases: []string{"house-model"}, CanonicalID: ""},
 		},
 		health:       newHealthState(),
 		defaultModel: "small",
@@ -252,7 +245,6 @@ func TestModelsHandler_OwnedByFromHFPrefix(t *testing.T) {
 	if got := byID["nvidia/parakeet-tdt-0.6b-v3"].OwnedBy; got != "nvidia" {
 		t.Errorf("nvidia prefix → owned_by: want nvidia, got %q", got)
 	}
-	// CanonicalID="" → falls back to backend.Name; no slash → owned_by="custom"
 	if got := byID["custom"].OwnedBy; got != "custom" {
 		t.Errorf("no-slash id → owned_by: want custom, got %q", got)
 	}
@@ -262,7 +254,6 @@ func TestModelsHandler_OwnedByFromHFPrefix(t *testing.T) {
 }
 
 func TestModelsHandler_LegacyProvidersPreserved(t *testing.T) {
-	// Adding OpenAI fields must not break the legacy providers[] shape the iOS app parses.
 	g := &Gateway{
 		backends: []Backend{
 			{Name: "small", Aliases: []string{"small"}, CanonicalID: "Systran/faster-whisper-small", Provider: "whisper", DisplayName: "Small", Description: "fast"},
@@ -300,7 +291,7 @@ func TestModelsHandler_LegacyProvidersPreserved(t *testing.T) {
 func TestModelsHandler_EmptyProvider_DefaultsToWhisper(t *testing.T) {
 	g := &Gateway{
 		backends: []Backend{
-			{Name: "small", Aliases: []string{"small"}, Provider: ""}, // empty provider
+			{Name: "small", Aliases: []string{"small"}, Provider: ""},
 		},
 		health:       newHealthState(),
 		defaultModel: "small",
@@ -318,9 +309,6 @@ func TestModelsHandler_EmptyProvider_DefaultsToWhisper(t *testing.T) {
 	}
 }
 
-// The text capabilities follow llmEnabled. Clients decode each key by name, so the existing keys
-// stay exactly as they are. text_predict was removed with /v1/text/predict (2026-09-29): an iOS
-// build that still reads it treats its absence as unable.
 func TestModelsHandler_TextCapabilities(t *testing.T) {
 	for _, llm := range []bool{false, true} {
 		g := testGateway()
@@ -338,6 +326,8 @@ func TestModelsHandler_TextCapabilities(t *testing.T) {
 		want := map[string]bool{
 			"llm": llm, "text_process": llm, "text_suggest": llm,
 			"pairing": false, "key_rotation": false,
+			"preview": false, "preview_opus": false,
+			"chat": false,
 		}
 		if len(resp.Capabilities) != len(want) {
 			t.Errorf("llm=%v: capabilities = %v, want exactly %v", llm, resp.Capabilities, want)
@@ -348,6 +338,45 @@ func TestModelsHandler_TextCapabilities(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestModelsHandler_PreviewCapability(t *testing.T) {
+	prev := PreviewRelay
+	t.Cleanup(func() { PreviewRelay = prev })
+
+	builtin := false
+	read := func() map[string]bool {
+		t.Helper()
+		g := testGateway()
+		g.live.Preview = builtin
+		req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+		rr := httptest.NewRecorder()
+		g.ModelsHandler()(rr, req)
+		var resp struct {
+			Capabilities map[string]bool `json:"capabilities"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		return resp.Capabilities
+	}
+	check := func(name string, caps map[string]bool, wantPCM bool) {
+		t.Helper()
+		for k, want := range map[string]bool{"preview": wantPCM, "preview_opus": false} {
+			if got, ok := caps[k]; !ok || got != want {
+				t.Errorf("%s: capabilities[%q] = %v (present %v), want %v", name, k, got, ok, want)
+			}
+		}
+	}
+
+	PreviewRelay = nil
+	check("hook nil", read(), false)
+
+	PreviewRelay = func(_ context.Context, _ string) PreviewSession { return nil }
+	check("hook set", read(), true)
+
+	builtin = true
+	check("hook set, built-in preview on", read(), true)
 }
 
 func TestModelsHandler_PairingCapabilities(t *testing.T) {
@@ -382,5 +411,26 @@ func TestModelsHandler_PairingCapabilities(t *testing.T) {
 					resp.Capabilities, tc.pairing, tc.keyRotation)
 			}
 		})
+	}
+}
+
+func TestModelsHandler_ChatCapability(t *testing.T) {
+	for _, chat := range []bool{false, true} {
+		g := testGateway()
+		g.chatEnabled = chat
+		rr := httptest.NewRecorder()
+		g.ModelsHandler()(rr, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+		var resp struct {
+			Capabilities map[string]bool `json:"capabilities"`
+		}
+		if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if got, ok := resp.Capabilities["chat"]; !ok || got != chat {
+			t.Errorf("chat=%v: capabilities.chat = %v (present %v)", chat, got, ok)
+		}
+		if resp.Capabilities["llm"] {
+			t.Errorf("chat=%v must not light llm", chat)
+		}
 	}
 }

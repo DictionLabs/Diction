@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// --- resolveBackend ---
-
 func testGateway() *Gateway {
 	return &Gateway{
 		backends: []Backend{
@@ -77,7 +75,6 @@ func TestResolveBackend_Unknown(t *testing.T) {
 }
 
 func TestResolveBackend_InvalidURL(t *testing.T) {
-	// url.Parse fails on a control-character URL → resolveBackend returns nil, nil.
 	g := &Gateway{
 		backends:     []Backend{{Name: "bad", URL: "://\x00invalid", Aliases: []string{"bad"}}},
 		health:       newHealthState(),
@@ -97,8 +94,6 @@ func TestResolveBackend_Empty(t *testing.T) {
 		t.Error("expected nil for empty model string")
 	}
 }
-
-// --- Env helpers ---
 
 func TestEnvOrDefault_Set(t *testing.T) {
 	os.Setenv("TEST_KEY", "myvalue")
@@ -161,8 +156,6 @@ func TestEnvBoolOrDefault_Unset(t *testing.T) {
 	}
 }
 
-// --- HealthHandler ---
-
 func TestHealthHandler(t *testing.T) {
 	origVersion := Version
 	Version = "v13.0"
@@ -218,9 +211,6 @@ func TestHealthHandler_DeprecatedImageRef(t *testing.T) {
 }
 
 func TestHealthHandler_VersionAlwaysPresentEvenAsDefault(t *testing.T) {
-	// Version has no `omitempty`: an app relies on absence-on-the-wire meaning
-	// "gateway predates this field", not "unset". Confirms the default "dev"
-	// still serializes rather than being dropped.
 	origVersion := Version
 	Version = "dev"
 	defer func() { Version = origVersion }()
@@ -234,8 +224,6 @@ func TestHealthHandler_VersionAlwaysPresentEvenAsDefault(t *testing.T) {
 		t.Errorf("expected version field present with default value, got: %s", rr.Body.String())
 	}
 }
-
-// --- CatchAllHandler ---
 
 func TestCatchAllHandler_Root(t *testing.T) {
 	g := testGateway()
@@ -266,8 +254,6 @@ func TestCatchAllHandler_Unknown(t *testing.T) {
 	}
 }
 
-// --- DefaultBackends ---
-
 func TestDefaultBackends_NonEmpty(t *testing.T) {
 	backends := DefaultBackends()
 	if len(backends) == 0 {
@@ -286,13 +272,6 @@ func TestDefaultBackends_NonEmpty(t *testing.T) {
 	}
 }
 
-// TestDefaultBackends_LargeV3TurboForwardsDeepdml guards against the 2026-08-13 drift where
-// ForwardModel was pointed at DictionLabs/whisper-large-v3-turbo-ct2 (a mirror repo that was
-// missing preprocessor_config.json, crashing every transcription with a mel-bin mismatch —
-// see .claude/bow/error-stt-stt_backend_5xx.md and .claude/plans/turbo-mel-mismatch-fix-plan.md).
-// deepdml/faster-whisper-large-v3-turbo-ct2 is the always-correctly-configured, pre-warmed
-// resource; CanonicalID stays the DictionLabs id for /v1/models branding, which is intentional
-// and independent of ForwardModel.
 func TestDefaultBackends_LargeV3TurboForwardsDeepdml(t *testing.T) {
 	for _, b := range DefaultBackends() {
 		if b.Name != "large-v3-turbo" {
@@ -307,11 +286,8 @@ func TestDefaultBackends_LargeV3TurboForwardsDeepdml(t *testing.T) {
 	t.Error("large-v3-turbo backend not found in DefaultBackends")
 }
 
-// --- NewGateway ---
-
 func TestNewGateway_CreatesWithBackends(t *testing.T) {
-	// Use a real httptest server so the initial health check doesn't hang.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -374,7 +350,7 @@ func TestCustomBackendFromEnv_Set(t *testing.T) {
 }
 
 func TestNewGateway_WithCustomBackend(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -388,7 +364,6 @@ func TestNewGateway_WithCustomBackend(t *testing.T) {
 		MaxBodySize:  1 << 20,
 	})
 
-	// Custom backend should be prepended and become the default model
 	u, b := g.resolveBackend("custom")
 	if u == nil || b == nil {
 		t.Error("custom backend should be resolvable via 'custom' alias")
@@ -397,8 +372,6 @@ func TestNewGateway_WithCustomBackend(t *testing.T) {
 		t.Errorf("defaultModel: want custom, got %s", g.defaultModel)
 	}
 }
-
-// --- EnvFloatOrDefault ---
 
 func TestEnvFloatOrDefault_ReturnsDefault(t *testing.T) {
 	if got := EnvFloatOrDefault("DICTION_NONEXISTENT_XYZ_123", 0.75); got != 0.75 {
@@ -414,9 +387,6 @@ func TestEnvFloatOrDefault_ReturnsEnvValue(t *testing.T) {
 	}
 }
 
-// Guards the canary-qwen disabled state: its container doesn't fit on the 16GB
-// GPU (server/docker-compose.yml), so it must stay Disabled — otherwise warmup
-// and the health poller hammer a dead host (http://canary-qwen:9000 → 127.0.0.1).
 func TestDefaultBackends_CanaryQwenDisabled(t *testing.T) {
 	for _, b := range DefaultBackends() {
 		if b.Name == "canary-qwen" {
@@ -429,9 +399,6 @@ func TestDefaultBackends_CanaryQwenDisabled(t *testing.T) {
 	t.Error("canary-qwen backend not found in DefaultBackends")
 }
 
-// Exercises the Disabled skip in the health checker: a disabled backend with an
-// unroutable URL must be skipped (not polled), so NewGateway's synchronous first
-// check returns instantly and never marks it. A live backend is still polled.
 func TestHealthChecker_SkipsDisabledBackend(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

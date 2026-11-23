@@ -4,9 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,8 +15,6 @@ import (
 
 	"github.com/coder/websocket"
 )
-
-// --- proxyToBackend ---
 
 func TestProxyToBackend_Success(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +29,7 @@ func TestProxyToBackend_Success(t *testing.T) {
 
 	g := testGateway()
 	target, _ := url.Parse(backend.URL)
-	pcm := make([]byte, 3200) // 0.1s of silence at 16kHz 16-bit mono
+	pcm := make([]byte, 3200)
 
 	text, err := g.proxyToBackend(context.Background(), target, audioPayload{data: pcm, filename: "audio.wav"}, &Backend{Name: "small"}, "en", "", "")
 	if err != nil {
@@ -45,7 +41,7 @@ func TestProxyToBackend_Success(t *testing.T) {
 }
 
 func TestProxyToBackend_NoLanguage(t *testing.T) {
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"text":"no lang"}`)
 	}))
@@ -63,10 +59,8 @@ func TestProxyToBackend_NoLanguage(t *testing.T) {
 	}
 }
 
-// The streaming path sends the same My Words prompt, so it needs the same echo guard
-// (see TestStripWhisperPromptEcho).
 func TestProxyToBackend_StripsPromptEcho(t *testing.T) {
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"text":"The following words are spelled exactly as shown, Grafana, Grafana"}`)
 	}))
@@ -85,7 +79,7 @@ func TestProxyToBackend_StripsPromptEcho(t *testing.T) {
 }
 
 func TestProxyToBackend_BackendError(t *testing.T) {
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}))
 	defer backend.Close()
@@ -100,7 +94,7 @@ func TestProxyToBackend_BackendError(t *testing.T) {
 }
 
 func TestProxyToBackend_InvalidJSON(t *testing.T) {
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `not-json`)
 	}))
@@ -117,7 +111,7 @@ func TestProxyToBackend_InvalidJSON(t *testing.T) {
 
 func TestProxyToBackend_UnreachableHost(t *testing.T) {
 	g := testGateway()
-	target, _ := url.Parse("http://127.0.0.1:1") // nothing listening there
+	target, _ := url.Parse("http://127.0.0.1:1")
 
 	_, err := g.proxyToBackend(context.Background(), target, audioPayload{data: make([]byte, 100), filename: "audio.wav"}, &Backend{Name: "small"}, "", "", "")
 	if err == nil {
@@ -125,11 +119,6 @@ func TestProxyToBackend_UnreachableHost(t *testing.T) {
 	}
 }
 
-// TestProxyToBackend_NoModelFieldWhenForwardModelEmpty is a regression test for
-// the bug where streaming sent model=large-v3-turbo to the whisper backend,
-// which attempted to download an invalid model and returned HTTP 500.
-// The HTTP transcription path (rewriteMultipart) never injects the model field
-// when ForwardModel is empty; proxyToBackend must match that behaviour.
 func TestProxyToBackend_NoModelFieldWhenForwardModelEmpty(t *testing.T) {
 	var receivedModel string
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -216,15 +205,10 @@ func TestProxyToBackend_SendsAuthHeader(t *testing.T) {
 	}
 }
 
-// --- StreamingHandler ---
-
-// startStreamingServer creates a Gateway with a mock whisper backend and
-// returns a test HTTP server running the StreamingHandler, plus a cleanup func.
 func startStreamingServer(t *testing.T, whisperResponse string, whisperStatus int) (*httptest.Server, *Gateway) {
 	t.Helper()
 
-	// Mock whisper backend
-	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(whisperStatus)
 		if whisperStatus == http.StatusOK {
 			fmt.Fprintf(w, `{"text":"%s"}`, whisperResponse)
@@ -256,7 +240,6 @@ func wsURL(srv *httptest.Server, query string) string {
 }
 
 func TestStreamingHandler_NoMatchingBackend(t *testing.T) {
-	// defaultModel has no matching backend → HTTP 503 before WebSocket upgrade
 	g := &Gateway{
 		backends:     []Backend{},
 		health:       newHealthState(),
@@ -278,7 +261,7 @@ func TestStreamingHandler_NoMatchingBackend(t *testing.T) {
 
 func TestStreamingHandler_BackendUnavailable(t *testing.T) {
 	srv, g := startStreamingServer(t, "ok", http.StatusOK)
-	g.health.set("small", false) // mark as down
+	g.health.set("small", false)
 
 	resp, err := http.Get(srv.URL + "/v1/audio/stream")
 	if err != nil {
@@ -302,19 +285,16 @@ func TestStreamingHandler_HappyPath(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
-	// Send PCM audio (silence)
 	pcm := make([]byte, 3200)
 	if err := conn.Write(ctx, websocket.MessageBinary, pcm); err != nil {
 		t.Fatalf("write audio: %v", err)
 	}
 
-	// Send done action
 	done, _ := json.Marshal(map[string]string{"action": "done"})
 	if err := conn.Write(ctx, websocket.MessageText, done); err != nil {
 		t.Fatalf("write done: %v", err)
 	}
 
-	// Read transcription result
 	msgType, data, err := conn.Read(ctx)
 	if err != nil {
 		t.Fatalf("read result: %v", err)
@@ -333,13 +313,7 @@ func TestStreamingHandler_HappyPath(t *testing.T) {
 	}
 }
 
-// TestStreamingHandler_OnTranscriptionReportsSTTTime pins the hook this path
-// gained with the per-stage wait metrics. Before it, /v1/audio/stream never
-// called OnTranscription at all, so every `stream` row in Influx carried
-// output_chars=0 and audio_duration_ms=0 — and had nowhere to put stt_ms.
 func TestStreamingHandler_OnTranscriptionReportsSTTTime(t *testing.T) {
-	// The hook fires on the handler goroutine and is read on the test goroutine,
-	// so every captured value is atomic — including the model string.
 	var (
 		gotModel    atomic.Value
 		gotChars    atomic.Int64
@@ -347,7 +321,7 @@ func TestStreamingHandler_OnTranscriptionReportsSTTTime(t *testing.T) {
 		called      atomic.Bool
 	)
 
-	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, `{"text":"hello there"}`)
 	}))
@@ -379,7 +353,6 @@ func TestStreamingHandler_OnTranscriptionReportsSTTTime(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
-	// 32000 bytes = exactly 1s at 16kHz / 16-bit / mono.
 	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 32000)); err != nil {
 		t.Fatalf("write audio: %v", err)
 	}
@@ -419,7 +392,6 @@ func TestStreamingHandler_LanguageOverrideInDone(t *testing.T) {
 
 	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
 
-	// done action with language override
 	done, _ := json.Marshal(map[string]string{"action": "done", "language": "fr"})
 	conn.Write(ctx, websocket.MessageText, done)
 
@@ -448,11 +420,9 @@ func TestStreamingHandler_NoAudio(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
-	// Send done with no preceding audio
 	done, _ := json.Marshal(map[string]string{"action": "done"})
 	conn.Write(ctx, websocket.MessageText, done)
 
-	// Server should close with wsCloseNoAudio (4004)
 	_, _, err = conn.Read(ctx)
 	if err == nil {
 		t.Fatal("expected connection to be closed by server")
@@ -461,7 +431,7 @@ func TestStreamingHandler_NoAudio(t *testing.T) {
 
 func TestStreamingHandler_AudioTooLarge(t *testing.T) {
 	srv, g := startStreamingServer(t, "ok", http.StatusOK)
-	g.maxBodySize = 100 // tiny limit
+	g.maxBodySize = 100
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -472,7 +442,6 @@ func TestStreamingHandler_AudioTooLarge(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
-	// Send more than maxBodySize bytes
 	conn.Write(ctx, websocket.MessageBinary, make([]byte, 200))
 
 	_, _, err = conn.Read(ctx)
@@ -504,7 +473,6 @@ func TestStreamingHandler_BackendTranscriptionFails(t *testing.T) {
 }
 
 func TestStreamingHandler_DegenerateRepetition_ClosesAndReportsHallucination(t *testing.T) {
-	// Not parallel-safe: mutates core.OnError.
 	events, restore := withCapturedOnError(t)
 	defer restore()
 
@@ -524,8 +492,6 @@ func TestStreamingHandler_DegenerateRepetition_ClosesAndReportsHallucination(t *
 	done, _ := json.Marshal(map[string]string{"action": "done"})
 	conn.Write(ctx, websocket.MessageText, done)
 
-	// Server should close the connection rather than deliver the
-	// hallucinated transcript — same treatment as a genuine backend failure.
 	_, _, err = conn.Read(ctx)
 	if err == nil {
 		t.Fatal("expected connection closed due to degenerate repetition")
@@ -545,8 +511,6 @@ func TestStreamingHandler_DegenerateRepetition_ClosesAndReportsHallucination(t *
 }
 
 func TestStreamingHandler_NonDoneTextMessage(t *testing.T) {
-	// Non-"done" text messages are ignored; server keeps waiting.
-	// We send a non-done message then a done to confirm normal flow still works.
 	srv, _ := startStreamingServer(t, "after ignore", http.StatusOK)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -559,9 +523,7 @@ func TestStreamingHandler_NonDoneTextMessage(t *testing.T) {
 	defer conn.CloseNow()
 
 	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
-	// Send a text message with unknown action - should be ignored
 	conn.Write(ctx, websocket.MessageText, []byte(`{"action":"unknown"}`))
-	// Now send done
 	done, _ := json.Marshal(map[string]string{"action": "done"})
 	conn.Write(ctx, websocket.MessageText, done)
 
@@ -579,7 +541,6 @@ func TestStreamingHandler_NonDoneTextMessage(t *testing.T) {
 }
 
 func TestStreamingHandler_InvalidTextIgnored(t *testing.T) {
-	// Non-JSON text → json.Unmarshal fails → continue; server keeps waiting.
 	srv, _ := startStreamingServer(t, "after garbage", http.StatusOK)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -610,16 +571,11 @@ func TestStreamingHandler_InvalidTextIgnored(t *testing.T) {
 }
 
 func TestStreamingHandler_HealthByAliasName(t *testing.T) {
-	// When model query param is an alias whose case differs from the backend Name
-	// (e.g. "SMALL" vs stored health key "small"), g.health.get(model) returns
-	// false - but the alias-scan loop should find the backend is healthy and allow
-	// the upgrade. Covers the backendUp=true branch inside the health-check block.
 	srv, _ := startStreamingServer(t, "alias ok", http.StatusOK)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// "SMALL" is an alias for "small"; health key is stored as "small"
 	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=SMALL"), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
@@ -645,7 +601,7 @@ func TestStreamingHandler_HealthByAliasName(t *testing.T) {
 
 func startStreamingServerWithPostProcess(t *testing.T, whisperResponse string, postProcess func(context.Context, string, string, string) (string, string, error)) *httptest.Server {
 	t.Helper()
-	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, `{"text":"%s"}`, whisperResponse)
 	}))
@@ -667,7 +623,7 @@ func startStreamingServerWithPostProcess(t *testing.T, whisperResponse string, p
 }
 
 func TestStreamingHandler_WithPostProcess_Success(t *testing.T) {
-	postProcess := func(ctx context.Context, text, contextJSON, intent string) (string, string, error) {
+	postProcess := func(_ context.Context, text, _, _ string) (string, string, error) {
 		return "cleaned: " + text, "transcribe", nil
 	}
 	srv := startStreamingServerWithPostProcess(t, "raw audio", postProcess)
@@ -699,8 +655,7 @@ func TestStreamingHandler_WithPostProcess_Success(t *testing.T) {
 }
 
 func TestStreamingHandler_WithPostProcess_ErrorFallback(t *testing.T) {
-	// postProcess error → raw transcript returned unchanged
-	postProcess := func(ctx context.Context, text, contextJSON, intent string) (string, string, error) {
+	postProcess := func(_ context.Context, _, _, _ string) (string, string, error) {
 		return "", "", fmt.Errorf("llm error")
 	}
 	srv := startStreamingServerWithPostProcess(t, "raw audio", postProcess)
@@ -732,13 +687,12 @@ func TestStreamingHandler_WithPostProcess_ErrorFallback(t *testing.T) {
 }
 
 func TestStreamingHandler_DefaultModel(t *testing.T) {
-	// No ?model param → uses default model
 	srv, _ := startStreamingServer(t, "default model used", http.StatusOK)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, ""), nil) // no model param
+	conn, _, err := websocket.Dial(ctx, wsURL(srv, ""), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -762,12 +716,8 @@ func TestStreamingHandler_DefaultModel(t *testing.T) {
 }
 
 func TestStreamingHandler_ContextAfterAudio_Dropped(t *testing.T) {
-	// Context sent AFTER first audio binary frame should be silently dropped.
-	// streaming.go:95 sets contextRead=true on any binary frame, so subsequent
-	// non-action text frames are ignored. If iOS client ever reorders frames,
-	// context vanishes with no error.
 	var receivedContext string
-	postProcess := func(ctx context.Context, text, contextJSON, intent string) (string, string, error) {
+	postProcess := func(_ context.Context, text, contextJSON, _ string) (string, string, error) {
 		receivedContext = contextJSON
 		return "cleaned: " + text, "transcribe", nil
 	}
@@ -782,14 +732,11 @@ func TestStreamingHandler_ContextAfterAudio_Dropped(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
-	// Send audio FIRST (sets contextRead = true)
 	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
 
-	// Send context AFTER audio — should be silently dropped
 	contextJSON := `{"before":"hello ","after":" world"}`
 	conn.Write(ctx, websocket.MessageText, []byte(contextJSON))
 
-	// Send done
 	done, _ := json.Marshal(map[string]string{"action": "done"})
 	conn.Write(ctx, websocket.MessageText, done)
 
@@ -811,7 +758,7 @@ func TestStreamingHandler_ContextAfterAudio_Dropped(t *testing.T) {
 
 func TestStreamingHandler_FirstTextFrameAsContext(t *testing.T) {
 	var receivedContext string
-	postProcess := func(ctx context.Context, text, contextJSON, intent string) (string, string, error) {
+	postProcess := func(_ context.Context, text, contextJSON, _ string) (string, string, error) {
 		receivedContext = contextJSON
 		return "cleaned: " + text, "transcribe", nil
 	}
@@ -826,14 +773,11 @@ func TestStreamingHandler_FirstTextFrameAsContext(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
-	// Send context JSON as first text frame
 	contextJSON := `{"before":"hello ","after":" world","selected":"test"}`
 	conn.Write(ctx, websocket.MessageText, []byte(contextJSON))
 
-	// Send audio
 	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
 
-	// Send done
 	done, _ := json.Marshal(map[string]string{"action": "done"})
 	conn.Write(ctx, websocket.MessageText, done)
 
@@ -941,7 +885,7 @@ func TestStreamingHandler_OmitsPromptWithoutCustomWords(t *testing.T) {
 }
 
 func TestStreamingHandler_WithPostProcess_ModeInResponse(t *testing.T) {
-	postProcess := func(ctx context.Context, text, contextJSON, intent string) (string, string, error) {
+	postProcess := func(_ context.Context, text, _, intent string) (string, string, error) {
 		if intent == "edit" {
 			return "edited text", "edit", nil
 		}
@@ -952,7 +896,6 @@ func TestStreamingHandler_WithPostProcess_ModeInResponse(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Test with intent=edit
 	conn, _, err := websocket.Dial(ctx, wsURL(srv, "enhance=true&intent=edit"), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
@@ -981,7 +924,6 @@ func TestStreamingHandler_WithPostProcess_ModeInResponse(t *testing.T) {
 }
 
 func TestStreamingHandler_NoEnhance_NoModeField(t *testing.T) {
-	// Without ?enhance=true, mode should be omitted (empty)
 	srv, _ := startStreamingServer(t, "plain text", http.StatusOK)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1002,7 +944,6 @@ func TestStreamingHandler_NoEnhance_NoModeField(t *testing.T) {
 		t.Fatalf("read: %v", err)
 	}
 
-	// Verify mode is NOT in the JSON (omitempty)
 	var raw map[string]interface{}
 	json.Unmarshal(data, &raw)
 	if _, exists := raw["mode"]; exists {
@@ -1010,344 +951,8 @@ func TestStreamingHandler_NoEnhance_NoModeField(t *testing.T) {
 	}
 }
 
-// --- Commit A: observability (reason tag + device hash on ws_read) ---
-
-func TestStreamingHandler_EmitsReasonOnWSRead_GoingAway(t *testing.T) {
-	// Not parallel-safe: mutates core.OnError.
-	events, restore := withCapturedOnError(t)
-	defer restore()
-
-	srv, _ := startStreamingServer(t, "ok", http.StatusOK)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	// Cleanly close client-side with StatusGoingAway — mirrors iOS extension
-	// being backgrounded cleanly. The server should emit ws_read with
-	// reason=going_away.
-	_ = conn.Close(websocket.StatusGoingAway, "")
-
-	// Give the server a moment to observe the close and emit the event.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if events.Len() > 0 {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-
-	if events.Len() == 0 {
-		t.Fatal("no OnError event captured")
-	}
-	got := events.All()[0]
-	if got.Kind != "ws_read" {
-		t.Errorf("kind: want ws_read, got %q", got.Kind)
-	}
-	if got.Reason != wsReasonGoingAway {
-		t.Errorf("reason: want %q, got %q", wsReasonGoingAway, got.Reason)
-	}
-}
-
-// --- Commit B: idle timeout + clean close frame ---
-
-// TestStreamingHandler_IdleTimeout_ClosesClient verifies the per-frame idle
-// deadline closes zombie sockets instead of holding them up to the 90-min cap.
-// Not parallel-safe (mutates core.OnError).
-func TestStreamingHandler_IdleTimeout_ClosesClient(t *testing.T) {
-	events, restore := withCapturedOnError(t)
-	defer restore()
-
-	srv, g := startStreamingServer(t, "ok", http.StatusOK)
-	g.streamIdleTimeout = 300 * time.Millisecond
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow()
-
-	// Send nothing. Server should close within idle + a little slack.
-	start := time.Now()
-	_, _, err = conn.Read(ctx)
-	if err == nil {
-		t.Fatal("expected read error after server closed")
-	}
-	elapsed := time.Since(start)
-	if elapsed > 3*time.Second {
-		t.Errorf("close took too long: %v", elapsed)
-	}
-	var ce websocket.CloseError
-	if !errors.As(err, &ce) {
-		t.Fatalf("expected CloseError, got %T: %v", err, err)
-	}
-	if ce.Code != websocket.StatusPolicyViolation {
-		t.Errorf("close code: want %d, got %d", websocket.StatusPolicyViolation, ce.Code)
-	}
-	if ce.Reason != "idle_timeout" {
-		t.Errorf("close reason: want idle_timeout, got %q", ce.Reason)
-	}
-	// Server-side OnError should have fired with reason=idle_timeout.
-	// Give the handler goroutine a moment to fully emit before asserting.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && events.Len() == 0 {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if events.Len() == 0 {
-		t.Fatal("no OnError emitted for idle timeout")
-	}
-	if events.All()[0].Reason != wsReasonIdleTimeout {
-		t.Errorf("emitted reason: want %q, got %q", wsReasonIdleTimeout, events.All()[0].Reason)
-	}
-}
-
-func TestStreamingHandler_IdleTimeout_HappyPathUnaffected(t *testing.T) {
-	// Healthy streams (frames within idle) must still succeed end-to-end.
-	srv, g := startStreamingServer(t, "alive", http.StatusOK)
-	g.streamIdleTimeout = 2 * time.Second // generous enough for test round-trip
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow()
-
-	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
-	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done)
-
-	_, data, err := conn.Read(ctx)
-	if err != nil {
-		t.Fatalf("read result: %v", err)
-	}
-	var result struct{ Text string }
-	json.Unmarshal(data, &result)
-	if result.Text != "alive" {
-		t.Errorf("want 'alive', got %q", result.Text)
-	}
-}
-
-func TestNewGateway_DefaultsIdleTimeout(t *testing.T) {
-	g := NewGateway(Config{Backends: []Backend{{Name: "x", URL: "http://localhost"}}, DefaultModel: "x"})
-	if g.streamIdleTimeout != defaultStreamIdleTimeout {
-		t.Errorf("default idle: want %v, got %v", defaultStreamIdleTimeout, g.streamIdleTimeout)
-	}
-}
-
-func TestNewGateway_RespectsIdleTimeoutConfig(t *testing.T) {
-	g := NewGateway(Config{
-		Backends:          []Backend{{Name: "x", URL: "http://localhost"}},
-		DefaultModel:      "x",
-		StreamIdleTimeout: 3 * time.Second,
-	})
-	if g.streamIdleTimeout != 3*time.Second {
-		t.Errorf("idle: want 3s, got %v", g.streamIdleTimeout)
-	}
-}
-
-// --- Commit C: OnRequestFailed hook ---
-
-func TestStreamingHandler_WSReadError_TriggersOnRequestFailed(t *testing.T) {
-	// Not parallel-safe: mutates core.OnRequestFailed.
-	calls, restore := withCapturedOnRequestFailed(t)
-	defer restore()
-
-	srv, _ := startStreamingServer(t, "ok", http.StatusOK)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	_ = conn.Close(websocket.StatusGoingAway, "")
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && calls.Len() == 0 {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if calls.Len() == 0 {
-		t.Fatal("OnRequestFailed not called on ws_read error")
-	}
-	// Changed 2026-10: a socket that dies while the client is still sending
-	// audio is the client's doing (backgrounded, lost signal, cancelled), not
-	// the STT backend's: the backend has not been called yet. It gets its own
-	// error_type so backend-health alerting does not page on it.
-	if calls.All()[0] != errTypeClientAbort {
-		t.Errorf("errorType: want %q, got %q", errTypeClientAbort, calls.All()[0])
-	}
-}
-
-func TestStreamingHandler_IdleTimeout_IsClientAbort(t *testing.T) {
-	// Not parallel-safe: mutates core.OnRequestFailed.
-	calls, restore := withCapturedOnRequestFailed(t)
-	defer restore()
-
-	srv, g := startStreamingServer(t, "ok", http.StatusOK)
-	g.streamIdleTimeout = 300 * time.Millisecond
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow()
-	_, _, _ = conn.Read(ctx) // send nothing; wait for the idle close
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && calls.Len() == 0 {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if calls.Len() == 0 {
-		t.Fatal("OnRequestFailed not called on idle timeout")
-	}
-	if calls.All()[0] != errTypeClientAbort {
-		t.Errorf("errorType: want %q, got %q", errTypeClientAbort, calls.All()[0])
-	}
-}
-
-func TestStreamingHandler_NoAudio_TriggersOnRequestFailed(t *testing.T) {
-	calls, restore := withCapturedOnRequestFailed(t)
-	defer restore()
-
-	srv, _ := startStreamingServer(t, "ok", http.StatusOK)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow()
-
-	done, _ := json.Marshal(map[string]string{"action": "done"})
-	_ = conn.Write(ctx, websocket.MessageText, done)
-	_, _, _ = conn.Read(ctx) // wait for server close
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && calls.Len() == 0 {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if calls.Len() == 0 {
-		t.Fatal("OnRequestFailed not called for no-audio path")
-	}
-	// Changed 2026-09: no-audio gets its own error_type (errTypeNoAudio), not
-	// errTypeSTTError — it is a distinct classification specifically so it
-	// can be measured and judged apart from a real backend fault. See
-	// TestStreamingHandler_NoAudio_EmitsEventWithSocketMetrics for the fuller
-	// assertion (kind, LatencyMs, InputChars).
-	if calls.All()[0] != errTypeNoAudio {
-		t.Errorf("errorType: want %q, got %q", errTypeNoAudio, calls.All()[0])
-	}
-}
-
-func TestStreamingHandler_BackendFailure_TriggersOnRequestFailed(t *testing.T) {
-	calls, restore := withCapturedOnRequestFailed(t)
-	defer restore()
-
-	srv, _ := startStreamingServer(t, "", http.StatusInternalServerError)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow()
-
-	_ = conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
-	done, _ := json.Marshal(map[string]string{"action": "done"})
-	_ = conn.Write(ctx, websocket.MessageText, done)
-	_, _, _ = conn.Read(ctx) // wait for server close
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && calls.Len() == 0 {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if calls.Len() == 0 {
-		t.Fatal("OnRequestFailed not called on backend failure")
-	}
-	if calls.All()[0] != errTypeSTTError {
-		t.Errorf("errorType: want %q, got %q", errTypeSTTError, calls.All()[0])
-	}
-}
-
-func TestStreamingHandler_HappyPath_NoRequestFailed(t *testing.T) {
-	// Successful stream must NOT call OnRequestFailed.
-	calls, restore := withCapturedOnRequestFailed(t)
-	defer restore()
-
-	srv, _ := startStreamingServer(t, "transcribed", http.StatusOK)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow()
-
-	_ = conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
-	done, _ := json.Marshal(map[string]string{"action": "done"})
-	_ = conn.Write(ctx, websocket.MessageText, done)
-	_, _, err = conn.Read(ctx)
-	if err != nil {
-		t.Fatalf("read result: %v", err)
-	}
-
-	// Give any stray goroutine a moment to (wrongly) fire.
-	time.Sleep(100 * time.Millisecond)
-	if calls.Len() != 0 {
-		t.Errorf("OnRequestFailed fired on happy path: %v", calls.All())
-	}
-}
-
-func TestClassifyWSError_Cases(t *testing.T) {
-	cases := []struct {
-		name string
-		err  error
-		want string
-	}{
-		{"nil", nil, ""},
-		{"going away CloseError", websocket.CloseError{Code: websocket.StatusGoingAway}, wsReasonGoingAway},
-		{"protocol error", websocket.CloseError{Code: websocket.StatusProtocolError}, wsReasonProtocol},
-		{"unsupported data", websocket.CloseError{Code: websocket.StatusUnsupportedData}, wsReasonProtocol},
-		{"stream deadline", context.DeadlineExceeded, wsReasonStreamTimeout},
-		{"canceled", context.Canceled, wsReasonStreamTimeout},
-		{"io.EOF", io.EOF, wsReasonEOF},
-		{"io.ErrUnexpectedEOF", io.ErrUnexpectedEOF, wsReasonEOF},
-		{"wrapped EOF message", errors.New("failed to read frame header: EOF"), wsReasonEOF},
-		{"going away string", errors.New("going away from server"), wsReasonGoingAway},
-		{"StatusGoingAway string", errors.New("StatusGoingAway received"), wsReasonGoingAway},
-		{"protocol string", errors.New("bad protocol frame"), wsReasonProtocol},
-		// URLSessionWebSocketTask.cancel(with: .abnormalClosure) puts 1006 on the
-		// wire, which RFC 6455 forbids; coder/websocket rejects the payload.
-		{"abnormal closure from iOS", errors.New("failed to get reader: failed to handle control frame opClose: received invalid close payload: invalid status code StatusAbnormalClosure"), wsReasonAbnormalClose},
-		{"unknown", errors.New("something else entirely"), wsReasonUnknown},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := ClassifyWSError(tc.err); got != tc.want {
-				t.Errorf("ClassifyWSError(%v): want %q, got %q", tc.err, tc.want, got)
-			}
-		})
-	}
-}
-
-// --- StreamingHandler auto-detect routing ---
-
 func TestStreamingHandler_AutoDetect_WithDeviceHash(t *testing.T) {
-	// Verify that auto-detect routing wires DeviceHashFromContext and profileStore.
-	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"text":"auto-detect result"}`)
 	}))
@@ -1362,16 +967,14 @@ func TestStreamingHandler_AutoDetect_WithDeviceHash(t *testing.T) {
 		},
 		health:        newHealthState(),
 		defaultModel:  "small",
-		fallbackModel: "small", // enables ModelForAutoDetect to return non-empty
+		fallbackModel: "small",
 		maxBodySize:   10 * 1024 * 1024,
 	}
 	g.health.set("small", true)
 
-	// Wire DeviceHashFromContext so the inner block (lines 139-141) is executed
-	g.DeviceHashFromContext = func(ctx context.Context) string {
+	g.DeviceHashFromContext = func(_ context.Context) string {
 		return "test-device-hash-abc123"
 	}
-	// Wire profileStore (cold start → no profile → whisper_safe tier)
 	var dbPtr atomic.Pointer[sql.DB]
 	g.profileStore = NewProfileStore(&dbPtr)
 
@@ -1408,441 +1011,5 @@ func TestStreamingHandler_AutoDetect_WithDeviceHash(t *testing.T) {
 	}
 	if result.Text != "auto-detect result" {
 		t.Errorf("text: want 'auto-detect result', got %q", result.Text)
-	}
-}
-
-// The socket path used to file every proxyToBackend failure as a bare
-// stt_backend_error with no status: 389 of 416 events in a 60-day window, against
-// three providers, unsplittable. The HTTP path recorded the same failures as
-// stt_backend_5xx / stt_upstream_canceled / stt_backend_error all along. This
-// pins the socket path to that same vocabulary.
-func TestClassifyBackendFailure_MatchesHTTPPathVocabulary(t *testing.T) {
-	cases := []struct {
-		name       string
-		err        error
-		wantKind   string
-		wantStatus int
-	}{
-		{"hallucination", errSTTHallucination, kindSTTHallucination, 0},
-		{
-			"client cancel is not a backend fault",
-			fmt.Errorf("backend request: %w", context.Canceled),
-			kindSTTUpstreamCanceled, 0,
-		},
-		{
-			"deadline is the backend stalling, not a long dictation",
-			fmt.Errorf("backend request: %w", context.DeadlineExceeded),
-			kindSTTBackendError, 0,
-		},
-		{"500 demotes", errors.New("backend returned 500: internal error"), kindSTTBackend5xx, 500},
-		{"503 demotes", errors.New("backend returned 503: unavailable"), kindSTTBackend5xx, 503},
-		// 4xx is our request being wrong, not a sick backend — must NOT demote,
-		// but the status still has to survive so we can see which 4xx it was.
-		{"422 does not demote", errors.New("backend returned 422: bad audio"), kindSTTBackendError, 422},
-		{"400 does not demote", errors.New("backend returned 400: no model"), kindSTTBackendError, 400},
-		{"decode", errors.New("decode response: invalid character"), kindSTTBackendError, 0},
-		{"transport", errors.New("backend request: dial tcp: refused"), kindSTTBackendError, 0},
-		{"unknown", errors.New("something else entirely"), kindSTTBackendError, 0},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			kind, hint, status := classifyBackendFailure(tc.err)
-			if kind != tc.wantKind {
-				t.Errorf("kind: want %s, got %s", tc.wantKind, kind)
-			}
-			if status != tc.wantStatus {
-				t.Errorf("status: want %d, got %d", tc.wantStatus, status)
-			}
-			if hint == "" {
-				t.Error("hint must never be empty — it is the only human-readable field")
-			}
-		})
-	}
-}
-
-// proxyToBackend embeds up to 1 KiB of the backend's response body in its error,
-// and for a transcription backend that body IS the user's speech. Only the status
-// digits may ever be copied into telemetry.
-func TestClassifyBackendFailure_NeverLeaksTheResponseBody(t *testing.T) {
-	err := errors.New("backend returned 500: {\"text\":\"Endre said hello world\"}")
-	kind, hint, status := classifyBackendFailure(err)
-	if kind != kindSTTBackend5xx || status != 500 {
-		t.Fatalf("want stt_backend_5xx/500, got %s/%d", kind, status)
-	}
-	for _, needle := range []string{"Endre", "hello world", "text"} {
-		if strings.Contains(hint, needle) {
-			t.Errorf("hint leaked transcript content %q: %q", needle, hint)
-		}
-	}
-}
-
-func TestBackendStatusFromErr(t *testing.T) {
-	cases := map[string]int{
-		"backend returned 500: boom":        500,
-		"backend returned 404: nope":        404,
-		"wrapped: backend returned 502: hi": 502,
-		// Malformed — must yield 0 rather than a partial or over-long read.
-		"backend returned 5: truncated":   0,
-		"backend returned 50000: too big": 0,
-		"backend returned abc: letters":   0,
-		"backend returned ":               0,
-		"no marker here":                  0,
-		"":                                0,
-	}
-	for in, want := range cases {
-		t.Run(in, func(t *testing.T) {
-			if got := backendStatusFromErr(in); got != want {
-				t.Errorf("backendStatusFromErr(%q): want %d, got %d", in, want, got)
-			}
-		})
-	}
-}
-
-// End-to-end over a real socket: a 5xx from the backend must now surface as
-// stt_backend_5xx carrying the status, and must take the backend out of
-// rotation the way the HTTP path always has. Before this, the socket path
-// emitted a bare stt_backend_error with no status and left a sick backend
-// serving the next dictation.
-func TestStreamingHandler_Backend5xx_EmitsStatusAndDemotes(t *testing.T) {
-	// Not parallel-safe: mutates core.OnError.
-	events, restore := withCapturedOnError(t)
-	defer restore()
-
-	srv, g := startStreamingServer(t, "", http.StatusInternalServerError)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow()
-
-	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
-	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done)
-
-	if _, _, err = conn.Read(ctx); err == nil {
-		t.Fatal("expected connection closed after backend 5xx")
-	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && events.Len() == 0 {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if events.Len() == 0 {
-		t.Fatal("no OnError event captured")
-	}
-	got := events.All()[0]
-	if got.Kind != kindSTTBackend5xx {
-		t.Errorf("kind: want %s, got %q", kindSTTBackend5xx, got.Kind)
-	}
-	if got.HTTPStatus != http.StatusInternalServerError {
-		t.Errorf("http_status: want 500, got %d — the status is the whole point", got.HTTPStatus)
-	}
-	if got.Endpoint != "/v1/audio/stream" {
-		t.Errorf("endpoint: want /v1/audio/stream, got %q", got.Endpoint)
-	}
-	if g.health.get("small") {
-		t.Error("backend still healthy after a 5xx — it must be demoted so the next dictation routes elsewhere")
-	}
-}
-
-// The mirror image: a 4xx is our request being wrong, not a sick backend. It
-// must keep the status but leave the backend in rotation — demoting on a 422
-// would take a healthy backend down for every user over one bad request.
-func TestStreamingHandler_Backend4xx_KeepsBackendHealthy(t *testing.T) {
-	// Not parallel-safe: mutates core.OnError.
-	events, restore := withCapturedOnError(t)
-	defer restore()
-
-	srv, g := startStreamingServer(t, "", http.StatusUnprocessableEntity)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow()
-
-	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
-	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done)
-
-	if _, _, err = conn.Read(ctx); err == nil {
-		t.Fatal("expected connection closed after backend 4xx")
-	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && events.Len() == 0 {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if events.Len() == 0 {
-		t.Fatal("no OnError event captured")
-	}
-	got := events.All()[0]
-	if got.Kind != kindSTTBackendError {
-		t.Errorf("kind: want %s, got %q", kindSTTBackendError, got.Kind)
-	}
-	if got.HTTPStatus != http.StatusUnprocessableEntity {
-		t.Errorf("http_status: want 422, got %d", got.HTTPStatus)
-	}
-	if !g.health.get("small") {
-		t.Error("backend demoted on a 4xx — a bad request must not take the backend down for everyone")
-	}
-}
-
-// sendAndReceiveStreamResult dials the WS, sends silence + done, and returns the
-// decoded result frame. Fails the test on any error.
-func sendAndReceiveStreamResult(t *testing.T, ctx context.Context, wsAddr string) map[string]string {
-	t.Helper()
-	conn, _, err := websocket.Dial(ctx, wsAddr, nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow()
-
-	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200)); err != nil {
-		t.Fatalf("write audio: %v", err)
-	}
-	done, _ := json.Marshal(map[string]string{"action": "done"})
-	if err := conn.Write(ctx, websocket.MessageText, done); err != nil {
-		t.Fatalf("write done: %v", err)
-	}
-	_, data, err := conn.Read(ctx)
-	if err != nil {
-		t.Fatalf("read result: %v", err)
-	}
-	var result map[string]string
-	if err := json.Unmarshal(data, &result); err != nil {
-		t.Fatalf("unmarshal: %v (raw=%s)", err, data)
-	}
-	return result
-}
-
-// TestStreamingHandler_EditIntentPostProcessFailure pins the new edit-failure
-// wire contract: ?intent=edit + failing postProcess → {text:"", mode:"edit", status:"failed"}.
-// The spoken instruction must never be inserted as content.
-func TestStreamingHandler_EditIntentPostProcessFailure(t *testing.T) {
-	postProcess := func(_ context.Context, text, _, _ string) (string, string, error) {
-		return "", "", fmt.Errorf("llm output too long")
-	}
-	srv := startStreamingServerWithPostProcess(t, "translate to Russian", postProcess)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	result := sendAndReceiveStreamResult(t, ctx, wsURL(srv, "model=small&enhance=true&intent=edit"))
-
-	if result["text"] != "" {
-		t.Errorf("text: want empty, got %q (instruction must not be inserted as content)", result["text"])
-	}
-	if result["mode"] != "edit" {
-		t.Errorf("mode: want 'edit', got %q", result["mode"])
-	}
-	if result["status"] != "failed" {
-		t.Errorf("status: want 'failed', got %q", result["status"])
-	}
-}
-
-// TestStreamingHandler_EditSelectedIntentPostProcessFailure is the edit-selected variant.
-func TestStreamingHandler_EditSelectedIntentPostProcessFailure(t *testing.T) {
-	postProcess := func(_ context.Context, _, _, _ string) (string, string, error) {
-		return "", "", fmt.Errorf("llm error")
-	}
-	srv := startStreamingServerWithPostProcess(t, "translate this to Russian please", postProcess)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	result := sendAndReceiveStreamResult(t, ctx, wsURL(srv, "model=small&enhance=true&intent=edit-selected"))
-
-	if result["text"] != "" {
-		t.Errorf("text: want empty, got %q", result["text"])
-	}
-	if result["mode"] != "edit-selected" {
-		t.Errorf("mode: want 'edit-selected', got %q", result["mode"])
-	}
-	if result["status"] != "failed" {
-		t.Errorf("status: want 'failed', got %q", result["status"])
-	}
-}
-
-// TestStreamingHandler_NonEditPostProcessFailureKeepsRawFallback is the regression
-// pin: no intent + failing postProcess → raw transcript returned silently: no status,
-// no error event, one enhance skip on the request row.
-func TestStreamingHandler_NonEditPostProcessFailureKeepsRawFallback(t *testing.T) {
-	signals := captureCleanupSignals(t)
-	postProcess := func(_ context.Context, _, _, _ string) (string, string, error) {
-		return "", "", fmt.Errorf("cleanup error")
-	}
-	srv := startStreamingServerWithPostProcess(t, "raw transcript text", postProcess)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	result := sendAndReceiveStreamResult(t, ctx, wsURL(srv, "model=small&enhance=true"))
-
-	if result["text"] != "raw transcript text" {
-		t.Errorf("text: want 'raw transcript text', got %q", result["text"])
-	}
-	if _, has := result["status"]; has {
-		t.Errorf("status: want none on a cleanup that did not land, got %q", result["status"])
-	}
-	signals.assertSilentSkip(t, EnhanceSkipError)
-}
-
-// --- Commit D: silent-branch instrumentation (2026-09) ---
-// See .claude/bow/stt-failure-rate-2026-09-13.md and
-// .claude/plans/stt-failure-visibility-plan.md.
-
-func TestStreamingHandler_NoAudio_EmitsEventWithSocketMetrics(t *testing.T) {
-	// Not parallel-safe: mutates core.OnError / core.OnRequestFailed.
-	events, restoreErr := withCapturedOnError(t)
-	defer restoreErr()
-	calls, restoreFailed := withCapturedOnRequestFailed(t)
-	defer restoreFailed()
-
-	srv, _ := startStreamingServer(t, "ok", http.StatusOK)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	defer conn.CloseNow()
-
-	// Send done with no preceding audio — the branch under test.
-	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done)
-
-	// Server closes with wsCloseNoAudio; wait for the read to fail as proof.
-	_, _, err = conn.Read(ctx)
-	if err == nil {
-		t.Fatal("expected connection to be closed by server")
-	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && events.Len() == 0 {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if events.Len() != 1 {
-		t.Fatalf("OnError calls: want 1, got %d: %+v", events.Len(), events.All())
-	}
-	ev := events.All()[0]
-	if ev.Kind != "ws_no_audio" {
-		t.Errorf("Kind: want ws_no_audio, got %q", ev.Kind)
-	}
-	if ev.Source != "streaming" {
-		t.Errorf("Source: want streaming, got %q", ev.Source)
-	}
-	// InputChars is repurposed as frame count on this kind — no binary
-	// frames were ever sent, so it must be 0.
-	if ev.InputChars != 0 {
-		t.Errorf("InputChars (frame count): want 0, got %d", ev.InputChars)
-	}
-	// LatencyMs is repurposed as socket-open duration — must be present
-	// (non-negative; a fresh connection closed quickly should read near-zero,
-	// but the only real invariant here is that it was actually recorded).
-	if ev.LatencyMs < 0 {
-		t.Errorf("LatencyMs (socket-open ms): want >= 0, got %d", ev.LatencyMs)
-	}
-
-	deadline = time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && calls.Len() == 0 {
-		time.Sleep(20 * time.Millisecond)
-	}
-	if calls.Len() != 1 {
-		t.Fatalf("OnRequestFailed calls: want 1, got %d: %v", calls.Len(), calls.All())
-	}
-	if calls.All()[0] != errTypeNoAudio {
-		t.Errorf("errorType: want %q, got %q", errTypeNoAudio, calls.All()[0])
-	}
-}
-
-func TestStreamingHandler_PreUpgrade503_EmitsRouteFailAndSetsHeader(t *testing.T) {
-	// Not parallel-safe: mutates core.OnError / core.OnRequestFailed.
-	events, restoreErr := withCapturedOnError(t)
-	defer restoreErr()
-	calls, restoreFailed := withCapturedOnRequestFailed(t)
-	defer restoreFailed()
-
-	srv, g := startStreamingServer(t, "ok", http.StatusOK)
-	g.health.set("small", false) // demoted — the pre-upgrade 503 branch
-
-	resp, err := http.Get(srv.URL + "/v1/audio/stream")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("status: want 503, got %d", resp.StatusCode)
-	}
-	// The row must carry the backend it wanted — before this fix, this
-	// header was never set on this branch, so stt_model read as unknown.
-	if got := resp.Header.Get("X-Diction-Route-Model"); got != "small" {
-		t.Errorf("X-Diction-Route-Model: want small, got %q", got)
-	}
-
-	if events.Len() != 1 {
-		t.Fatalf("OnError calls: want 1, got %d: %+v", events.Len(), events.All())
-	}
-	if events.All()[0].Kind != "stt_route_fail" {
-		t.Errorf("Kind: want stt_route_fail, got %q", events.All()[0].Kind)
-	}
-	if events.All()[0].HTTPStatus != http.StatusServiceUnavailable {
-		t.Errorf("HTTPStatus: want 503, got %d", events.All()[0].HTTPStatus)
-	}
-
-	if calls.Len() != 1 {
-		t.Fatalf("OnRequestFailed calls: want 1, got %d: %v", calls.Len(), calls.All())
-	}
-	if calls.All()[0] != errTypeSTTError {
-		t.Errorf("errorType: want %q, got %q", errTypeSTTError, calls.All()[0])
-	}
-}
-
-func TestStreamingHandler_ClientGoneAfterSuccess_NotCountedAsFailure(t *testing.T) {
-	// Not parallel-safe: mutates core.OnError / core.OnRequestFailed.
-	events, restoreErr := withCapturedOnError(t)
-	defer restoreErr()
-	calls, restoreFailed := withCapturedOnRequestFailed(t)
-	defer restoreFailed()
-
-	srv, _ := startStreamingServer(t, "transcribed", http.StatusOK)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "model=small"), nil)
-	if err != nil {
-		t.Fatalf("dial: %v", err)
-	}
-
-	_ = conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
-	done, _ := json.Marshal(map[string]string{"action": "done"})
-	_ = conn.Write(ctx, websocket.MessageText, done)
-	// Walk away immediately instead of reading the result, racing the
-	// server's final conn.Write. Whichever side of the race is hit, the
-	// invariant under test holds: a successful transcription must never
-	// count as a failed request just because the client left.
-	conn.CloseNow()
-
-	time.Sleep(200 * time.Millisecond)
-
-	for _, c := range calls.All() {
-		if c == errTypeSTTError {
-			t.Errorf("OnRequestFailed(%q) fired after a successful transcription — a client that walked away must not inflate the failure rate: %v", errTypeSTTError, calls.All())
-		}
-	}
-	for _, ev := range events.All() {
-		if ev.Kind == "ws_write" && ev.Hint != "client gone before result write" {
-			t.Errorf("unexpected ws_write hint: %q", ev.Hint)
-		}
 	}
 }

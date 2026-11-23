@@ -17,7 +17,6 @@ func segmentedConfig() LiveConfig {
 	return c
 }
 
-// The engine outlives its interims: the segmented final still works after them.
 func TestLiveEngine_FinishAfterInterims(t *testing.T) {
 	asr := &fakeASR{}
 	e := newLiveEngine(context.Background(), segmentedConfig(), asr.transcribe, asr.transcribe)
@@ -34,18 +33,15 @@ func TestLiveEngine_FinishAfterInterims(t *testing.T) {
 }
 
 func TestPauseDetector_FirstPieceMinimum(t *testing.T) {
-	cfg := segmentedConfig() // MinSegMs 3000
+	cfg := segmentedConfig()
 	cfg.FirstMinSegMs = 6000
 	d := pauseDetector{cfg: cfg}
-	// 4 s speech + pause: enough for MinSegMs, not for the first piece's 6 s.
 	if cuts := d.push(pcmPattern(4000, 1000)); len(cuts) != 0 {
 		t.Fatalf("first piece cut before FirstMinSegMs: %+v", cuts)
 	}
-	// 2 s more speech + pause: past 6 s, so the first cut comes.
 	if cuts := d.push(pcmPattern(2000, 1000)); len(cuts) != 1 {
 		t.Fatalf("want the first cut, got %+v", cuts)
 	}
-	// Later pieces use MinSegMs again: 3.5 s speech + pause cuts.
 	if cuts := d.push(pcmPattern(3500, 1000)); len(cuts) != 1 {
 		t.Fatalf("want a 3 s-minimum cut after the first piece, got %+v", cuts)
 	}
@@ -67,7 +63,6 @@ func TestLiveEngine_SegmentsInBackgroundAndJoins(t *testing.T) {
 	if len(d) != 3 || st.segments != 2 {
 		t.Fatalf("calls %v, segments %d", d, st.segments)
 	}
-	// The tail (last request) is short: only the audio after the second pause.
 	if d[2] > 3.0 {
 		t.Fatalf("tail was %.2fs, want < 3 s", d[2])
 	}
@@ -157,7 +152,6 @@ func TestStreaming_SegmentedFinal_FallsBackToWholeClip(t *testing.T) {
 	backend, calls, _ := segmentBackend(t, func(n int) bool { return n == 1 })
 	srv := liveGateway(t, backend.URL, segmentedConfig())
 	frames := streamPCM(t, srv, "", pcmPattern(4000, 1000, 2000), 0)
-	// Call 1 (segment) failed, call 2 is the whole clip.
 	if got := lastResultText(t, frames); got != "r2" {
 		t.Fatalf("final %q, want the whole-clip answer", got)
 	}
@@ -179,7 +173,7 @@ func TestStreaming_SegmentedFinal_OffByDefault(t *testing.T) {
 }
 
 func TestStreaming_SegmentedFinal_Opus(t *testing.T) {
-	ogg := testOgg(t, 10) // two pauses to cut at
+	ogg := testOgg(t, 10)
 	backend, calls, lastName := segmentBackend(t, nil)
 	srv := liveGateway(t, backend.URL, segmentedConfig())
 	text, err := streamOpusBinary(t, srv, ogg, true)
@@ -202,7 +196,6 @@ func TestLiveEngine_ShortLastWordIsSent(t *testing.T) {
 	asr := &fakeASR{}
 	e := newLiveEngine(context.Background(), segmentedConfig(), asr.transcribe, nil)
 	defer e.Close()
-	// A 100 ms word after the last pause ("No.") must still be transcribed.
 	feedLive(t, e, pcmPattern(4000, 1000, 100, 300))
 	text, ok, _ := e.Finish(context.Background())
 	if !ok || text != "part1. part2." {
@@ -235,8 +228,7 @@ func TestLiveEngine_FinishHasABudget(t *testing.T) {
 }
 
 func TestStreaming_SegmentedFinal_OpusFallbackSendsOriginal(t *testing.T) {
-	ogg := testOgg(t, 10) // two pauses to cut at
-	// Every segment fails, so the whole clip goes: it must be the original Ogg, as today.
+	ogg := testOgg(t, 10)
 	backend, _, lastName := segmentBackend(t, func(n int) bool { return n == 1 })
 	srv := liveGateway(t, backend.URL, segmentedConfig())
 	text, err := streamOpusBinary(t, srv, ogg, true)
@@ -249,8 +241,7 @@ func TestStreaming_SegmentedFinal_OpusFallbackSendsOriginal(t *testing.T) {
 }
 
 func TestLiveEngine_InventedTextMeansFallback(t *testing.T) {
-	// A backend that appends a long list (its prompt) to a 2 s tail.
-	echo := func(ctx context.Context, wav []byte) (string, error) {
+	echo := func(_ context.Context, wav []byte) (string, error) {
 		if len(wav) < 4*2*liveSampleRate {
 			return "Copy the team, " + strings.Repeat("Some Term, ", 30), nil
 		}

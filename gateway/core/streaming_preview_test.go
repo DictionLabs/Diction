@@ -13,8 +13,6 @@ import (
 	"github.com/coder/websocket"
 )
 
-// fakePreview is a PreviewSession that spams interims ("i1", "i2", …) from its own
-// goroutine until stopped — the worst case for ordering against the result frame.
 type fakePreview struct {
 	ch       chan string
 	stop     chan struct{}
@@ -22,7 +20,7 @@ type fakePreview struct {
 	once     sync.Once
 	mu       sync.Mutex
 	sent     int
-	dieAfter int // >0: end the relay on its own after this many interims
+	dieAfter int
 }
 
 func newFakePreview(dieAfter int) *fakePreview {
@@ -56,7 +54,6 @@ func (f *fakePreview) Stop() {
 	<-f.done
 }
 
-// fakeRelayLog records what the handler did with the preview hooks.
 type fakeRelayLog struct {
 	mu       sync.Mutex
 	sessions []*fakePreview
@@ -81,19 +78,18 @@ func (f *fakePreview) frames() int {
 	return f.sent
 }
 
-// installFakePreview sets PreviewRelay/OnPreviewRelay for one test.
 func installFakePreview(t *testing.T, dieAfter int) *fakeRelayLog {
 	t.Helper()
 	l := &fakeRelayLog{}
 	prevRelay, prevHook := PreviewRelay, OnPreviewRelay
-	PreviewRelay = func(ctx context.Context, language string) PreviewSession {
+	PreviewRelay = func(_ context.Context, _ string) PreviewSession {
 		f := newFakePreview(dieAfter)
 		l.mu.Lock()
 		l.sessions = append(l.sessions, f)
 		l.mu.Unlock()
 		return f
 	}
-	OnPreviewRelay = func(ctx context.Context, outcome string) {
+	OnPreviewRelay = func(_ context.Context, outcome string) {
 		l.mu.Lock()
 		l.outcomes = append(l.outcomes, outcome)
 		l.mu.Unlock()
@@ -102,8 +98,6 @@ func installFakePreview(t *testing.T, dieAfter int) *fakeRelayLog {
 	return l
 }
 
-// runPreviewSession sends `frames` PCM frames, waits, sends done, and returns every
-// text frame the server wrote, in order.
 func runPreviewSession(t *testing.T, srv *httptest.Server, query string, frames int) []string {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -181,8 +175,6 @@ func TestStreamingPreview_InterimsThenResult_NeverAfter(t *testing.T) {
 	}
 }
 
-// Golden: a session without `preview` is byte-identical to the pre-change handler,
-// and the relay is never opened even when the hook is installed.
 func TestStreamingPreview_NoPreviewParam_ByteIdentical(t *testing.T) {
 	srv, _ := startStreamingServer(t, "final words", http.StatusOK)
 	before := runPreviewSession(t, srv, "language=cs", 3)
@@ -202,7 +194,6 @@ func TestStreamingPreview_NoPreviewParam_ByteIdentical(t *testing.T) {
 	}
 }
 
-// A relay that dies mid-session leaves the final untouched.
 func TestStreamingPreview_RelayEndsEarly_FinalUnchanged(t *testing.T) {
 	installFakePreview(t, 2)
 	srv, _ := startStreamingServer(t, "final words", http.StatusOK)
@@ -215,7 +206,6 @@ func TestStreamingPreview_RelayEndsEarly_FinalUnchanged(t *testing.T) {
 	}
 }
 
-// Community build: hook nil → preview=cloud is ignored.
 func TestStreamingPreview_NoHook_Ignored(t *testing.T) {
 	prev := PreviewRelay
 	PreviewRelay = nil
@@ -227,10 +217,9 @@ func TestStreamingPreview_NoHook_Ignored(t *testing.T) {
 	}
 }
 
-// Opus has no PCM while recording: no relay, outcome failed.
 func TestStreamingPreview_Opus_NoRelay(t *testing.T) {
 	rl := installFakePreview(t, 0)
-	g := makeGateway(echoTranscript(t, "x").URL, false, 10<<20) // passthrough
+	g := makeGateway(echoTranscript(t, "x").URL, false, 10<<20)
 	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
@@ -256,7 +245,6 @@ func TestStreamingPreview_Opus_NoRelay(t *testing.T) {
 	}
 }
 
-// A client that walks away mid-recording still gets its relay stopped (deferred stop).
 func TestStreamingPreview_ClientAbort_StopsRelay(t *testing.T) {
 	rl := installFakePreview(t, 0)
 	srv, _ := startStreamingServer(t, "final words", http.StatusOK)
@@ -268,13 +256,13 @@ func TestStreamingPreview_ClientAbort_StopsRelay(t *testing.T) {
 	}
 	_ = conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
 	time.Sleep(30 * time.Millisecond)
-	conn.CloseNow() // client walks away mid-recording
+	conn.CloseNow()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		if opened := rl.opened(); len(opened) == 1 {
 			select {
 			case <-opened[0].done:
-				return // relay stopped by the deferred stop on the early return
+				return
 			default:
 			}
 		}

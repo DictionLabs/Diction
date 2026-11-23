@@ -10,24 +10,19 @@ import (
 	"testing"
 )
 
-// TestOnError_HookInvocation sanity-checks that the package-level OnError var
-// behaves as a simple function pointer. The gateway main binary assigns
-// OnError = emitError at startup; community builds leave it nil.
 func TestOnError_DefaultNil(t *testing.T) {
-	// Preserve/restore in case another test installed a hook.
-	waitHandlers(t) // a previous test's streaming handler may still read OnError
+	waitHandlers(t)
 	prev := OnError
 	defer func() { waitHandlers(t); OnError = prev }()
 
 	OnError = nil
-	// Call site pattern — must be safe when nil.
 	if OnError != nil {
 		t.Fatal("expected nil default")
 	}
 }
 
 func TestOnError_HookFires(t *testing.T) {
-	waitHandlers(t) // a previous test's streaming handler may still read OnError
+	waitHandlers(t)
 	prev := OnError
 	defer func() { waitHandlers(t); OnError = prev }()
 
@@ -50,11 +45,8 @@ func TestOnError_HookFires(t *testing.T) {
 	}
 }
 
-// TestOnError_FiresOnMultipartRewriteFailure — corrupted multipart body
-// forces rewriteMultipart to return an error, which the handler reports as
-// `stt_multipart`. Covers the other OnError branch in proxy.go.
 func TestOnError_FiresOnMultipartRewriteFailure(t *testing.T) {
-	waitHandlers(t) // a previous test's streaming handler may still read OnError
+	waitHandlers(t)
 	prev := OnError
 	defer func() { waitHandlers(t); OnError = prev }()
 
@@ -75,10 +67,6 @@ func TestOnError_FiresOnMultipartRewriteFailure(t *testing.T) {
 		maxBodySize:  10 * 1024 * 1024,
 	}
 
-	// Malformed multipart that parses the first "file" part successfully but
-	// contains non-WAV bytes. NeedsWAV=true triggers convertToWAVBytes, which
-	// calls ffmpeg. If ffmpeg is unavailable or rejects the input, rewrite
-	// fails → stt_multipart emitted.
 	body, ct := buildMultipart(t, map[string]string{"model": "small"}, "audio.m4a", "NOT-VALID-AUDIO")
 	req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", ct)
@@ -87,20 +75,13 @@ func TestOnError_FiresOnMultipartRewriteFailure(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	// We assert only that OnError fired — the exact kind depends on whether
-	// ffmpeg is installed. If it's not, kind=stt_multipart. If ffmpeg happened
-	// to accept the bytes, we'd see no OnError and this test would skip.
 	if len(seen) == 0 {
 		t.Skip("OnError not fired (ffmpeg may have accepted the fake audio); branch still covered in CI where it fails")
 	}
 }
 
-// TestOnError_FiresOnPostProcessError — the transcription handler must invoke
-// OnError (if installed) when an edit intent's post-process returns an error. A
-// transcribe intent's cleanup failure is silent instead (see
-// TestTranscriptionHandler_NonEditPostProcessFailureKeepsRawFallback).
 func TestOnError_FiresOnPostProcessError(t *testing.T) {
-	waitHandlers(t) // a previous test's streaming handler may still read OnError
+	waitHandlers(t)
 	prev := OnError
 	defer func() { waitHandlers(t); OnError = prev }()
 
@@ -112,7 +93,7 @@ func TestOnError_FiresOnPostProcessError(t *testing.T) {
 		mu.Unlock()
 	}
 
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"text":"raw"}`)
 	}))

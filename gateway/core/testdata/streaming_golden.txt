@@ -1,0 +1,1120 @@
+=== pcm_happy
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello world"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=200
+hook OnTranscription model=small chars=11 audioMs=200 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6804 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"] [language="en"]
+=== pcm_no_language
+dial status 101
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello world"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=200
+hook OnTranscription model=small chars=11 audioMs=200 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6685 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"]
+=== pcm_codec_explicit
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello world"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=200
+hook OnTranscription model=small chars=11 audioMs=200 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6804 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"] [language="en"]
+=== pcm_context_json_first
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello world"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=11 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3789 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."]
+=== pcm_context_not_json
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello world"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=11 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== pcm_context_after_audio_dropped
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello world"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=11 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== pcm_second_context_ignored
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello world"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=11 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== pcm_other_action_ignored
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello world"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=11 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== pcm_done_language_override
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello world"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=11 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="de"]
+=== pcm_custom_words_to_accepting_backend
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=5 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== autodetect_profile
+dial status 101
+dial header X-Diction-Route-Detect: true
+dial header X-Diction-Route-Lang: auto
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=5 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3606 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="auto"]
+=== autodetect_two_backends_no_profile
+dial status 101
+dial header X-Diction-Route-Detect: true
+dial header X-Diction-Route-Lang: auto
+dial header X-Diction-Route-Model: fallback
+frame text {"text":"whisper"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=200
+hook OnTranscription model=fallback chars=7 audioMs=200 enhance=false e2e=false
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6685 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"]
+=== autodetect_two_backends_confident_eu
+dial status 101
+dial header X-Diction-Route-Detect: true
+dial header X-Diction-Route-Lang: auto
+dial header X-Diction-Route-Model: small
+frame text {"text":"canary"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=200
+hook OnTranscription model=small chars=6 audioMs=200 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6804 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"] [language="en"]
+=== autodetect_two_backends_history_non_eu
+dial status 101
+dial header X-Diction-Route-Detect: true
+dial header X-Diction-Route-Lang: auto
+dial header X-Diction-Route-Model: fallback
+frame text {"text":"whisper"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=200
+hook OnTranscription model=fallback chars=7 audioMs=200 enhance=false e2e=false
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6685 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"]
+=== autodetect_primary_fails_retry_on_fallback
+dial status 101
+dial header X-Diction-Route-Detect: true
+dial header X-Diction-Route-Lang: auto
+dial header X-Diction-Route-Model: small
+frame text {"text":"whisper"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=200
+hook OnError source=stt kind=stt_backend_5xx reason= endpoint=/v1/audio/stream provider=small status=500 inputChars=0 latencySet=true hint="backend returned 500; demoted, retrying on fallback"
+hook OnTranscription model=fallback chars=7 audioMs=200 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6804 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"] [language="en"]
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6804 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"] [language="en"]
+=== autodetect_no_profile
+dial status 101
+dial header X-Diction-Route-Detect: true
+dial header X-Diction-Route-Lang: auto
+dial header X-Diction-Route-Model: small
+frame text {"text":"hello"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=200
+hook OnTranscription model=small chars=5 audioMs=200 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6806 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"] [language="auto"]
+=== no_audio
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4004 reason="no audio received"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnError source=streaming kind=ws_no_audio reason= endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="socket closed with zero audio bytes"
+hook OnRequestFailed type=no_audio
+=== no_audio_context_only
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4004 reason="no audio received"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnError source=streaming kind=ws_no_audio reason= endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="socket closed with zero audio bytes"
+hook OnRequestFailed type=no_audio
+=== audio_too_large
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4003 reason="audio too large"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnError source=streaming kind=ws_audio_too_large reason=compressed endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="received audio exceeded maxPCM before decode"
+hook OnRequestFailed type=stt_error
+=== idle_timeout
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=1008 reason="idle_timeout"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnError source=streaming kind=ws_read reason=idle_timeout endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="websocket read failed: idle_timeout"
+hook OnRequestFailed type=client_abort
+=== client_abort_after_audio
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+read ended without close frame
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnError source=streaming kind=ws_read reason=eof endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="websocket read failed: eof"
+hook OnRequestFailed type=client_abort
+=== client_abort_immediately
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+read ended without close frame
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnError source=streaming kind=ws_read reason=eof endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="websocket read failed: eof"
+hook OnRequestFailed type=client_abort
+=== unsupported_codec
+dial status 400
+=== plain_get_accept_fails
+http status 426
+hook OnError source=streaming kind=ws_accept reason= endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="websocket accept failed"
+hook OnRequestFailed type=stt_error
+=== route_fail_unhealthy
+dial status 503
+dial header X-Diction-Route-Model: small
+hook OnError source=stt kind=stt_route_fail reason= endpoint=/v1/audio/stream provider=small status=503 inputChars=0 latencySet=true hint="no healthy backend for this language"
+hook OnRequestFailed type=stt_error
+=== route_log_with_fallback_model
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"a"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=200
+hook OnTranscription model=small chars=1 audioMs=200 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6804 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"] [language="en"]
+=== backend_500_no_fallback
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_5xx reason= endpoint=/v1/audio/stream provider=small status=500 inputChars=0 latencySet=true hint="backend returned 500"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== backend_400_no_fallback
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_error reason= endpoint=/v1/audio/stream provider=small status=400 inputChars=0 latencySet=true hint="backend returned 400"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== backend_drop_no_fallback
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_error reason= endpoint=/v1/audio/stream provider=small status=0 inputChars=0 latencySet=true hint="backend transport failed"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== backend_truncated_json
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_error reason= endpoint=/v1/audio/stream provider=small status=0 inputChars=0 latencySet=true hint="backend response decode failed"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== backend_500_then_fallback_ok
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"from fallback"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_5xx reason= endpoint=/v1/audio/stream provider=small status=500 inputChars=0 latencySet=true hint="backend returned 500; demoted, retrying on fallback"
+hook OnTranscription model=fallback chars=13 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== backend_drop_then_fallback_ok
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"from fallback"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_error reason= endpoint=/v1/audio/stream provider=small status=0 inputChars=0 latencySet=true hint="backend transport failed; demoted, retrying on fallback"
+hook OnTranscription model=fallback chars=13 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== backend_truncated_then_fallback_ok
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_error reason= endpoint=/v1/audio/stream provider=small status=0 inputChars=0 latencySet=true hint="backend response decode failed"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== backend_500_fallback_hallucinates
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_5xx reason= endpoint=/v1/audio/stream provider=small status=500 inputChars=0 latencySet=true hint="backend returned 500; demoted, retrying on fallback"
+hook OnError source=stt kind=stt_hallucination reason= endpoint=/v1/audio/stream provider=fallback status=0 inputChars=0 latencySet=true hint="backend returned repeated-token hallucination; retry backend"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== backend_500_fallback_drops
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_5xx reason= endpoint=/v1/audio/stream provider=small status=500 inputChars=0 latencySet=true hint="backend returned 500; demoted, retrying on fallback"
+hook OnError source=stt kind=stt_backend_error reason= endpoint=/v1/audio/stream provider=fallback status=0 inputChars=0 latencySet=true hint="backend transport failed; retry backend"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== backend_500_fallback_400
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_5xx reason= endpoint=/v1/audio/stream provider=small status=500 inputChars=0 latencySet=true hint="backend returned 500; demoted, retrying on fallback"
+hook OnError source=stt kind=stt_backend_error reason= endpoint=/v1/audio/stream provider=fallback status=400 inputChars=0 latencySet=true hint="backend returned 400; retry backend"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== backend_500_both_fail
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_5xx reason= endpoint=/v1/audio/stream provider=small status=500 inputChars=0 latencySet=true hint="backend returned 500; demoted, retrying on fallback"
+hook OnError source=stt kind=stt_backend_5xx reason= endpoint=/v1/audio/stream provider=fallback status=503 inputChars=0 latencySet=true hint="backend returned 503; retry backend"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== backend_400_fallback_untouched
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_backend_error reason= endpoint=/v1/audio/stream provider=small status=400 inputChars=0 latencySet=true hint="backend returned 400"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== hallucination_no_fallback
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_hallucination reason= endpoint=/v1/audio/stream provider=small status=0 inputChars=0 latencySet=true hint="backend returned repeated-token hallucination"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== hallucination_fallback_clean
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_hallucination reason= endpoint=/v1/audio/stream provider=small status=0 inputChars=0 latencySet=true hint="backend returned repeated-token hallucination"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== empty_text_result
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":""}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=0 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== enhance_ok
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"clean text","mode":"transcribe"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="" boosted=true
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== enhance_without_postprocess
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"raw text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== postprocess_but_enhance_off
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"raw text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== enhance_error_raw_fallback
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"raw text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="" boosted=true
+hook OnEnhanceSkipped reason=error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== enhance_edit_intent_ok
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"edited","mode":"edit"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="edit" boosted=true
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== enhance_edit_intent_fails
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"","mode":"edit","status":"failed"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="edit" boosted=true
+hook OnError source=stt kind=stt_post_process reason= endpoint=/v1/audio/stream provider= status=0 inputChars=8 latencySet=true hint="edit intent post-process failed; returning status=failed"
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== enhance_edit_selected_fails
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"raw text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="edit_selected" boosted=true
+hook OnEnhanceSkipped reason=error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== auto_edit_ok
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"type":"intent","intent":"edit","source":"auto"}
+frame text {"text":"edited","mode":"edit","auto_edit":true}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="edit" boosted=true
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== auto_edit_fails
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"type":"intent","intent":"edit","source":"auto"}
+frame text {"text":"","mode":"edit","status":"failed","auto_edit":true}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="edit" boosted=true
+hook OnError source=stt kind=stt_post_process reason= endpoint=/v1/audio/stream provider= status=0 inputChars=8 latencySet=true hint="edit intent post-process failed; returning status=failed"
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== auto_edit_mode_not_edit
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"type":"intent","intent":"edit","source":"auto"}
+frame text {"text":"x","mode":"transcribe"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="edit" boosted=true
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== auto_transcribe_resolved
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"clean text","mode":"transcribe"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="transcribe" boosted=true
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== split_ok
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"raw text"}
+frame text {"type":"enhanced","text":"clean text","mode":"transcribe"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="" boosted=true
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== split_post_delivery_used
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"raw text"}
+frame text {"type":"enhanced","text":"post","mode":"m"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="" boosted=true
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== split_error
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"raw text"}
+frame text {"type":"enhanced","status":"failed"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="" boosted=true
+hook OnEnhanceSkipped reason=error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== split_edit_intent_single_frame
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"edited","mode":"edit"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="edit" boosted=true
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== split_auto_edit
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"type":"intent","intent":"edit","source":"auto"}
+frame text {"text":"edited","mode":"edit","auto_edit":true}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="edit" boosted=true
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== split_enhance_without_enhance
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"raw text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== split_empty_text
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"raw text"}
+frame text {"type":"enhanced","text":"clean text","mode":"transcribe"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=8 audioMs=100 enhance=true e2e=false
+postProcess text="raw text" ctx="{\"app\":\"notes\",\"customWords\":[{\"word\":\"Kubernetes\"},{\"word\":\"Diction\"}],\"language\":\"en\"}" intent="" boosted=true
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3934 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"] [prompt="The following words are spelled exactly as shown: Kubernetes, Diction."] [custom_words="[\"Kubernetes\",\"Diction\"]"]
+=== opus_decode_ok
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"opus text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=200
+hook OnTranscription model=small chars=9 audioMs=200 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6685 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"]
+=== opus_decode_without_subprotocol_offer
+dial status 101
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"opus text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation=""
+hook OnAudioReceived ms=200
+hook OnTranscription model=small chars=9 audioMs=200 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6685 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"]
+=== opus_decode_webm
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"opus text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=200
+hook OnTranscription model=small chars=9 audioMs=200 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=6685 [file name="file" filename="audio.wav" ct="application/octet-stream" len=6444 head="RIFF$\x19\x00\x00WAVE"]
+=== opus_decode_empty_output
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+close code=4004 reason="no audio received"
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnError source=streaming kind=ws_no_audio reason= endpoint=/v1/audio/stream provider= status=0 inputChars=1 latencySet=true hint="socket closed with zero audio bytes"
+hook OnRequestFailed type=no_audio
+=== opus_decoded_too_large
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+close code=4003 reason="decoded audio too large"
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnError source=streaming kind=ws_audio_too_large reason=decoded endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="decoded PCM exceeded maxPCM"
+hook OnRequestFailed type=stt_error
+=== opus_ffmpeg_dies_write_error
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+close code=4002 reason="opus decode error"
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnError source=stt kind=opus_decode reason= endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="ffmpeg stdin write error: write |1: broken pipe; ffmpeg: decoder-complaint"
+hook OnRequestFailed type=stt_error
+=== opus_decode_ffmpeg_start_fails
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+close code=1011 reason="ffmpeg error"
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnError source=streaming kind=opus_decode reason= endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="ffmpeg start failed"
+hook OnRequestFailed type=stt_error
+=== opus_unknown_magic_decode
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+close code=4000 reason="expected Ogg or WebM container"
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnError source=streaming kind=opus_decode reason= endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="expected Ogg or WebM container; got unknown magic bytes"
+hook OnRequestFailed type=stt_error
+=== opus_unknown_magic_passthrough
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+close code=4000 reason="expected Ogg or WebM container"
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnError source=streaming kind=opus_decode reason= endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="expected Ogg or WebM container; got unknown magic bytes"
+hook OnRequestFailed type=stt_error
+=== opus_audio_too_large_compressed
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+close code=4003 reason="decoded audio too large"
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnError source=streaming kind=ws_audio_too_large reason=decoded endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="decoded PCM exceeded maxPCM"
+hook OnRequestFailed type=stt_error
+=== opus_passthrough_ogg_duration
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"passthrough"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=1000
+hook OnTranscription model=small chars=11 audioMs=1000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=338 [file name="file" filename="audio.ogg" ct="application/octet-stream" len=97 head="OggS\x00\x02\x00\x00\x00\x00\x00\x00"]
+=== opus_passthrough_ogg_no_duration
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"passthrough"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=0
+hook OnTranscription model=small chars=11 audioMs=0 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=285 [file name="file" filename="audio.ogg" ct="application/octet-stream" len=44 head="OggS\x00\x00\x00\x00\x00\x00\x00\x00"]
+=== opus_passthrough_webm
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"passthrough"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=0
+hook OnTranscription model=small chars=11 audioMs=0 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=286 [file name="file" filename="audio.webm" ct="application/octet-stream" len=44 head="\x1aEߣ\x00\x00\x00\x00\x00\x00\x00\x00"]
+=== opus_passthrough_two_chunks
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"clean","mode":"m"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=1000
+hook OnTranscription model=small chars=11 audioMs=1000 enhance=true e2e=false
+postProcess text="passthrough" ctx="" intent="" boosted=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=338 [file name="file" filename="audio.ogg" ct="application/octet-stream" len=97 head="OggS\x00\x02\x00\x00\x00\x00\x00\x00"]
+=== opus_no_ffmpeg_decode_backend
+dial status 101
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+close code=4002 reason="opus unavailable: ffmpeg not in PATH"
+hook OnError source=streaming kind=opus_decode reason= endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="ffmpeg not found; cannot decode Opus for this backend"
+hook OnRequestFailed type=stt_error
+=== opus_no_ffmpeg_client_offers_falls_back_to_pcm
+dial status 101
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"opus text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation="unavailable"
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=9 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3485 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"]
+=== opus_no_ffmpeg_passthrough_backend
+dial status 101
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"x"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation=""
+hook OnAudioReceived ms=1000
+hook OnTranscription model=small chars=1 audioMs=1000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=338 [file name="file" filename="audio.ogg" ct="application/octet-stream" len=97 head="OggS\x00\x02\x00\x00\x00\x00\x00\x00"]
+=== opus_offered_but_pcm_codec
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"x"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=1 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== opus_with_preview_relay_reports_failed
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"x"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+relay outcome failed
+hook OnAudioReceived ms=1000
+hook OnTranscription model=small chars=1 audioMs=1000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=338 [file name="file" filename="audio.ogg" ct="application/octet-stream" len=97 head="OggS\x00\x02\x00\x00\x00\x00\x00\x00"]
+=== opus_principal_cap
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+close code=4002 reason="server busy; too many concurrent Opus decodes"
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnError source=streaming kind=ws_busy reason=principal_cap endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="caller already holds the maximum Opus decode slots"
+hook OnRequestFailed type=stt_error
+=== opus_semaphore_saturated_5s
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+close code=4002 reason="server busy; too many concurrent Opus decodes"
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnError source=streaming kind=ws_busy reason= endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="opus decode semaphore saturated after 5s"
+hook OnRequestFailed type=stt_error
+=== live_opus_decoder_matches_duration
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"seg1."}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=1000
+hook OnTranscription model=small chars=5 audioMs=1000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=338 [file name="file" filename="audio.ogg" ct="application/octet-stream" len=97 head="OggS\x00\x02\x00\x00\x00\x00\x00\x00"]
+=== live_opus_decoder_incomplete_uses_whole_clip
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"seg1."}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=1000
+hook OnTranscription model=small chars=5 audioMs=1000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=338 [file name="file" filename="audio.ogg" ct="application/octet-stream" len=97 head="OggS\x00\x02\x00\x00\x00\x00\x00\x00"]
+=== live_opus_decoder_dies
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"seg1."}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=0
+hook OnTranscription model=small chars=5 audioMs=0 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=200249 [file name="file" filename="audio.ogg" ct="application/octet-stream" len=200008 head="OggS\x01\x01\x01\x01\x01\x01\x01\x01"]
+=== live_opus_decoder_does_not_start
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"seg1."}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=1000
+hook OnTranscription model=small chars=5 audioMs=1000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=338 [file name="file" filename="audio.ogg" ct="application/octet-stream" len=97 head="OggS\x00\x02\x00\x00\x00\x00\x00\x00"]
+=== live_opus_slots_busy
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"seg1."}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=1000
+hook OnTranscription model=small chars=5 audioMs=1000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=338 [file name="file" filename="audio.ogg" ct="application/octet-stream" len=97 head="OggS\x00\x02\x00\x00\x00\x00\x00\x00"]
+=== live_opus_caller_cap_busy
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"seg1."}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=1000
+hook OnTranscription model=small chars=5 audioMs=1000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=338 [file name="file" filename="audio.ogg" ct="application/octet-stream" len=97 head="OggS\x00\x02\x00\x00\x00\x00\x00\x00"]
+=== live_pcm_segmented
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"seg1. seg2."}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=8000
+hook OnTranscription model=small chars=11 audioMs=8000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=139604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=139244 head="RIFF\xe4\x1f\x02\x00WAVE"] [language="en"]
+backend small hit 2: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=117204 [file name="file" filename="audio.wav" ct="application/octet-stream" len=116844 head="RIFFd\xc8\x01\x00WAVE"] [language="en"]
+=== live_pcm_segmented_enhance
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"clean","mode":"m"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=8000
+hook OnTranscription model=small chars=11 audioMs=8000 enhance=true e2e=false
+postProcess text="seg1. seg2." ctx="{\"language\":\"en\"}" intent="" boosted=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=139604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=139244 head="RIFF\xe4\x1f\x02\x00WAVE"] [language="en"]
+backend small hit 2: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=117204 [file name="file" filename="audio.wav" ct="application/octet-stream" len=116844 head="RIFFd\xc8\x01\x00WAVE"] [language="en"]
+=== live_pcm_language_changed_at_done
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"whole clip"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=8000
+hook OnTranscription model=small chars=10 audioMs=8000 enhance=false e2e=false
+backend small hit N: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=256404 [file name="file" filename="audio.wav" ct="application/octet-stream" len=256044 head="RIFF$\xe8\x03\x00WAVE"] [language="de"]
+=== live_pcm_short_clip
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"seg1."}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=300
+hook OnTranscription model=small chars=5 audioMs=300 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=10004 [file name="file" filename="audio.wav" ct="application/octet-stream" len=9644 head="RIFF\xa4%\x00\x00WAVE"] [language="en"]
+=== live_pcm_invented_text
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=8000
+hook OnError source=stt kind=stt_hallucination reason= endpoint=/v1/audio/stream provider=small status=0 inputChars=0 latencySet=true hint="backend returned repeated-token hallucination"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=139604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=139244 head="RIFF\xe4\x1f\x02\x00WAVE"] [language="en"]
+backend small hit 2: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=256404 [file name="file" filename="audio.wav" ct="application/octet-stream" len=256044 head="RIFF$\xe8\x03\x00WAVE"] [language="en"]
+=== live_pcm_backend_fails_whole_clip_retry
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"fallback text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=8000
+hook OnError source=stt kind=stt_backend_5xx reason= endpoint=/v1/audio/stream provider=small status=500 inputChars=0 latencySet=true hint="backend returned 500; demoted, retrying on fallback"
+hook OnTranscription model=fallback chars=13 audioMs=8000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=139604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=139244 head="RIFF\xe4\x1f\x02\x00WAVE"] [language="en"]
+backend small hit 2: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=117204 [file name="file" filename="audio.wav" ct="application/octet-stream" len=116844 head="RIFFd\xc8\x01\x00WAVE"] [language="en"]
+backend small hit 3: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=256404 [file name="file" filename="audio.wav" ct="application/octet-stream" len=256044 head="RIFF$\xe8\x03\x00WAVE"] [language="en"]
+backend fallback hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=256404 [file name="file" filename="audio.wav" ct="application/octet-stream" len=256044 head="RIFF$\xe8\x03\x00WAVE"] [language="en"]
+=== live_pcm_invented_text_short_clip_empty_result
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":""}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=2000
+hook OnTranscription model=small chars=0 audioMs=2000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=64404 [file name="file" filename="audio.wav" ct="application/octet-stream" len=64044 head="RIFF$\xfa\x00\x00WAVE"] [language="en"]
+=== live_pcm_invented_text_whole_clip_fails
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=7000
+hook OnError source=stt kind=stt_hallucination reason= endpoint=/v1/audio/stream provider=small status=0 inputChars=0 latencySet=true hint="backend returned repeated-token hallucination"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=139604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=139244 head="RIFF\xe4\x1f\x02\x00WAVE"] [language="en"]
+backend small hit 2: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=224404 [file name="file" filename="audio.wav" ct="application/octet-stream" len=224044 head="RIFF$k\x03\x00WAVE"] [language="en"]
+=== live_pcm_builtin_preview_no_partials
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"seg1. seg2."}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=8000
+hook OnTranscription model=small chars=11 audioMs=8000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=139604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=139244 head="RIFF\xe4\x1f\x02\x00WAVE"] [language="en"]
+backend small hit 2: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=117204 [file name="file" filename="audio.wav" ct="application/octet-stream" len=116844 head="RIFFd\xc8\x01\x00WAVE"] [language="en"]
+=== live_decode_path_feeds_engine
+dial status 101
+dial header Sec-Websocket-Protocol: diction.opus.v1
+dial header X-Diction-Route-Lang: 
+dial header X-Diction-Route-Model: small
+frame text {"text":"seg1."}
+close code=1000 reason=""
+hook OnStreamingCodec codec=opus negotiation="accepted"
+hook OnAudioReceived ms=1000
+hook OnTranscription model=small chars=5 audioMs=1000 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=32285 [file name="file" filename="audio.wav" ct="application/octet-stream" len=32044 head="RIFF$}\x00\x00WAVE"]
+=== relay_preview_pcm
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"x"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+relay open lang=en
+relay send
+relay stop
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=1 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== nonlive_long_text_for_short_audio_fails
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=4002 reason="transcription failed"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnError source=stt kind=stt_hallucination reason= endpoint=/v1/audio/stream provider=small status=0 inputChars=0 latencySet=true hint="backend returned repeated-token hallucination"
+hook OnRequestFailed type=stt_error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== merge_one_phone_frame
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"merged:cloud text:map[nemotron:phone text]","mode":"transcribe"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=10 audioMs=100 enhance=true e2e=false
+hook OnMergeInputs phones=[nemotron]
+hook OnMerged merged=true
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== merge_no_phone_frame
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"cleaned","mode":"transcribe"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=10 audioMs=100 enhance=true e2e=false
+hook OnMergeInputs phones=[]
+hook OnMerged merged=false
+postProcess text="cloud text" ctx="{\"language\":\"en\"}" intent="" boosted=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== merge_error_falls_back
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"cloud text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=10 audioMs=100 enhance=true e2e=false
+hook OnMergeInputs phones=[nemotron]
+hook OnMerged merged=false
+hook OnEnhanceSkipped reason=error
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== merge_edit_intent_skips_merge
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"edited","mode":"edit"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=10 audioMs=100 enhance=true e2e=false
+postProcess text="cloud text" ctx="{\"language\":\"en\"}" intent="edit" boosted=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== merge_rejected_cleanup_fallback
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"cleaned","mode":"transcribe"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=10 audioMs=100 enhance=true e2e=false
+hook OnMergeInputs phones=[nemotron]
+hook OnMerged merged=false
+postProcess text="cloud text" ctx="{\"language\":\"en\"}" intent="" boosted=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== merge_rejected_no_budget
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"cloud text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=10 audioMs=100 enhance=true e2e=false
+hook OnMergeInputs phones=[nemotron]
+hook OnMerged merged=false
+hook OnEnhanceSkipped reason=rejected
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== merge_enhance_off
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"cloud text"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=10 audioMs=100 enhance=false e2e=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== merge_with_split_enhance_not_merged
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+frame text {"text":"cloud text"}
+frame text {"type":"enhanced","text":"cleaned","mode":"transcribe"}
+close code=1000 reason=""
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnAudioReceived ms=100
+hook OnTranscription model=small chars=10 audioMs=100 enhance=true e2e=false
+postProcess text="cloud text" ctx="{\"language\":\"en\"}" intent="" boosted=false
+backend small hit 1: POST /v1/audio/transcriptions ct=multipart/form-data auth="" cl=3604 [file name="file" filename="audio.wav" ct="application/octet-stream" len=3244 head="RIFF\xa4\f\x00\x00WAVE"] [language="en"]
+=== idle_timeout_then_nothing_more
+dial status 101
+dial header X-Diction-Route-Lang: en
+dial header X-Diction-Route-Model: small
+close code=1008 reason="idle_timeout"
+hook OnStreamingCodec codec=pcm negotiation=""
+hook OnError source=streaming kind=ws_read reason=idle_timeout endpoint=/v1/audio/stream provider= status=0 inputChars=0 latencySet=true hint="websocket read failed: idle_timeout"
+hook OnRequestFailed type=client_abort

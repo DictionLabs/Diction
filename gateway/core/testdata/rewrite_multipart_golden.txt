@@ -1,0 +1,32 @@
+=== plain_passthrough
+ct=multipart/form-data dur=0 fields: [custom_words="[\"old\"]"] [language="en"] [prompt="old prompt"] [file "file" filename="a.wav" ct="" len=8 head="RIFFdata"] [extra="x"]
+=== custom_words_replaced
+ct=multipart/form-data dur=0 fields: [language="en"] [prompt="old prompt"] [file "file" filename="a.wav" ct="" len=8 head="RIFFdata"] [extra="x"] [custom_words="[\"new\"]"]
+=== strip_language
+ct=multipart/form-data dur=0 fields: [custom_words="[\"old\"]"] [prompt="old prompt"] [file "file" filename="a.wav" ct="" len=8 head="RIFFdata"] [extra="x"]
+=== language_override
+ct=multipart/form-data dur=0 fields: [custom_words="[\"old\"]"] [prompt="old prompt"] [file "file" filename="a.wav" ct="" len=8 head="RIFFdata"] [extra="x"] [language="de"]
+=== all_injections
+ct=multipart/form-data dur=0 fields: [prompt="old prompt"] [file "file" filename="a.wav" ct="" len=8 head="RIFFdata"] [extra="x"] [model="fm"] [prompt="wp"] [custom_words="[\"c\"]"] [language="fr"] [response_format="verbose_json"]
+=== language_absent_override_added
+ct=multipart/form-data dur=0 fields: [x="y"] [language="es"]
+=== empty_form
+ct=multipart/form-data dur=0 fields:
+=== no_boundary_found
+error: read multipart: multipart: NextPart: EOF (out nil=true ct="" dur=0)
+=== truncated_in_headers
+ct=multipart/form-data dur=0 fields:
+=== truncated_field_value
+error: read part x: unexpected EOF (out nil=true ct="" dur=0)
+=== truncated_file_data
+error: read audio: unexpected EOF (out nil=true ct="" dur=0)
+=== two_files_last_duration_wins
+ct=multipart/form-data dur=0 fields: [file "file" filename="a.wav" ct="" len=4 head="RIFF"] [file "file" filename="b.wav" ct="" len=4 head="RIFF"]
+=== file_without_filename_is_field
+ct=multipart/form-data dur=0 fields: [file="inline"]
+=== wav_file_with_duration
+ct=multipart/form-data dur=3000 fields: [file "file" filename="a.wav" ct="" len=96044 head="RIFF$w\x01\x00"]
+=== convert_failure_surfaces
+error: ffmpeg convert: exit status 1 (out nil=true ct="" dur=0)
+=== filename_with_quote_escaped
+ct=multipart/form-data dur=0 fields: [file "file" filename="we\"ird.m4a" ct="" len=4 head="data"]

@@ -1,13 +1,5 @@
 package core
 
-// Gateway Opus streaming test suite.
-//
-// Covers: codec validation, subprotocol negotiation, passthrough, ffmpeg
-// decode path, decoded-size cap, garbage-bytes contract violation,
-// granulepos duration, WAV-header/ffmpeg-arg agreement, and benchmark.
-//
-// Tests that require actual ffmpeg skip when the binary is absent.
-
 import (
 	"bytes"
 	"context"
@@ -27,9 +19,6 @@ import (
 	"github.com/coder/websocket"
 )
 
-// --- test helpers ---
-
-// ensureFfmpeg skips the test if ffmpeg is not in PATH and caches its path for handler tests.
 func ensureFfmpeg(t *testing.T) string {
 	t.Helper()
 	p, err := exec.LookPath("ffmpeg")
@@ -40,7 +29,6 @@ func ensureFfmpeg(t *testing.T) string {
 	return p
 }
 
-// genOggOpus generates ~100 ms of silent Ogg/Opus using ffmpeg.
 func genOggOpus(t *testing.T) []byte {
 	t.Helper()
 	p := ensureFfmpeg(t)
@@ -63,7 +51,6 @@ func genOggOpus(t *testing.T) []byte {
 	return out.Bytes()
 }
 
-// makeGateway builds a Gateway wired to the given backend server.
 func makeGateway(backendURL string, needsWAV bool, maxBodySize int64) *Gateway {
 	g := &Gateway{
 		backends: []Backend{{
@@ -80,10 +67,9 @@ func makeGateway(backendURL string, needsWAV bool, maxBodySize int64) *Gateway {
 	return g
 }
 
-// echoTranscript is a backend that always returns the given transcript text.
 func echoTranscript(t *testing.T, text string) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{"text":%q}`, text)
 	}))
@@ -91,7 +77,6 @@ func echoTranscript(t *testing.T, text string) *httptest.Server {
 	return srv
 }
 
-// captureBackend records the filename and body from the multipart upload.
 type captureBackend struct {
 	srv      *httptest.Server
 	filename atomic.Value
@@ -103,7 +88,7 @@ func newCaptureBackend(t *testing.T, respond string) *captureBackend {
 	t.Helper()
 	cb := &captureBackend{}
 	cb.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.ParseMultipartForm(50 << 20) //nolint:errcheck
+		r.ParseMultipartForm(50 << 20)
 		if f, fh, err := r.FormFile("file"); err == nil {
 			cb.filename.Store(fh.Filename)
 			data, _ := io.ReadAll(f)
@@ -118,9 +103,6 @@ func newCaptureBackend(t *testing.T, respond string) *captureBackend {
 	return cb
 }
 
-// streamOpusBinary dials with codec=opus (and optionally the Opus subprotocol),
-// sends all ogg bytes as one binary frame, sends done, and reads back the
-// transcript. Returns the transcript and the close error (if any).
 func streamOpusBinary(t *testing.T, srv *httptest.Server, ogg []byte, offerSub bool) (string, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -155,7 +137,6 @@ func streamOpusBinary(t *testing.T, srv *httptest.Server, ogg []byte, offerSub b
 	return result.Text, nil
 }
 
-// assertCloseCode reads the connection expecting it to be closed with the given code.
 func assertCloseCode(t *testing.T, conn *websocket.Conn, want websocket.StatusCode) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -175,8 +156,6 @@ func assertCloseCode(t *testing.T, conn *websocket.Conn, want websocket.StatusCo
 	}
 }
 
-// --- codec validation ---
-
 func TestOpus_UnknownCodecRejected400(t *testing.T) {
 	b := echoTranscript(t, "nope")
 	g := makeGateway(b.URL, false, 10<<20)
@@ -193,8 +172,6 @@ func TestOpus_UnknownCodecRejected400(t *testing.T) {
 	}
 }
 
-// TestOpus_CodecPCMRegression guards that codec=pcm and absent codec are
-// still accepted and produce transcripts (no Opus code path invoked).
 func TestOpus_CodecPCMRegression(t *testing.T) {
 	for _, q := range []string{"", "codec=pcm"} {
 		q := q
@@ -212,24 +189,22 @@ func TestOpus_CodecPCMRegression(t *testing.T) {
 			}
 			defer conn.CloseNow()
 
-			conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200)) //nolint:errcheck
+			conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
 			done, _ := json.Marshal(map[string]string{"action": "done"})
-			conn.Write(ctx, websocket.MessageText, done) //nolint:errcheck
+			conn.Write(ctx, websocket.MessageText, done)
 
 			_, data, err := conn.Read(ctx)
 			if err != nil {
 				t.Fatalf("read: %v", err)
 			}
 			var result struct{ Text string }
-			json.Unmarshal(data, &result) //nolint:errcheck
+			json.Unmarshal(data, &result)
 			if result.Text != "pcm ok" {
 				t.Errorf("text: want 'pcm ok', got %q", result.Text)
 			}
 		})
 	}
 }
-
-// --- passthrough path (NeedsWAV=false) ---
 
 func TestOpus_PassthroughByteIdentical(t *testing.T) {
 	ogg := genOggOpus(t)
@@ -258,20 +233,14 @@ func TestOpus_PassthroughByteIdentical(t *testing.T) {
 	}
 }
 
-// TestOpus_LargeSingleFrameAccepted is the regression test for the
-// coder/websocket 32 KiB default read limit. Our own client never hit it (PCM
-// chunks are ~682 B), but any batching or whole-file client did, and got closed
-// with 1009 "read limited at 32769 bytes" instead of a transcript. Compression
-// actively encourages larger, less frequent frames, so this must stay fixed.
 func TestOpus_LargeSingleFrameAccepted(t *testing.T) {
-	// Build a synthetic Ogg stream comfortably above the old 32 KiB default.
 	ogg := buildLargeOggOpus(64 << 10)
 	if len(ogg) <= 32<<10 {
 		t.Fatalf("fixture too small to exercise the limit: %d bytes", len(ogg))
 	}
 
 	cb := newCaptureBackend(t, "large-frame")
-	g := makeGateway(cb.srv.URL, false, 10<<20) // NeedsWAV=false → passthrough, no ffmpeg needed
+	g := makeGateway(cb.srv.URL, false, 10<<20)
 	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
@@ -292,16 +261,13 @@ func TestOpus_LargeSingleFrameAccepted(t *testing.T) {
 	}
 }
 
-// buildLargeOggOpus returns a syntactically valid Ogg/Opus stream of at least
-// minBytes, built from many small pages (writeOggPage carries one ≤255-byte
-// segment per page).
 func buildLargeOggOpus(minBytes int) []byte {
 	var buf bytes.Buffer
 
 	var head [19]byte
 	copy(head[:8], "OpusHead")
-	head[8] = 1 // version
-	head[9] = 1 // mono
+	head[8] = 1
+	head[9] = 1
 	binary.LittleEndian.PutUint32(head[12:], 48000)
 	writeOggPage(&buf, 0x02, 0, 0, 0, head[:])
 
@@ -315,8 +281,6 @@ func buildLargeOggOpus(minBytes int) []byte {
 	}
 	return buf.Bytes()
 }
-
-// --- ffmpeg decode path (NeedsWAV=true) ---
 
 func TestOpus_FFmpegDecodeProducesWAV(t *testing.T) {
 	ogg := genOggOpus(t)
@@ -347,12 +311,10 @@ func TestOpus_FFmpegDecodeProducesWAV(t *testing.T) {
 	}
 }
 
-// --- decoded-side size cap ---
-
 func TestOpus_DecodedSizeCapEnforced(t *testing.T) {
 	ogg := genOggOpus(t)
 	b := echoTranscript(t, "nope")
-	g := makeGateway(b.URL, true, 1) // 1 byte cap — any decoded output exceeds this
+	g := makeGateway(b.URL, true, 1)
 	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
 	t.Cleanup(srv.Close)
 
@@ -366,16 +328,13 @@ func TestOpus_DecodedSizeCapEnforced(t *testing.T) {
 	}
 	defer conn.CloseNow()
 
-	conn.Write(ctx, websocket.MessageBinary, ogg) //nolint:errcheck
+	conn.Write(ctx, websocket.MessageBinary, ogg)
 	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done) //nolint:errcheck
+	conn.Write(ctx, websocket.MessageText, done)
 	assertCloseCode(t, conn, websocket.StatusCode(wsCloseTooLarge))
 }
 
-// --- garbage bytes ---
-
 func TestOpus_GarbageBytesUnknownContainer(t *testing.T) {
-	// Bytes that aren't OggS or EBML magic → wsCloseUnknown (contract violation).
 	b := echoTranscript(t, "nope")
 	g := makeGateway(b.URL, false, 10<<20)
 	srv := httptest.NewServer(trackHandler(g.StreamingHandler()))
@@ -392,13 +351,11 @@ func TestOpus_GarbageBytesUnknownContainer(t *testing.T) {
 	defer conn.CloseNow()
 
 	garbage := []byte("not an ogg or webm stream, just random bytes here")
-	conn.Write(ctx, websocket.MessageBinary, garbage) //nolint:errcheck
+	conn.Write(ctx, websocket.MessageBinary, garbage)
 	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done) //nolint:errcheck
+	conn.Write(ctx, websocket.MessageText, done)
 	assertCloseCode(t, conn, websocket.StatusCode(wsCloseUnknown))
 }
-
-// --- subprotocol negotiation ---
 
 func TestOpus_SubprotocolAcceptedReportsCodecTag(t *testing.T) {
 	ogg := genOggOpus(t)
@@ -428,8 +385,6 @@ func TestOpus_SubprotocolAcceptedReportsCodecTag(t *testing.T) {
 }
 
 func TestOpus_SubprotocolDeclinedFallsBackToPCM(t *testing.T) {
-	// When ffmpeg is absent and NeedsWAV=true, the server cannot offer the Opus
-	// subprotocol. A client that offered it falls back to PCM automatically.
 	realPath := lookupFfmpeg()
 	testSetFfmpegPath("")
 	t.Cleanup(func() { testSetFfmpegPath(realPath) })
@@ -453,24 +408,22 @@ func TestOpus_SubprotocolDeclinedFallsBackToPCM(t *testing.T) {
 		t.Error("server echoed subprotocol even though ffmpeg is unavailable")
 	}
 
-	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200)) //nolint:errcheck
+	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
 	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done) //nolint:errcheck
+	conn.Write(ctx, websocket.MessageText, done)
 
 	_, data, err := conn.Read(ctx)
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
 	var result struct{ Text string }
-	json.Unmarshal(data, &result) //nolint:errcheck
+	json.Unmarshal(data, &result)
 	if result.Text != "pcm fallback" {
 		t.Errorf("text: want 'pcm fallback', got %q", result.Text)
 	}
 }
 
 func TestOpus_NonNegotiatingClientNoFfmpegClosesCleanly(t *testing.T) {
-	// A non-negotiating client (no subprotocol offered, codec=opus) on a
-	// NeedsWAV backend with no ffmpeg must get wsCloseFailed, not a hang.
 	realPath := lookupFfmpeg()
 	testSetFfmpegPath("")
 	t.Cleanup(func() { testSetFfmpegPath(realPath) })
@@ -482,7 +435,7 @@ func TestOpus_NonNegotiatingClientNoFfmpegClosesCleanly(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, wsURL(srv, "codec=opus"), nil /* no subprotocol */)
+	conn, _, err := websocket.Dial(ctx, wsURL(srv, "codec=opus"), nil)
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -507,17 +460,15 @@ func TestOpus_PCMCodecTagReported(t *testing.T) {
 		t.Fatalf("dial: %v", err)
 	}
 	defer conn.CloseNow()
-	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200)) //nolint:errcheck
+	conn.Write(ctx, websocket.MessageBinary, make([]byte, 3200))
 	done, _ := json.Marshal(map[string]string{"action": "done"})
-	conn.Write(ctx, websocket.MessageText, done) //nolint:errcheck
-	conn.Read(ctx)                               //nolint:errcheck
+	conn.Write(ctx, websocket.MessageText, done)
+	conn.Read(ctx)
 
 	if c, _ := gotCodec.Load().(string); c != "pcm" {
 		t.Errorf("codec tag: want 'pcm', got %q", c)
 	}
 }
-
-// --- granulepos duration (pure-Go, no ffmpeg) ---
 
 func TestOpus_OggDurationMs(t *testing.T) {
 	tests := []struct {
@@ -554,17 +505,13 @@ func TestOpus_OggDurationMsEmptySlice(t *testing.T) {
 	}
 }
 
-// buildMinimalOggOpus creates a two-page Ogg file: BOS with OpusHead
-// (containing preSkip), then one data page with the given granulepos.
-// CRC is left zero — the helpers under test don't validate it.
 func buildMinimalOggOpus(granule int64, preSkip uint16) []byte {
 	var buf bytes.Buffer
 
-	// OpusHead: magic(8) + version(1) + channels(1) + pre-skip(2) + sample-rate(4) + gain(2) + mapping(1) = 19 bytes
 	var head [19]byte
 	copy(head[:8], "OpusHead")
-	head[8] = 1 // version
-	head[9] = 1 // mono
+	head[8] = 1
+	head[9] = 1
 	binary.LittleEndian.PutUint16(head[10:], preSkip)
 	binary.LittleEndian.PutUint32(head[12:], 48000)
 
@@ -573,7 +520,6 @@ func buildMinimalOggOpus(granule int64, preSkip uint16) []byte {
 	return buf.Bytes()
 }
 
-// writeOggPage appends a minimal Ogg page to buf. CRC bytes are zero.
 func writeOggPage(buf *bytes.Buffer, headerType byte, granulepos int64, pageSeq, serial uint32, payload []byte) {
 	var hdr [27]byte
 	copy(hdr[:], "OggS")
@@ -581,17 +527,12 @@ func writeOggPage(buf *bytes.Buffer, headerType byte, granulepos int64, pageSeq,
 	binary.LittleEndian.PutUint64(hdr[6:], uint64(granulepos))
 	binary.LittleEndian.PutUint32(hdr[14:], serial)
 	binary.LittleEndian.PutUint32(hdr[18:], pageSeq)
-	hdr[26] = 1 // one segment
+	hdr[26] = 1
 	buf.Write(hdr[:])
 	buf.WriteByte(byte(len(payload)))
 	buf.Write(payload)
 }
 
-// --- WAV-header / ffmpeg-arg agreement ---
-
-// TestOpus_WAVFormatAgreement asserts that the constants in WriteWAVHeader
-// (16 kHz, mono, s16le) match what the ffmpeg decode command requests.
-// If either side drifts, the backend receives mis-framed PCM.
 func TestOpus_WAVFormatAgreement(t *testing.T) {
 	const wantSampleRate = uint32(16000)
 	const wantChannels = uint16(1)
@@ -616,8 +557,6 @@ func TestOpus_WAVFormatAgreement(t *testing.T) {
 	}
 }
 
-// --- benchmark ---
-
 func BenchmarkOpus_ConcurrentFFmpegDecode(b *testing.B) {
 	p, err := exec.LookPath("ffmpeg")
 	if err != nil {
@@ -638,7 +577,7 @@ func BenchmarkOpus_ConcurrentFFmpegDecode(b *testing.B) {
 	oggBytes := ogg.Bytes()
 
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.ParseMultipartForm(50 << 20) //nolint:errcheck
+		r.ParseMultipartForm(50 << 20)
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprint(w, `{"text":"bench"}`)
 	}))
@@ -660,10 +599,10 @@ func BenchmarkOpus_ConcurrentFFmpegDecode(b *testing.B) {
 				b.Errorf("dial: %v", err)
 				continue
 			}
-			conn.Write(ctx, websocket.MessageBinary, oggBytes) //nolint:errcheck
+			conn.Write(ctx, websocket.MessageBinary, oggBytes)
 			done, _ := json.Marshal(map[string]string{"action": "done"})
-			conn.Write(ctx, websocket.MessageText, done) //nolint:errcheck
-			conn.Read(ctx)                               //nolint:errcheck
+			conn.Write(ctx, websocket.MessageText, done)
+			conn.Read(ctx)
 			conn.CloseNow()
 			cancel()
 		}

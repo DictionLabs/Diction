@@ -10,10 +10,6 @@ import (
 	"time"
 )
 
-// A self-hoster may set the post-delivery budget (DICTION_LIVE_ENHANCE_TIMEOUT_MS) above
-// the stream idle watchdog, for a slow local LLM. The enhanced frame must still arrive:
-// the watchdog bounds the gap between *client* frames, and the client sends nothing
-// after `done`. (.claude/plans/insert-once-plan.md, C1.)
 func TestSplitEnhancedFrameOutlivesIdleWatchdog(t *testing.T) {
 	whisper := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"text":"hello there world friend"}`)
@@ -31,7 +27,7 @@ func TestSplitEnhancedFrameOutlivesIdleWatchdog(t *testing.T) {
 
 	slowLLM := func(ctx context.Context, _, _, _ string) (string, string, error) {
 		select {
-		case <-time.After(900 * time.Millisecond): // three idle windows
+		case <-time.After(900 * time.Millisecond):
 			return "Hello there, world friend.", "transcribe", nil
 		case <-ctx.Done():
 			return "", "", ctx.Err()

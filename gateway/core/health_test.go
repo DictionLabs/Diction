@@ -23,16 +23,14 @@ func TestHealthState_SetAndGet(t *testing.T) {
 
 func TestHealthState_UnknownBackend(t *testing.T) {
 	h := newHealthState()
-	// Never-set key should return false
 	if h.get("nonexistent") {
 		t.Error("want false for unknown backend")
 	}
 }
 
-func TestHealthState_ConcurrentAccess(t *testing.T) {
+func TestHealthState_ConcurrentAccess(_ *testing.T) {
 	h := newHealthState()
 	var wg sync.WaitGroup
-	// Multiple goroutines writing and reading simultaneously
 	for i := 0; i < 50; i++ {
 		wg.Add(2)
 		go func(v bool) {
@@ -60,8 +58,7 @@ func TestGateway_SetAndIsServiceHealthy(t *testing.T) {
 }
 
 func TestStartHealthChecker_UpdatesState(t *testing.T) {
-	// Start a mock backend that returns 200 OK for /health
-	healthyBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	healthyBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer healthyBackend.Close()
@@ -75,7 +72,6 @@ func TestStartHealthChecker_UpdatesState(t *testing.T) {
 		maxBodySize:  10 << 20,
 	}
 
-	// startHealthChecker does an initial synchronous check before returning
 	g.startHealthChecker()
 
 	if !g.health.get("testmodel") {
@@ -84,8 +80,7 @@ func TestStartHealthChecker_UpdatesState(t *testing.T) {
 }
 
 func TestStartHealthChecker_UnhealthyBackend(t *testing.T) {
-	// Backend returns 503
-	unhealthyBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	unhealthyBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer unhealthyBackend.Close()

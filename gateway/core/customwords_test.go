@@ -18,10 +18,6 @@ import (
 	"github.com/coder/websocket"
 )
 
-// STT custom-word boost: the custom_words field reaches backends with
-// AcceptsCustomWords (Cohere, Parakeet) and nothing else. Plan:
-// .claude/plans/cohere-custom-word-boost-plan.md.
-
 const cwContext = `{"customWords":[{"word":"Mochala"},{"word":"Endře"}]}`
 
 func TestBuildCustomWordsField(t *testing.T) {
@@ -70,10 +66,8 @@ func TestCustomWordsFor_OnlyFlaggedBackends(t *testing.T) {
 	}
 }
 
-func TestDefaultBackends_OnlyCohereParakeetAndCanaryAcceptCustomWords(t *testing.T) {
-	// Parakeet added 2026-10-18: .claude/plans/parakeet-custom-word-boost-plan.md.
-	// Canary added 2026-10-18: .claude/plans/canary-custom-word-boost-plan.md.
-	want := map[string]bool{"cohere-transcribe": true, "parakeet-v3": true, "canary-v2": true}
+func TestDefaultBackends_OnlyListedBackendsAcceptCustomWords(t *testing.T) {
+	want := map[string]bool{"cohere-transcribe": true, "parakeet-v3": true, "canary-v2": true, "qwen3-asr": true}
 	for _, b := range DefaultBackends() {
 		if b.AcceptsCustomWords != want[b.Name] {
 			t.Errorf("%s: AcceptsCustomWords=%v", b.Name, b.AcceptsCustomWords)
@@ -81,7 +75,6 @@ func TestDefaultBackends_OnlyCohereParakeetAndCanaryAcceptCustomWords(t *testing
 	}
 }
 
-// formFields reads every non-file field of a multipart body.
 func formFields(t *testing.T, body []byte, contentType string) map[string][]string {
 	t.Helper()
 	_, params, _ := parseMediaType(contentType)
@@ -104,8 +97,6 @@ func formFields(t *testing.T, body []byte, contentType string) map[string][]stri
 }
 
 func TestRewriteMultipart_CustomWords(t *testing.T) {
-	// A client-sent custom_words is replaced when the gateway writes its own, and passes
-	// through untouched otherwise (pre-existing behaviour for every other backend).
 	body, ct := buildMultipart(t, map[string]string{"language": "en", "custom_words": `["injected"]`}, "audio.m4a", "audio")
 	boundary := parseBoundary(ct)
 
@@ -126,7 +117,6 @@ func TestRewriteMultipart_CustomWords(t *testing.T) {
 	}
 }
 
-// fieldRecorder is a backend that records the custom_words and prompt it received.
 type fieldRecorder struct {
 	mu          sync.Mutex
 	customWords []string
@@ -250,8 +240,6 @@ func TestProxyToBackend_CustomWordsOnlyToFlaggedBackend(t *testing.T) {
 	}
 }
 
-// End to end on /v1/audio/stream: context frame → custom_words on the flagged
-// primary, dropped on the retry to an unflagged fallback.
 func TestStreamHandler_CustomWordsAndRetry(t *testing.T) {
 	primaryRec, fallbackRec := &fieldRecorder{}, &fieldRecorder{}
 	primary := primaryRec.server(t, http.StatusInternalServerError)

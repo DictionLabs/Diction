@@ -1,0 +1,26 @@
+package core
+
+const (
+	routeAudioStream      = "/v1/audio/stream"
+	routeTranscriptions   = "/v1/audio/transcriptions"
+	modelWhisperMediumCT2 = "DictionLabs/whisper-medium-ct2"
+	modelWhisperSmallCT2  = "DictionLabs/whisper-small-ct2"
+	fileNameOgg           = "audio.ogg"
+	fileNameWav           = "audio.wav"
+	nameCanary            = "canary"
+	nameCohere            = "cohere"
+	nameParakeet          = "parakeet"
+	nameWhisper           = "whisper"
+	nameCustom            = "custom"
+	langYue               = "yue"
+	intentEdit            = "edit"
+	statusFailed          = "failed"
+	formatJSON            = "json"
+	formatText            = "text"
+	codecOpus             = "opus"
+	kindOpusDecode        = "opus_decode"
+	sourceStreaming       = "streaming"
+	sourceSTT             = "stt"
+	valueTrue             = "true"
+	intentEditSelected    = "edit-selected"
+)

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/DictionLabs/Diction/gateway/core"
+	"github.com/DictionLabs/Diction/gateway/core/transcript"
 )
 
 type llmConfig struct {
@@ -404,7 +405,7 @@ func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, int
 	// A dictation that is only "new paragraph" / "new line": the answer is the break itself,
 	// which processWithPrompt's TrimSpace turned into "" (and the deletion guard below would
 	// then swap for the raw "New paragraph."). Deduplicated against the cursor's newlines.
-	if brk, ok := core.ApplySpokenBreakOnly(text, result, tc.Before, tc.After); ok {
+	if brk, ok := transcript.ApplySpokenBreakOnly(text, result, tc.Before, tc.After); ok {
 		return brk, nil
 	}
 	// A cleanup that lost a large share of the words did not clean the dictation, it shortened
@@ -419,7 +420,7 @@ func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, int
 	// A spoken "new paragraph" / "new line" ending the dictation becomes a trailing break that
 	// processWithPrompt's TrimSpace erases; restore it from the transcript. Identity when the
 	// model kept the phrase as words.
-	return core.ApplySpokenTrailingBreak(text, result, tc.After), nil
+	return transcript.ApplySpokenTrailingBreak(text, result, tc.After), nil
 }
 
 // cursorEditUserMsg builds the message for a cursor edit: the text around the cursor is the

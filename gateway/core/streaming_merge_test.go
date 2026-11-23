@@ -15,9 +15,6 @@ import (
 	"github.com/coder/websocket"
 )
 
-// Merge on the batch socket (C3, plan 01c): plain done → STT at once ∥ device_transcript
-// frames → merge (or today's cleanup) inline → one result frame.
-
 type mergeRig struct {
 	mu          sync.Mutex
 	sttHitAt    time.Time
@@ -44,8 +41,6 @@ func (m *mergeRig) cleanups() []string {
 	return append([]string(nil), m.cleanupText...)
 }
 
-// startMergeServer runs the handler against a fake STT that answers transcript after
-// sttDelay. mergeErr makes MergeProcess fail; noHook leaves it nil (community build).
 func startMergeServer(t *testing.T, transcript string, sttDelay time.Duration, mergeErr error, noHook bool) (*httptest.Server, *mergeRig) {
 	t.Helper()
 	rig := &mergeRig{}
@@ -66,13 +61,13 @@ func startMergeServer(t *testing.T, transcript string, sttDelay time.Duration, m
 	}
 	g.health.set("small", true)
 
-	waitHandlers(t) // previous test's handlers may still read the hooks from their last defer
+	waitHandlers(t)
 	prevMerge, prevOnMerged, prevSkip, prevInputs, prevGrace := MergeProcess, OnMerged, OnEnhanceSkipped, OnMergeInputs, mergeDeviceGrace
 	t.Cleanup(func() {
 		waitHandlers(t)
 		MergeProcess, OnMerged, OnEnhanceSkipped, OnMergeInputs, mergeDeviceGrace = prevMerge, prevOnMerged, prevSkip, prevInputs, prevGrace
 	})
-	mergeDeviceGrace = 300 * time.Millisecond // the timing tests are written against the grace, whatever its value
+	mergeDeviceGrace = 300 * time.Millisecond
 	OnMergeInputs = func(_ context.Context, phones []string, waited time.Duration) {
 		rig.mu.Lock()
 		rig.inputs = append(rig.inputs, phones)
@@ -121,13 +116,11 @@ func startMergeServer(t *testing.T, transcript string, sttDelay time.Duration, m
 }
 
 type phoneFrame struct {
-	after time.Duration // after done
+	after time.Duration
 	model string
 	text  string
 }
 
-// dialMerge sends audio, done, then each phone frame at its offset (from a goroutine, so
-// the result can arrive meanwhile), and returns the text frames and when done was sent.
 func dialMerge(t *testing.T, srv *httptest.Server, query string, frames []phoneFrame) ([]string, time.Time, time.Time) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -209,7 +202,6 @@ func TestMerge_TwoFramesDuringSTT(t *testing.T) {
 	if len(m) != 1 || m[0]["nemotron"] != "nemo" || m[0]["parakeet"] != "para" {
 		t.Errorf("merge calls = %v, want both phone transcripts", m)
 	}
-	// Both arrived before STT ended: the grace is not spent.
 	if d := resultAt.Sub(doneAt); d > 200*time.Millisecond+mergeDeviceGrace-50*time.Millisecond {
 		t.Errorf("result after %v; with every frame in, the gateway must not wait out the grace", d)
 	}
@@ -437,8 +429,6 @@ func TestMerge_SplitEnhanceIgnoresMerge(t *testing.T) {
 	}
 }
 
-// Without merge=1 the session is byte-identical to today, hook installed or not, even if a
-// client sent device_transcript frames anyway.
 func TestMerge_NoMergeParam_Golden(t *testing.T) {
 	srv, rig := startMergeServer(t, "cloud text", 0, nil, false)
 	frames, _, _ := dialMerge(t, srv, "model=small&language=cs&enhance=true&phones=nemotron", []phoneFrame{{0, "nemotron", "nemo"}})
