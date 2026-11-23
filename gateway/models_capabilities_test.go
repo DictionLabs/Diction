@@ -32,12 +32,12 @@ func capsFrom(t *testing.T, flags capabilityFlags) map[string]bool {
 	return body.Capabilities
 }
 
-func TestWithCapabilities_NineKeysPreviewFalseByDefault(t *testing.T) {
+func TestWithCapabilities_TenKeysPreviewFalseByDefault(t *testing.T) {
 	caps := capsFrom(t, capabilityFlags{})
 	want := map[string]bool{
 		"llm": false, "text_process": false, "text_suggest": false, "text_summarize": false,
 		"formatting": false, "pairing": false, "key_rotation": false,
-		"preview": false, "preview_opus": false,
+		"preview": false, "preview_opus": false, "chat": false,
 	}
 	if len(caps) != len(want) {
 		t.Errorf("capabilities = %v, want exactly %v", caps, want)
@@ -100,5 +100,16 @@ func TestBuildMux_ModelsAdvertisesBuiltinPreview(t *testing.T) {
 	_, err := exec.LookPath("ffmpeg")
 	if want := err == nil; caps["preview_opus"] != want {
 		t.Errorf("capabilities[preview_opus] = %v, want %v (ffmpeg on PATH: %v)", caps["preview_opus"], want, want)
+	}
+}
+
+// chat is advertised from its own flag (POST /v1/chat has a backend and this caller
+// can reach it), independent of llm: chat can run on its own CHAT_* backend.
+func TestWithCapabilities_Chat(t *testing.T) {
+	if caps := capsFrom(t, capabilityFlags{chat: true}); !caps["chat"] || caps["llm"] {
+		t.Errorf("chat-only flags: %v", caps)
+	}
+	if caps := capsFrom(t, capabilityFlags{llmEnabled: true, textRoutes: true}); caps["chat"] {
+		t.Errorf("llm alone must not advertise chat: %v", caps)
 	}
 }

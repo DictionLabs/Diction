@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/DictionLabs/Diction/gateway/core"
+	"github.com/DictionLabs/Diction/gateway/core/chat"
 	"github.com/DictionLabs/Diction/gateway/pairing"
 )
 
@@ -177,6 +178,9 @@ func buildMux() (http.Handler, string, error) {
 		postProcessLive = enhanceBudget(inner, liveEnhanceTimeoutMs, "post-delivery")
 	}
 
+	// Chat about a shared text: its own backend (CHAT_*), else the LLM above.
+	chatEngine := chat.ChatEngineFromEnv(core.EnvOrDefault)
+
 	caps := capabilityFlags{
 		llmEnabled: llm.Enabled,
 		// Only advertise the text routes when EVERY caller that can reach them
@@ -194,12 +198,16 @@ func buildMux() (http.Handler, string, error) {
 	// Live text: the app asks for it (preview=cloud) only when this says so, and
 	// keeps sending Opus only when previewOpus is true.
 	caps.preview, caps.previewOpus = gw.PreviewCapabilities()
+	// Chat sits behind the same guard as the text routes.
+	chatReachable := textRoutesOpen || pairingMode == pairing.ModeRequired
+	caps.chat = chatEngine.Enabled() && chatReachable
 	// Per-request upgrade: a caller holding a valid pairing key does get the
 	// text routes (withGatewayKey lets it past the guard), so tell it so.
 	capsForRequest := func(r *http.Request) capabilityFlags {
-		if llm.Enabled && !caps.textRoutes && keyStore.VerifyRequest(r) {
+		if !chatReachable && (llm.Enabled || chatEngine.Enabled()) && keyStore.VerifyRequest(r) {
 			upgraded := caps
-			upgraded.textRoutes = true
+			upgraded.textRoutes = llm.Enabled
+			upgraded.chat = chatEngine.Enabled()
 			return upgraded
 		}
 		return caps
@@ -225,6 +233,7 @@ func buildMux() (http.Handler, string, error) {
 	mux.HandleFunc("/v1/text/process", textMW(handleTextProcess(llm)))
 	mux.HandleFunc("/v1/text/suggest", textMW(handleTextSuggest(llm)))
 	mux.HandleFunc("/v1/text/summarize", textMW(handleTextSummarize(llm)))
+	mux.HandleFunc("/v1/chat", textMW(chat.ChatHandler(chatEngine)))
 	if keyStore != nil {
 		pairing.RegisterRoutes(mux, keyStore)
 	}

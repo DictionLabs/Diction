@@ -27,6 +27,9 @@ type capabilityFlags struct {
 	// interim frames on PCM / Opus sessions (core.Gateway.PreviewCapabilities).
 	preview     bool
 	previewOpus bool
+	// chat: POST /v1/chat has a backend (chat.ChatEngine) and this caller can reach it
+	// (same text-route rule as text_process).
+	chat bool
 }
 
 func withCapabilities(base http.HandlerFunc, flagsFor func(*http.Request) capabilityFlags) http.HandlerFunc {
@@ -81,6 +84,7 @@ func withCapabilities(base http.HandlerFunc, flagsFor func(*http.Request) capabi
 			// read as not capable by clients: it only means anything with preview.
 			"preview":      flags.preview,
 			"preview_opus": flags.previewOpus,
+			"chat":         flags.chat,
 		})
 		baseResp["capabilities"] = caps
 		// Numbers do not fit the bool-only capabilities map, so the Writing Tools budget
