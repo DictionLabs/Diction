@@ -73,6 +73,7 @@ Content-Type: application/json
 | `text_suggest` | bool | /v1/text/suggest is open (same condition as text_process) |
 | `text_summarize` | bool | /v1/text/summarize is open (same condition as text_process) |
 | `formatting` | bool | the `formatting` context key is honoured on cleanup (llm=true) |
+| `chat` | bool | /v1/chat has a chat backend (see `CHAT_PROVIDER`) and this caller can reach it (same rule as `text_process`) |
 | `preview` | bool | `?preview=cloud` on /v1/audio/stream is answered with `interim` frames on PCM sessions (`DICTION_PREVIEW=chunked`) |
 | `preview_opus` | bool | the same on Opus sessions (`preview` is true and ffmpeg is available to decode the audio as it arrives) |
 
@@ -81,6 +82,17 @@ Content-Type: application/json
 | Field | Type | Meaning |
 |-------|------|---------|
 | `post_delivery_ms` | int | `DICTION_LIVE_ENHANCE_TIMEOUT_MS`: how long cleanup may run after the raw transcript was sent on a `split_enhance` stream. The iOS app waits this long + 1s (at least 9s, at most 121s; `0` = 121s) before inserting the raw text. |
+| `CHAT_PROVIDER` | (empty) | Backend for `POST /v1/chat`: `openai` (any OpenAI-compatible server), `anthropic` or `off`. Empty: `openai` when `CHAT_BASE_URL` is set, else the Writing Tools LLM (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_REASONING_EFFORT`) when configured, else chat is off. A bad value logs `chat: disabled: ...` and never stops startup |
+| `CHAT_BASE_URL` | (empty) | `openai`: base URL ending before `/chat/completions`, e.g. `http://ollama:11434/v1` (required). `anthropic`: optional override of the API URL |
+| `CHAT_API_KEY` | (empty) | Provider key. `anthropic` falls back to `ANTHROPIC_API_KEY`; `openai` sends none when empty (local servers) |
+| `CHAT_MODEL` | `claude-haiku-5-5` (anthropic) | Model id. Required for `openai` |
+| `CHAT_EFFORT` | `low` (anthropic) / none (openai) | Anthropic effort, or OpenAI-compatible `reasoning_effort` (sent only when set) |
+| `DICTION_CHAT_MAX_CONTEXT_CHARS` / `_MAX_TURNS` / `_MAX_MESSAGE_CHARS` / `_MAX_TOTAL_CHARS` | `16000` / `12` / `4000` / `24000` | Limits checked before the provider is called. The shared text is shortened; the rest answer 413 |
+| `DICTION_CHAT_COMPACT_TOKENS` / `_COMPACT_MESSAGES` / `_KEEP_MESSAGES` | `12000` / `24` / `6` | Long chats (clients that send `compact`): summarise older messages past these sizes, keep the newest N. `0` turns a trigger off. Lower the token trigger for a small local model |
+| `DICTION_CHAT_SUMMARY_MAX_TOKENS` / `_COMPACT_MAX_TOTAL_CHARS` | `1024` / `60000` | Summary output ceiling, and total characters a `compact` client may send |
+| `DICTION_CHAT_MAX_OUTPUT_TOKENS` | `2048` | Answer ceiling (reasoning tokens count against it) |
+| `DICTION_CHAT_TIMEOUT_MS` | `60000` | Whole provider call |
+| `DICTION_CHAT_SCOPE` | `open` | `open`: no topic rule. `keyboard`: the assistant redirects requests unrelated to the shared text or to writing |
 | `process_base_ms`, `process_per_1000_bytes_ms`, `process_max_ms` | int | The `/v1/text/process` budget: `min(base + UTF-8 bytes of text × per_1000_bytes / 1000, max)` ms — 30s + 1s per 400 bytes, cap 120s. The app's deadline for that call is this budget + 1s (never below its own default, at most 121s). Absent → the app's default. |
 
 ### POST /v1/audio/transcriptions
@@ -280,6 +292,42 @@ Response 503:
   {"error": "llm_not_configured"}
 ```
 
+
+### POST /v1/chat
+
+**Plaintext JSON -- no E2E encryption (`X-Diction-E2E` gets 400 `e2e_unsupported`).**
+
+A short, stateless chat about a shared text (a selection or text read from a screenshot on the
+phone). The client sends the whole conversation every turn; the gateway stores nothing. Bring your
+own provider: any OpenAI-compatible server (OpenAI, Groq, Ollama, LM Studio, vLLM) or Anthropic,
+see `CHAT_*` below. Same access rule as /v1/text/process (TEXT_ROUTES_OPEN=true, or a valid
+pairing key, or `DICTION_GATEWAY_AUTH=required`); there are no subscriptions in this build.
+
+```
+Request:
+  POST /v1/chat
+  Content-Type: application/json
+  {"task": "chat", "context": "Anna: are you coming tonight?",
+   "messages": [{"role": "user", "content": "reply, say I'm in but late"}],
+   "stream": false, "insert_markup": true}
+
+Response 200:
+  {"text": "I'll be there, just a bit late.", "task": "chat"}
+
+Response 503:
+  {"error": "chat_not_configured"}
+```
+
+| Field | Rule |
+|-------|------|
+| `task` | `chat` (default) or `title` (a 2-6 word label for `context`; `messages` and `stream` ignored). `compact` summarises a long thread for clients that keep their own summary |
+| `context` | The shared text. Over `DICTION_CHAT_MAX_CONTEXT_CHARS` it is shortened, never rejected |
+| `messages` | Alternating `user`/`assistant` turns, first and last `user`, none empty. Over the turn or size limits: 413 |
+| `stream` | `true` answers `text/event-stream` |
+| `insert_markup` | `true` wraps the text meant for the host field in `<insert>...</insert>` |
+
+Without a `CHAT_*` backend the route falls back to the Writing Tools LLM (`LLM_*`) when one is
+configured, otherwise it answers 503 `chat_not_configured` and `capabilities.chat` is false.
 ### Formatting flag (cleanup only)
 
 `POST /v1/text/process` accepts a `formatting` boolean inside the `context` JSON.
@@ -414,6 +462,9 @@ Both LLM_BASE_URL and LLM_MODEL must be set or the LLM feature stays off.
 | `DICTION_KEY_GRACE` | `720h` | How long a rotated-out secret keeps verifying |
 | `DICTION_TOKEN_TTL` | (empty, never) | Lifetime of each minted device key. Only meaningful with `required` |
 | `DICTION_GATEWAY_KEY` | (empty) | Deprecated. Pins one manual key; disables rotation and TTL |
+| `DICTION_WS_ALLOWED_ORIGINS` | (unset) | Comma-separated browser origin host patterns (e.g. `app.example.com`, `*.example.com:3000`) allowed to open `/v1/audio/stream` and the Live WebSocket. The Diction apps and scripts send no `Origin` header and are always accepted, as is a same-host origin. Any other browser origin gets 403 |
+
+With `DICTION_GATEWAY_AUTH=optional` the gateway logs a startup warning: keyless requests are accepted, so set `required` to demand a key. The HTTP server sets a 10 s header-read timeout and a 120 s idle timeout (streams are not cut).
 
 `docker exec <container> gateway auth` prints a fresh pairing QR. Routes: `GET /v1/auth/key`
 (refresh), `POST /v1/auth/rotate` (rotate secret).
