@@ -83,3 +83,17 @@ func TestStreamingWebSocketSameHostOriginAccepted(t *testing.T) {
 	}
 	conn.CloseNow()
 }
+
+func TestStreamingForeignOriginIsNotSTTError(t *testing.T) {
+	t.Setenv("DICTION_WS_ALLOWED_ORIGINS", "")
+	calls, restore := withCapturedOnRequestFailed(t)
+	defer restore()
+	if ok, st := dialWithOrigin(t, "https://evil.example"); ok || st != http.StatusForbidden {
+		t.Fatalf("ok=%v status=%d, want 403", ok, st)
+	}
+	calls.WaitFor(1, 2*time.Second)
+	got := calls.All()
+	if len(got) != 1 || got[0] != "ws_origin_rejected" {
+		t.Fatalf("OnRequestFailed: want one ws_origin_rejected, got %v", got)
+	}
+}

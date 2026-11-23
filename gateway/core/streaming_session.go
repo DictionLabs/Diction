@@ -228,7 +228,7 @@ func (s *streamSession) accept() bool {
 			Kind:     "ws_accept",
 			Endpoint: routeAudioStream,
 			Hint:     "websocket accept failed",
-		}, errTypeSTTError, 0, "")
+		}, WSAcceptErrorType(err), 0, "")
 		s.conn = nil
 		return false
 	}

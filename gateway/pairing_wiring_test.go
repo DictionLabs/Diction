@@ -11,7 +11,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/DictionLabs/Diction/gateway/core"
 	"github.com/DictionLabs/Diction/gateway/pairing"
 )
 
@@ -292,10 +291,24 @@ func TestTrialRouteGone(t *testing.T) {
 	}
 }
 
-func TestBuildMuxLogsOpenAuthWarningOnlyInOptionalMode(t *testing.T) {
-	t.Setenv("DICTION_KEY_PATH", t.TempDir()+"/key")
-	for mode, want := range map[string]bool{"optional": true, "required": false} {
-		t.Setenv("DICTION_GATEWAY_AUTH", mode)
+func TestBuildMuxOpenAuthWarning(t *testing.T) {
+	dir := t.TempDir()
+	good, bad := dir+"/key", dir+"/nodir/sub/key"
+	if err := os.WriteFile(dir+"/nodir", nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		mode, keyPath string
+		want, hint    string
+	}{
+		{"optional", good, "DICTION_GATEWAY_AUTH=optional", "gateway auth"},
+		{"off", good, "DICTION_GATEWAY_AUTH=off", "gateway auth"},
+		{"optional", bad, "DICTION_GATEWAY_AUTH=optional", "Pairing is disabled"},
+		{"required", good, "", ""},
+	}
+	for _, c := range cases {
+		t.Setenv("DICTION_KEY_PATH", c.keyPath)
+		t.Setenv("DICTION_GATEWAY_AUTH", c.mode)
 		var buf bytes.Buffer
 		log.SetOutput(&buf)
 		_, _, err := buildMux()
@@ -303,8 +316,12 @@ func TestBuildMuxLogsOpenAuthWarningOnlyInOptionalMode(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := strings.Contains(buf.String(), core.OpenAuthWarning); got != want {
-			t.Fatalf("mode %s: warning logged=%v want %v", mode, got, want)
+		out := buf.String()
+		if got := strings.Contains(out, "unauthenticated transcription requests"); got != (c.want != "") {
+			t.Fatalf("%s %s: warning logged=%v", c.mode, c.keyPath, got)
+		}
+		if c.want != "" && (!strings.Contains(out, c.want) || !strings.Contains(out, c.hint)) {
+			t.Fatalf("%s %s: wrong wording: %s", c.mode, c.keyPath, out)
 		}
 	}
 }

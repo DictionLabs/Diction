@@ -162,12 +162,16 @@ func buildMux() (http.Handler, string, error) {
 	maxBodySize := int64(core.EnvIntOrDefault("MAX_BODY_SIZE", 209715200))
 
 	pairingMode := pairing.ModeFromEnv()
-	core.LogOpenAuthWarning(string(pairingMode))
 	pairing.WarnDeprecatedEnv()
 	keyStore, err := loadKeyStore(pairingMode)
 	if err != nil {
 		return nil, "", err
 	}
+	pairingState := core.PairingReady
+	if keyStore == nil && pairingMode != pairing.ModeOff {
+		pairingState = core.PairingDisabled
+	}
+	core.LogOpenAuthWarning(string(pairingMode), pairingState)
 
 	gw := core.NewGateway(core.Config{
 		Backends:     core.DefaultBackends(),
