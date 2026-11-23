@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/DictionLabs/Diction/gateway/core"
 	"github.com/DictionLabs/Diction/gateway/pairing"
 )
 
@@ -293,5 +298,22 @@ func TestTrialRouteGone(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("/v1/trial must 404, got %d", rec.Code)
+	}
+}
+
+func TestBuildMuxLogsOpenAuthWarningOnlyInOptionalMode(t *testing.T) {
+	t.Setenv("DICTION_KEY_PATH", t.TempDir()+"/key")
+	for mode, want := range map[string]bool{"optional": true, "required": false} {
+		t.Setenv("DICTION_GATEWAY_AUTH", mode)
+		var buf bytes.Buffer
+		log.SetOutput(&buf)
+		_, _, err := buildMux()
+		log.SetOutput(os.Stderr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(buf.String(), core.OpenAuthWarning); got != want {
+			t.Fatalf("mode %s: warning logged=%v want %v", mode, got, want)
+		}
 	}
 }

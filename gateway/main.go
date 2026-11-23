@@ -140,6 +140,7 @@ func buildMux() (http.Handler, string, error) {
 	// the key is generated, printed, and accepted, but keyless requests still
 	// pass — an image upgrade can never lock an existing deploy out.
 	pairingMode := pairing.ModeFromEnv()
+	core.LogOpenAuthWarning(string(pairingMode))
 	pairing.WarnDeprecatedEnv()
 	keyStore, err := pairing.KeyStoreFromEnv(pairingMode)
 	if err != nil {
@@ -249,6 +250,16 @@ func buildMux() (http.Handler, string, error) {
 	return mux, port, nil
 }
 
+// newServer sets only ReadHeaderTimeout and IdleTimeout; Read/WriteTimeout would kill streams.
+func newServer(addr string, h http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "auth" {
 		runAuthCommand()
@@ -258,7 +269,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	if err := newServer(":"+port, mux).ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 )
 
 // --- buildMux (covers env-var wiring extracted from main) ---
@@ -95,4 +96,17 @@ func TestBuildMux_LLM_Enabled(t *testing.T) {
 		t.Fatal("expected non-nil mux with LLM enabled")
 	}
 	// Gateway starts without error when LLM env vars are set.
+}
+
+func TestNewServerSetsOnlyHeaderAndIdleTimeouts(t *testing.T) {
+	srv := newServer(":9", http.NotFoundHandler())
+	if srv.Addr != ":9" || srv.Handler == nil {
+		t.Fatalf("addr/handler not set: %q %v", srv.Addr, srv.Handler)
+	}
+	if srv.ReadHeaderTimeout != 10*time.Second || srv.IdleTimeout != 120*time.Second {
+		t.Fatalf("timeouts: header %v idle %v", srv.ReadHeaderTimeout, srv.IdleTimeout)
+	}
+	if srv.ReadTimeout != 0 || srv.WriteTimeout != 0 {
+		t.Fatalf("read/write timeouts must stay unset: %v %v", srv.ReadTimeout, srv.WriteTimeout)
+	}
 }
