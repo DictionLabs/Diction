@@ -10,11 +10,20 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/DictionLabs/Diction/gateway/core"
 	"github.com/DictionLabs/Diction/gateway/core/transcript"
 )
+
+const (
+	editIntent         = "edit"
+	editSelectedIntent = "edit-selected"
+)
+
+// errLenient is always nil: lenient decoding never reports failure.
+var errLenient error
 
 type llmConfig struct {
 	Enabled            bool
@@ -30,8 +39,7 @@ type llmConfig struct {
 	PromptSummary      string
 }
 
-// Output budget for every LLM call (processWithPrompt): the output estimate plus a fixed
-// allowance for a reasoning model's hidden thinking, capped for providers with small limits.
+// Output budget for every LLM call (processWithPrompt)
 const (
 	reasoningAllowance     = 4000
 	maxCompletionTokensCap = 16384
@@ -51,9 +59,7 @@ const (
 	DefaultPromptEditSelected = "You are a text editor. Apply the user's spoken instruction to the selected portion of text. Return only the edited selection, nothing else."
 	DefaultPromptSuggest      = "Suggest 2-3 concise alternative phrasings or corrections for the selected text. Return a JSON array of strings only, no explanation."
 
-	// DefaultPromptFormatting is appended to the cleanup prompt when the client
-	// asks for formatting. Kept separate so the cleanup prompt stays byte-identical
-	// when formatting is off, and so an operator can replace just this half.
+	// DefaultPromptFormatting is appended to the cleanup prompt when the client asks for formatting.
 	DefaultPromptFormatting = "\n\nAlso render the structure the speech carries, using line breaks and plain text only. " +
 		"A spoken list becomes one item per line (\"- item\", or \"1. item\" when the speaker counts). " +
 		"A clear change of topic becomes a paragraph break. " +
@@ -68,15 +74,14 @@ const (
 		"If the note is meaningless, output a single dash: -"
 )
 
-// loadPromptEnv reads a prompt from an env var. If the value starts with /,
-// it is treated as a file path. Returns defaultVal when the env var is empty.
+// loadPromptEnv reads a prompt from an env var.
 func loadPromptEnv(key, defaultVal string) string {
 	val := core.EnvOrDefault(key, "")
 	if val == "" {
 		return defaultVal
 	}
 	if strings.HasPrefix(val, "/") {
-		data, err := os.ReadFile(val)
+		data, err := os.ReadFile(filepath.Clean(val))
 		if err != nil {
 			log.Printf("%s: failed to read file %s: %v", key, val, err)
 			return defaultVal
@@ -116,7 +121,6 @@ func llmConfigFromEnv() llmConfig {
 }
 
 // processWithPrompt sends userMsg to the LLM under the given system prompt.
-// It is the shared HTTP call used by process, processWithIntent, and suggestFixes.
 func (c llmConfig) processWithPrompt(ctx context.Context, prompt, userMsg string) (string, error) {
 	maxTokens := len(userMsg)/2 + reasoningAllowance
 	if maxTokens > maxCompletionTokensCap {
@@ -125,9 +129,7 @@ func (c llmConfig) processWithPrompt(ctx context.Context, prompt, userMsg string
 	result, err := c.callLLM(ctx, prompt, userMsg, maxTokens)
 	var se *llmStatusError
 	if err != nil && errors.As(err, &se) && se.Status == http.StatusBadRequest && isContextLimitError(se.Body) {
-		// A server with a small context window (vLLM, llama.cpp: 8k is common) rejects the
-		// larger reasoning-aware budget on a long dictation. Retry once with the previous
-		// formula rather than losing cleanup.
+		// A server with a small context window rejects an over-budget prompt
 		smaller := len(userMsg)/2 + 200
 		if smaller < 4000 {
 			smaller = 4000
@@ -150,8 +152,7 @@ func (e *llmStatusError) Error() string {
 	return fmt.Sprintf("llm api error %d: %s", e.Status, e.Body)
 }
 
-// isContextLimitError matches the messages OpenAI-compatible servers use when the prompt plus
-// max tokens does not fit the model's context window.
+// isContextLimitError matches OpenAI-compatible context-overflow error messages
 func isContextLimitError(body string) bool {
 	b := strings.ToLower(body)
 	for _, m := range []string{"maximum context length", "max_tokens", "context_length_exceeded", "exceeds the context", "context length"} {
@@ -176,24 +177,7 @@ func (c llmConfig) callLLM(ctx context.Context, prompt, userMsg string, maxToken
 		ReasoningEffort     string    `json:"reasoning_effort,omitempty"`
 	}
 
-	// Output length is roughly input length, but the floor is what matters: a
-	// reasoning-class model (gpt-oss, and most "thinking" models) spends tokens on
-	// hidden chain-of-thought *before* writing any output, and charges that to the same
-	// budget. At a 500 floor it can spend the lot thinking and return empty content,
-	// which surfaces to the user as a failed edit. Short inputs are the worst case,
-	// because they get the smallest budget while the reasoning cost stays fixed.
-	//
-	// 4000 is the floor production settled on for the same reason on 2026-09-02, after
-	// measuring 900-2000 reasoning tokens burned on inputs that had only ~200 budgeted.
-	// Costs nothing when the model does not reason: max_completion_tokens is a ceiling,
-	// not a reservation, so a non-reasoning model still stops when it stops.
-	//
-	// The reasoning cost is not fixed: it grows with the input. Measured 2026-10-11 on a
-	// ~720-word Czech dictation, gpt-oss-120b spent ~3,100 hidden tokens and ran out of a
-	// len/2+200 budget mid-answer (finish_reason=length). So the budget is the output
-	// estimate PLUS a reasoning allowance, not the larger of the two. Capped at 16384, the
-	// smallest output limit among the common hosted models (gpt-4o-mini); a provider that
-	// allows less rejects the request and the caller keeps the raw transcript.
+	// Output length is roughly input length, but the floor is what matters
 	body, err := json.Marshal(request{
 		Model: c.Model,
 		Messages: []message{
@@ -224,7 +208,7 @@ func (c llmConfig) callLLM(ctx context.Context, prompt, userMsg string, maxToken
 	if err != nil {
 		return "", fmt.Errorf("llm request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -249,8 +233,7 @@ func (c llmConfig) callLLM(ctx context.Context, prompt, userMsg string, maxToken
 	if len(result.Choices) == 0 || result.Choices[0].Message.Content == "" {
 		return "", fmt.Errorf("empty llm response")
 	}
-	// The model ran out of budget mid-answer: what came back is the start of the text, not
-	// the text. Returning it would replace the user's dictation with a cut-off copy.
+	// The model ran out of budget mid-answer
 	if result.Choices[0].FinishReason == "length" {
 		return "", fmt.Errorf("llm output truncated (finish_reason=length, max_completion_tokens=%d)", maxTokens)
 	}
@@ -259,24 +242,11 @@ func (c llmConfig) callLLM(ctx context.Context, prompt, userMsg string, maxToken
 }
 
 // process sends the transcript to the LLM using the cleanup prompt and returns the cleaned result.
-// Returns error on failure -- caller falls back to raw transcript.
 func (c llmConfig) process(ctx context.Context, transcript string) (string, error) {
 	return c.processWithPrompt(ctx, c.Prompt, transcript)
 }
 
-// postProcessor returns the Writing Tools closure the audio paths call: the WebSocket
-// (core/streaming.go, inline and split answer) and the HTTP transcriptions proxy
-// (core/proxy.go). It reports the mode it ran alongside the text, which is what lets the app
-// tell an applied edit from a dictation.
-//
-// A named constructor rather than a closure literal inside buildMux for one reason: the
-// closure IS the thing that broke — it returned a hardcoded "" mode — and a local inside
-// buildMux cannot be called from a test. See TestPostProcessor_ReturnsModeForIntent.
-//
-// The mode is returned on the error path too, even though every caller currently derives its
-// own failure shape from the intent it already holds (core/streaming.go:918,
-// core/proxy.go:600). Returning it here means a future caller that trusts this value gets a
-// correct one rather than an empty string.
+// postProcessor returns the Writing Tools closure the audio paths call
 func (c llmConfig) postProcessor() func(ctx context.Context, transcript, contextJSON, intent string) (string, string, error) {
 	return func(ctx context.Context, transcript, contextJSON, intent string) (string, string, error) {
 		result, err := c.processWithIntent(ctx, transcript, contextJSON, intent)
@@ -284,39 +254,24 @@ func (c llmConfig) postProcessor() func(ctx context.Context, transcript, context
 	}
 }
 
-// cursorMarker sits where the user's cursor is, in the text sent for a cursor edit. The app
-// uses the same character when it caches the context it will later replace
-// (KeyboardCommands.swift), and the cloud build has sent it in production for a long time.
+// cursorMarker sits where the user's cursor is, in the text sent for a cursor edit.
 const cursorMarker = "‸"
 
-// Cap on My Words entries. Tone is deliberately uncapped: the cloud caps it for cost, but
-// here it is the self-hoster's own LLM and their own budget.
+// Cap on My Words entries.
 const maxCustomWords = 50
 
 // customWord is one My Words entry.
-//
-// Wire-tolerant by necessity: the app sends objects (`[{"word":"Diction"}]`), while the public
-// wire contract in AGENTS.md documents `customWords` as an untyped array, so a third-party
-// client may reasonably send bare strings. Accepting only one shape is precisely the bug this
-// type exists to fix — the gateway used to declare []string, the app sent objects, the decode
-// failed on that one field, and My Words silently never reached any self-hosted LLM.
 type customWord struct {
 	Word     string
 	Variants []string
 }
 
-// UnmarshalJSON never fails. An entry it cannot read decodes to an empty word, which
-// formatCustomWords skips.
-//
-// This is not laziness, it is the whole lesson of the bug: an error here aborts the enclosing
-// json.Unmarshal, so one unreadable vocabulary entry would silently take the user's tone,
-// clipboard and session context down with it — a bigger version of the failure this type was
-// written to end. One bad entry costs one word.
+// UnmarshalJSON never fails.
 func (w *customWord) UnmarshalJSON(data []byte) error {
 	var plain string
 	if err := json.Unmarshal(data, &plain); err == nil {
 		w.Word = plain
-		return nil
+		return errLenient
 	}
 	var obj struct {
 		Word     string   `json:"word"`
@@ -324,32 +279,26 @@ func (w *customWord) UnmarshalJSON(data []byte) error {
 	}
 	if err := json.Unmarshal(data, &obj); err != nil {
 		log.Printf("LLM custom words: skipping unreadable entry: %v", err)
-		return nil
+		return errLenient
 	}
 	w.Word, w.Variants = obj.Word, obj.Variants
-	return nil
+	return errLenient
 }
 
 // transcriptionContext is the structured context blob the client sends alongside a transcript.
-// Every field is optional; a client that sends none of it gets exactly the request it did
-// before any of these fields existed.
 type transcriptionContext struct {
 	Before   string `json:"before"`
 	After    string `json:"after"`
 	Selected string `json:"selected"`
-	// The user's own configured data. Forwarding it is what makes My Words, Tone, About You,
-	// session context and clipboard context work on a self-hosted gateway at all.
+	// The user's own configured data.
 	CustomWords    []customWord `json:"customWords"`
 	Tone           string       `json:"tone"`
 	Profile        string       `json:"profile"`
 	SessionContext []string     `json:"sessionContext"`
 	Clipboard      string       `json:"clipboard"`
-	// Opt-out, matching the app's wire contract: absent (older clients) or
-	// true means formatting is ON; only an explicit false disables it.
+	// Opt-out, matching the app's wire contract
 	Formatting *bool `json:"formatting,omitempty"`
-	// Language is a hint for the cleanup prompt: write in this language, fix wrong/missing
-	// diacritics for it, never translate. "auto"/empty mean "infer" — see
-	// `core.IsConcreteLanguage`.
+	// Language is a hint for the cleanup prompt
 	Language string `json:"language,omitempty"`
 }
 
@@ -357,29 +306,25 @@ func (tc transcriptionContext) formattingEnabled() bool {
 	return tc.Formatting == nil || *tc.Formatting
 }
 
-// processWithIntent picks the right prompt and builds the user message based on intent,
-// then calls processWithPrompt.
+// processWithIntent picks the prompt and user message for the intent, then calls the LLM
 func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, intent string) (string, error) {
 	var tc transcriptionContext
 	if contextJSON != "" {
-		// Best-effort by design: an older or third-party client may send a partial blob, and a
-		// missing field should cost that one feature, not the whole request.
-		json.Unmarshal([]byte(contextJSON), &tc) //nolint:errcheck
+		// Best-effort by design
+		_ = json.Unmarshal([]byte(contextJSON), &tc)
 	}
 
 	var prompt, userMsg string
 	var err error
 	switch intent {
-	case "edit":
+	case editIntent:
 		prompt = c.PromptEdit
 		userMsg, err = cursorEditUserMsg(tc, text)
-	case "edit-selected":
+	case editSelectedIntent:
 		prompt = c.PromptEditSelected
 		userMsg, err = selectionEditUserMsg(tc, text)
 	default: // "" or "transcribe"
-		// Formatting only applies to cleanup. An edit instruction already says
-		// what shape the result should take, so appending layout rules there
-		// would fight the user's own instruction.
+		// Formatting only applies to cleanup.
 		prompt = c.Prompt
 		if tc.formattingEnabled() {
 			prompt += c.PromptFormatting
@@ -394,43 +339,24 @@ func (c llmConfig) processWithIntent(ctx context.Context, text, contextJSON, int
 	if err != nil {
 		return "", err
 	}
-	// The marker is a gateway artefact the user never typed, and the app inserts results
-	// verbatim (KeyboardSessionBridge.applyEditResult), so a model that echoes it would type it
-	// into the document. Strip on every intent: it can only appear if we or the model put it
-	// there. Same guard as the cloud's context-edit path.
+	// The marker is a gateway artefact the user never typed; the app inserts results verbatim
 	result = strings.ReplaceAll(result, cursorMarker, "")
-	if intent == "edit" || intent == "edit-selected" {
+	if intent == editIntent || intent == editSelectedIntent {
 		return result, nil
 	}
-	// A dictation that is only "new paragraph" / "new line": the answer is the break itself,
-	// which processWithPrompt's TrimSpace turned into "" (and the deletion guard below would
-	// then swap for the raw "New paragraph."). Deduplicated against the cursor's newlines.
+	// A dictation that is only "new paragraph" / "new line"
 	if brk, ok := transcript.ApplySpokenBreakOnly(text, result, tc.Before, tc.After); ok {
 		return brk, nil
 	}
-	// A cleanup that lost a large share of the words did not clean the dictation, it shortened
-	// it: a context window smaller than the dictation, or a model that condensed it into notes.
-	// Same deletion guard the split answer applies (core/enhanceguard.go), so every audio path
-	// agrees on what counts as a cleanup. The caller keeps the raw transcript.
-	// Only for the built-in prompt: an operator's own LLM_PROMPT may legitimately summarise,
-	// condense or translate, so a custom prompt is trusted.
+	// A cleanup that lost a large share of the words did not clean the dictation, it shortened it
 	if c.Prompt == DefaultPromptCleanup && !core.EnhancedAcceptable(text, result) {
 		return "", fmt.Errorf("cleanup dropped too many words (%d of %d kept)", len(strings.Fields(result)), len(strings.Fields(text)))
 	}
 	// A spoken "new paragraph" / "new line" ending the dictation becomes a trailing break that
-	// processWithPrompt's TrimSpace erases; restore it from the transcript. Identity when the
-	// model kept the phrase as words.
 	return transcript.ApplySpokenTrailingBreak(text, result, tc.After), nil
 }
 
-// cursorEditUserMsg builds the message for a cursor edit: the text around the cursor is the
-// subject, the transcript is the instruction to apply to it.
-//
-// Erroring on a target-less edit is deliberate. The caller turns an edit-intent error into
-// {text:"", mode:<intent>, status:"failed"} (core/streaming.go, core/proxy.go), which the app
-// surfaces as "Couldn't apply edit". The alternative is what this build used to do — send the
-// instruction as its own subject and insert whatever came back, which typed the user's own
-// words into their document.
+// cursorEditUserMsg builds the message for a cursor edit
 func cursorEditUserMsg(tc transcriptionContext, instruction string) (string, error) {
 	if tc.Before == "" && tc.After == "" {
 		return "", fmt.Errorf("edit: no text around the cursor to edit")
@@ -440,12 +366,6 @@ func cursorEditUserMsg(tc transcriptionContext, instruction string) (string, err
 }
 
 // selectionEditUserMsg builds the message for an edit applied to a selection.
-//
-// Note this deliberately diverges from the cloud, which falls back to mode="transcribe" and
-// returns the raw transcript when the selection is missing — that inserts the instruction.
-// Failing visibly is the better trade; do not "align" it. In practice the branch is close to
-// unreachable from the app: the keyboard only arms edit-selected with a non-empty selection
-// of at most 3000 characters (KeyboardCommands.swift).
 func selectionEditUserMsg(tc transcriptionContext, instruction string) (string, error) {
 	if tc.Selected == "" {
 		return "", fmt.Errorf("edit-selected: no selected text to edit")
@@ -457,36 +377,13 @@ func selectionEditUserMsg(tc transcriptionContext, instruction string) (string, 
 	return msg, nil
 }
 
-// cleanupUserMsg builds the cleanup message: the transcript first and unlabelled, then one
-// labelled block per piece of context the user actually configured, then the language hint.
-//
-// Only DESCRIPTIVE context is forwarded — My Words, Tone, About You. Blocks that are
-// themselves prose (the cursor's surrounding text, earlier transcripts in the session, the
-// clipboard) are deliberately NOT sent, and this is the hard-won rule of this function.
-//
-// Measured on whisper.macha.la (gpt-oss-20b, built-in prompt, 2026-09-08): with a session
-// block of three earlier transcripts, "yeah that sounds good" came back as those three
-// transcripts and the user's actual words were gone. A long clipboard was appended to the
-// output verbatim. Custom words, tone and profile were clean every time. The system prompt
-// already says these lines are context and "never part of what you return" — an untuned
-// one-line prompt does not enforce it. So the boundary is not "user data vs ours", it is
-// "does this block look like something the model could plausibly emit as the answer".
-//
-// The cloud sends all of them, safely, because it has a tuned prompt plus output guards
-// (length bounds, deletion guard) that are cloud-only by decision (D1/D2). Forwarding prose
-// here needs a community prompt written for it; until then a self-hoster keeps their own
-// words instead of last week's.
-//
-// Every block is omitted when empty, so a self-hoster who has configured none of these sends
-// byte-for-byte the request they sent before any of this existed (pinned by
-// TestProcessWithIntent_CleanupUnconfiguredIsByteIdentical).
+// cleanupUserMsg builds the cleanup message
 func cleanupUserMsg(tc transcriptionContext, text string) string {
 	var blocks []string
 	if words := formatCustomWords(tc.CustomWords); words != "" {
 		blocks = append(blocks, "Custom words: "+words)
 	}
-	// Tone says how to write, Profile says who the user is. One block: two overlapping
-	// concepts are harder for a small model to juggle than one.
+	// Tone says how to write, Profile says who the user is.
 	if tone := joinNonEmpty("\n", tc.Tone, tc.Profile); tone != "" {
 		blocks = append(blocks, "Tone: "+tone)
 	}
@@ -501,8 +398,7 @@ func cleanupUserMsg(tc transcriptionContext, text string) string {
 	return userMsg
 }
 
-// formatCustomWords renders My Words as "word, other (also heard as: variant)". Variants are
-// legacy — the app stopped sending them — but old rows and other clients may still carry them.
+// formatCustomWords renders My Words as a comma-separated list with variants
 func formatCustomWords(words []customWord) string {
 	if len(words) > maxCustomWords {
 		log.Printf("LLM custom words: truncating %d → %d", len(words), maxCustomWords)
@@ -522,8 +418,7 @@ func formatCustomWords(words []customWord) string {
 	return strings.Join(rendered, ", ")
 }
 
-// joinNonEmpty joins only the parts that carry something, so an absent half never leaves a
-// stray separator behind.
+// joinNonEmpty joins only non-empty parts so an absent half leaves no stray separator
 func joinNonEmpty(sep string, parts ...string) string {
 	present := make([]string, 0, len(parts))
 	for _, p := range parts {
@@ -535,11 +430,6 @@ func joinNonEmpty(sep string, parts ...string) string {
 }
 
 // summarise returns a one-line summary of a whole voice note.
-//
-// Whole-note operation: unlike cleanup and edit there is no cursor, selection or
-// surrounding context, because a saved note has none. The language tag is a hint
-// only; the prompt already says to reply in the note's own language, so "auto"
-// and empty are both fine and are simply not passed on.
 func (c llmConfig) summarise(ctx context.Context, text, language string) (string, error) {
 	userMsg := text
 	if language != "" && language != "auto" {
@@ -549,8 +439,7 @@ func (c llmConfig) summarise(ctx context.Context, text, language string) (string
 }
 
 // suggestFixes calls the LLM with the suggest prompt and returns up to 3 alternatives.
-// Always soft-fails: on any error it returns an empty slice, never an error.
-func (c llmConfig) suggestFixes(ctx context.Context, selected, before, after string, customWords []string) ([]string, error) {
+func (c llmConfig) suggestFixes(ctx context.Context, selected, before, after string, customWords []string) []string {
 	userMsg := fmt.Sprintf("Selected: %s", selected)
 	if before != "" || after != "" {
 		userMsg += fmt.Sprintf("\nContext before: %s\nContext after: %s", before, after)
@@ -561,7 +450,7 @@ func (c llmConfig) suggestFixes(ctx context.Context, selected, before, after str
 
 	result, err := c.processWithPrompt(ctx, c.PromptSuggest, userMsg)
 	if err != nil {
-		return []string{}, nil // soft-fail
+		return []string{} // soft-fail
 	}
 
 	// Gemini and Claude often wrap the JSON in a ```json fence.
@@ -570,17 +459,16 @@ func (c llmConfig) suggestFixes(ctx context.Context, selected, before, after str
 	// Try JSON array parse first, then the {"suggestions":[...]} object some models return.
 	var items []string
 	if err := json.Unmarshal([]byte(result), &items); err == nil {
-		return items, nil
+		return items
 	}
 	var obj struct {
 		Suggestions []string `json:"suggestions"`
 	}
 	if err := json.Unmarshal([]byte(result), &obj); err == nil && obj.Suggestions != nil {
-		return obj.Suggestions, nil
+		return obj.Suggestions
 	}
 
-	// Fallback: newline-separated. A broken (e.g. truncated) JSON array lands here
-	// too, so bracket lines are dropped and `"item",` lines unquoted.
+	// Fallback
 	lines := strings.Split(result, "\n")
 	out := make([]string, 0, len(lines))
 	for _, l := range lines {
@@ -598,11 +486,10 @@ func (c llmConfig) suggestFixes(ctx context.Context, selected, before, after str
 		}
 		out = append(out, s)
 	}
-	return out, nil
+	return out
 }
 
-// stripCodeFence returns the body of the first markdown code fence in s, or s
-// trimmed when there is none. A missing closing fence runs to the end.
+// stripCodeFence returns the body of the first markdown code fence in s, else s trimmed
 func stripCodeFence(s string) string {
 	lines := strings.Split(s, "\n")
 	for i, l := range lines {

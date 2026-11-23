@@ -15,8 +15,7 @@ import (
 	"github.com/DictionLabs/Diction/gateway/pairing"
 )
 
-// pairingMux builds the mux with a writable keystore path and the given
-// DICTION_GATEWAY_AUTH mode.
+// pairingMux builds the mux with a writable keystore path and the given auth mode.
 func pairingMux(t *testing.T, mode string) http.Handler {
 	t.Helper()
 	t.Setenv("DICTION_GATEWAY_AUTH", mode)
@@ -146,8 +145,7 @@ func TestPairing_EnvPinned_NoRotationCapability(t *testing.T) {
 }
 
 func TestPairing_TextRoutesOpenWithPairedKey(t *testing.T) {
-	// LLM off here, so the route fails later than the auth layer — the point is
-	// that a paired key must NOT hit the text_routes_closed 403 speed bump.
+	// LLM off, so the route fails past auth; a paired key must not hit the text_routes_closed 403.
 	t.Setenv("DICTION_GATEWAY_KEY", "dk_pinned_via_env_pinned_via_env_pinned_1")
 	mux := pairingMux(t, "optional")
 	req := httptest.NewRequest(http.MethodPost, "/v1/text/process", nil)
@@ -166,10 +164,7 @@ func TestPairing_TextRoutesOpenWithPairedKey(t *testing.T) {
 	}
 }
 
-// An upgrading self-hoster with an LLM configured, TEXT_ROUTES_OPEN unset and
-// no key must NOT be told the text routes are available: the app would light
-// up Writing Tools and every call would 403. Regression guard — the first cut
-// advertised text_process purely on "a keystore exists".
+// A keyless caller with an LLM but TEXT_ROUTES_OPEN unset must not be told text routes exist.
 func TestPairing_TextRoutesNotOverAdvertisedToKeylessCallers(t *testing.T) {
 	t.Setenv("LLM_MODEL", "some-model")
 	t.Setenv("LLM_BASE_URL", "http://127.0.0.1:1")
@@ -203,8 +198,7 @@ func TestPairing_TextRoutesNotOverAdvertisedToKeylessCallers(t *testing.T) {
 	}
 }
 
-// The same gateway tells a caller holding a valid pairing key that the text
-// routes ARE available, because for that caller they are.
+// A caller holding a valid pairing key is told the text routes are available.
 func TestPairing_TextRoutesAdvertisedToKeyedCaller(t *testing.T) {
 	const key = "dk_pinned_via_env_pinned_via_env_pinned_1"
 	t.Setenv("DICTION_GATEWAY_KEY", key)
@@ -230,8 +224,7 @@ func TestPairing_TextRoutesAdvertisedToKeyedCaller(t *testing.T) {
 	}
 }
 
-// In required mode nothing keyless can reach the routes at all, so the flat
-// advertisement is honest for every caller.
+// In required mode nothing keyless reaches the routes, so the flat advertisement is honest.
 func TestPairing_RequiredModeAdvertisesTextRoutes(t *testing.T) {
 	t.Setenv("LLM_MODEL", "some-model")
 	t.Setenv("LLM_BASE_URL", "http://127.0.0.1:1")
@@ -254,9 +247,7 @@ func TestPairing_RequiredModeAdvertisesTextRoutes(t *testing.T) {
 	}
 }
 
-// AUTH_ENABLED=true used to switch on Diction Cloud's receipt and trial checks, which the
-// community gateway no longer carries. It must keep a gateway closed: keyless requests get
-// 401, a paired key gets through.
+// Retired AUTH_ENABLED=true must keep a gateway closed: keyless gets 401, a paired key passes.
 func TestPairing_LegacyAuthEnabled_MeansRequired(t *testing.T) {
 	t.Setenv("AUTH_ENABLED", "true")
 	keyPath := filepath.Join(t.TempDir(), "gateway-keys.json")

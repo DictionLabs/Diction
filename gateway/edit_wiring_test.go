@@ -12,18 +12,9 @@ import (
 	"github.com/coder/websocket"
 )
 
-// The v13 bug, pinned at the two layers it actually lived at.
-//
-// It was not a logic error inside processWithIntent — that part worked. It was the closure
-// buildMux wrapped around it returning a hardcoded "" mode, so an edit over the audio socket
-// came back indistinguishable from a dictation and the app inserted the LLM's answer as text.
-// core/streaming_test.go already covers the *failure* shape ({text:"", mode:intent,
-// status:"failed"}); nothing covered the success mode, which is the half that broke.
+// The v13 bug: buildMux's closure returned a hardcoded "" mode, so edits looked like dictations.
 
-// TestPostProcessor_ReturnsModeForIntent is the unit-level guard: the closure main.go wires
-// must report the mode it ran. This is why postProcessor() is a named constructor rather than
-// a literal inside buildMux — a local closure cannot be called from a test, which is exactly
-// how it went unnoticed.
+// TestPostProcessor_ReturnsModeForIntent: the wired closure must report the mode it ran.
 func TestPostProcessor_ReturnsModeForIntent(t *testing.T) {
 	srv := makeLLMServer(t, "the model's answer")
 	cfg := llmConfig{
@@ -52,8 +43,7 @@ func TestPostProcessor_ReturnsModeForIntent(t *testing.T) {
 		}
 	}
 
-	// On failure the mode still has to be right: a caller that trusts it must not be handed
-	// an empty string at the exact moment it needs to decide "was this an edit?".
+	// On failure the mode must still be right, never an empty string.
 	dead := llmConfig{Enabled: true, BaseURL: "http://127.0.0.1:1", Model: "test", PromptEdit: "EDIT"}
 	if _, mode, err := dead.postProcessor()(context.Background(), "fix that", ctxJSON, "edit"); err == nil {
 		t.Error("want an error from a dead LLM host, got none")
@@ -62,10 +52,7 @@ func TestPostProcessor_ReturnsModeForIntent(t *testing.T) {
 	}
 }
 
-// TestStreamWiring_EditIntentReturnsEditMode spans the seam main.go owns: STT → context frame
-// → LLM → result frame, through the real mux, over a real WebSocket. If the closure ever
-// returns "" again, or the route stops passing the intent through, this fails and no other
-// test does.
+// TestStreamWiring_EditIntentReturnsEditMode: STT, context, LLM, result through the real mux.
 func TestStreamWiring_EditIntentReturnsEditMode(t *testing.T) {
 	mux := splitWiringMux(t, "translate to French", "Bonjour le monde")
 
@@ -94,10 +81,7 @@ func TestStreamWiring_EditIntentReturnsEditMode(t *testing.T) {
 	}
 }
 
-// A plain dictation through the same mux must now carry mode="transcribe" where it previously
-// omitted the field. Both are decoded identically by every shipped app
-// (StreamingClientLoop.decodeResult defaults a missing mode to "transcribe"), which is what
-// makes this change safe for older clients.
+// A plain dictation must carry mode="transcribe"; apps default a missing mode to it, so it is safe.
 func TestStreamWiring_TranscribeIntentReturnsTranscribeMode(t *testing.T) {
 	mux := splitWiringMux(t, "raw transcript here", "cleaned transcript here")
 
@@ -120,9 +104,7 @@ func TestStreamWiring_TranscribeIntentReturnsTranscribeMode(t *testing.T) {
 	}
 }
 
-// streamFramesWithContext dials the mux's stream route, optionally sends a context blob as the
-// first text frame (which is how core/streaming.go recognises it — a text frame with no
-// `action` field), then some silence and `done`, and returns every frame the server wrote.
+// streamFramesWithContext dials the stream route, optionally sends a context frame, returns frames.
 func streamFramesWithContext(t *testing.T, mux http.Handler, query, contextJSON string) []string {
 	t.Helper()
 

@@ -5,111 +5,87 @@ import (
 	"net/http"
 )
 
-// withCapabilities wraps a ModelsHandler to inject a top-level "capabilities"
-// object into the /v1/models JSON response (R4, R18).
-//
-// Shape: {"capabilities":{"llm":bool,"text_process":bool,"text_suggest":bool,...}}.
-// Additive: existing data[] and providers[] are untouched, so every existing
-// client and the shipped GatewayProbe keep working without changes.
-//
-// core/ is not modified -- the decorator lives in main, so the two byte-identical
-// hand-maintained copies of core/ across both git roots stay untouched (R18).
 // capabilityFlags carries the advertised feature set into withCapabilities.
 type capabilityFlags struct {
 	llmEnabled  bool
 	textRoutes  bool
 	pairing     bool
 	keyRotation bool
-	// postDeliveryMs is DICTION_LIVE_ENHANCE_TIMEOUT_MS: how long the Writing Tools pass
-	// may take after the raw transcript was sent. Advertised so the app waits as long.
+	// postDeliveryMs: DICTION_LIVE_ENHANCE_TIMEOUT_MS, advertised so the app waits as long.
 	postDeliveryMs int
-	// preview / previewOpus: the gateway answers preview=cloud on /v1/audio/stream with
-	// interim frames on PCM / Opus sessions (core.Gateway.PreviewCapabilities).
+	// preview / previewOpus: preview=cloud interim frames on PCM / Opus sessions.
 	preview     bool
 	previewOpus bool
-	// chat: POST /v1/chat has a backend (chat.ChatEngine) and this caller can reach it
-	// (same text-route rule as text_process).
+	// chat: POST /v1/chat has a backend and this caller can reach it.
 	chat bool
 }
 
+// withCapabilities adds a top-level "capabilities" object to /v1/models; data[] stays untouched.
 func withCapabilities(base http.HandlerFunc, flagsFor func(*http.Request) capabilityFlags) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flags := flagsFor(r)
-		// Capture the base handler's output.
 		rec := &responseRecorder{header: make(http.Header), code: http.StatusOK}
 		base(rec, r)
 
-		// Pass through non-200 or non-JSON unchanged.
-		contentType := rec.header.Get("Content-Type")
-		if rec.code != http.StatusOK || contentType == "" {
-			for k, vv := range rec.header {
-				for _, v := range vv {
-					w.Header().Add(k, v)
-				}
-			}
-			w.WriteHeader(rec.code)
-			w.Write(rec.body) //nolint:errcheck
-			return
-		}
-
-		// Parse the base response.
+		// Non-200, non-JSON or unparseable: pass through unchanged.
 		var baseResp map[string]json.RawMessage
-		if err := json.Unmarshal(rec.body, &baseResp); err != nil {
-			// Unparseable: pass through unchanged.
-			for k, vv := range rec.header {
-				for _, v := range vv {
-					w.Header().Add(k, v)
-				}
-			}
-			w.WriteHeader(rec.code)
-			w.Write(rec.body) //nolint:errcheck
+		contentType := rec.header.Get("Content-Type")
+		if rec.code != http.StatusOK || contentType == "" ||
+			json.Unmarshal(rec.body, &baseResp) != nil {
+			copyHeaders(w, rec)
+			_, _ = w.Write(rec.body)
 			return
 		}
 
-		// Inject capabilities.
-		caps, _ := json.Marshal(map[string]bool{
-			"llm":            flags.llmEnabled,
-			"text_process":   flags.textRoutes,
-			"text_suggest":   flags.textRoutes,
-			"text_summarize": flags.textRoutes,
-			// Formatting rides inside /v1/text/process as a context flag rather
-			// than on its own route, so it is advertised separately: a client can
-			// then offer the Formatting toggle only where the key is honoured.
-			"formatting": flags.llmEnabled,
-			// Gateway pairing (QR key + rotation). key_rotation is false when
-			// the key is pinned via DICTION_GATEWAY_KEY.
-			"pairing":      flags.pairing,
-			"key_rotation": flags.keyRotation,
-			// Interim text while recording (preview=cloud). preview_opus alone is
-			// read as not capable by clients: it only means anything with preview.
-			"preview":      flags.preview,
-			"preview_opus": flags.previewOpus,
-			"chat":         flags.chat,
-		})
-		baseResp["capabilities"] = caps
-		// Numbers do not fit the bool-only capabilities map, so the Writing Tools budget
-		// is its own object. Absent without an LLM: there is nothing to wait for.
+		baseResp["capabilities"] = capabilitiesJSON(flags)
+		// Numbers do not fit the bool-only map; absent without an LLM (nothing to wait for).
 		if flags.llmEnabled {
-			// process_*: the /v1/text/process budget (textProcessBudget) — base + per 1,000
-			// UTF-8 bytes of the text, capped — so the app's deadline for that call follows it.
-			wt, _ := json.Marshal(map[string]int{
-				"post_delivery_ms":          flags.postDeliveryMs,
-				"process_base_ms":           textProcessBaseMs,
-				"process_per_1000_bytes_ms": textProcessPer1000BytesMs,
-				"process_max_ms":            textProcessMaxMs,
-			})
-			baseResp["writing_tools"] = wt
+			baseResp["writing_tools"] = writingToolsJSON(flags)
 		}
 
-		// Write augmented response.
-		for k, vv := range rec.header {
-			for _, v := range vv {
-				w.Header().Add(k, v)
-			}
-		}
-		w.WriteHeader(rec.code)
-		json.NewEncoder(w).Encode(baseResp) //nolint:errcheck
+		copyHeaders(w, rec)
+		_ = json.NewEncoder(w).Encode(baseResp)
 	}
+}
+
+// copyHeaders replays the recorded headers and status code onto w.
+func copyHeaders(w http.ResponseWriter, rec *responseRecorder) {
+	for k, vv := range rec.header {
+		for _, v := range vv {
+			w.Header().Add(k, v)
+		}
+	}
+	w.WriteHeader(rec.code)
+}
+
+func capabilitiesJSON(flags capabilityFlags) json.RawMessage {
+	caps, _ := json.Marshal(map[string]bool{
+		"llm":            flags.llmEnabled,
+		"text_process":   flags.textRoutes,
+		"text_suggest":   flags.textRoutes,
+		"text_summarize": flags.textRoutes,
+		// Advertised separately so the Formatting toggle shows only where the key is honoured.
+		"formatting": flags.llmEnabled,
+		// key_rotation is false when the key is pinned via DICTION_GATEWAY_KEY.
+		"pairing":      flags.pairing,
+		"key_rotation": flags.keyRotation,
+		// preview_opus alone is read as not capable: it only means anything with preview.
+		"preview":      flags.preview,
+		"preview_opus": flags.previewOpus,
+		"chat":         flags.chat,
+	})
+	return caps
+}
+
+// writingToolsJSON advertises the text/process budget so the app's deadline follows.
+func writingToolsJSON(flags capabilityFlags) json.RawMessage {
+	wt, _ := json.Marshal(map[string]int{
+		"post_delivery_ms":          flags.postDeliveryMs,
+		"process_base_ms":           textProcessBaseMs,
+		"process_per_1000_bytes_ms": textProcessPer1000BytesMs,
+		"process_max_ms":            textProcessMaxMs,
+	})
+	return wt
 }
 
 // responseRecorder captures an http.Handler's response.

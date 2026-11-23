@@ -2,9 +2,7 @@ package main
 
 import "testing"
 
-// The whole point of modeForIntent is that there is exactly one of it. This table is small
-// because the rule is small: explicit edit intents pass through, everything else is a
-// dictation. The gateway never infers an edit from what the user said.
+// Explicit edit intents pass through, everything else is a dictation.
 func TestModeForIntent(t *testing.T) {
 	cases := map[string]string{
 		"edit":          "edit",

@@ -9,11 +9,7 @@ import (
 	"testing"
 )
 
-// Long dictation and dictated questions on a self-hosted gateway. Measured 2026-10-11 against
-// Groq gpt-oss (the QA box's model) with this build's request shape: a ~720-word Czech dictation
-// came back cut off at 57-63% of its words with finish_reason=length (gpt-oss-120b) or empty
-// (gpt-oss-20b), and the cut-off text was returned as the cleaned transcript. Record:
-// diction-dev .claude/bow/explore-cleanup-cases.md.
+// Long dictation and dictated questions on a self-hosted gateway.
 
 func llmStub(t *testing.T, reply func(userMsg string) (content, finish string), gotMax *int) *httptest.Server {
 	t.Helper()
@@ -57,9 +53,7 @@ func TestLLM_TruncatedOutputIsAnError(t *testing.T) {
 	}
 }
 
-// A model that stops early on its own (finish_reason=stop) - a context window smaller than the
-// dictation, or a model that condenses - is caught by the same deletion guard the split socket
-// already applies (core.EnhancedAcceptable), so every cleanup path agrees.
+// A model that stops early on its own (finish_reason=stop) trips the deletion guard
 func TestLLM_CleanupThatDropsMostWordsIsAnError(t *testing.T) {
 	srv := llmStub(t, func(u string) (string, string) {
 		f := strings.Fields(u)
@@ -80,10 +74,7 @@ func TestLLM_CleanupThatDropsMostWordsIsAnError(t *testing.T) {
 	}
 }
 
-// Reasoning models charge hidden thinking to the same budget, and the thinking grows with the
-// input: gpt-oss-120b spent ~3,100 reasoning tokens on the Czech dictation above, so a budget
-// of len/2+200 (floor 4000) ran out mid-answer. The budget keeps the output estimate AND a
-// fixed reasoning allowance.
+// Reasoning models charge hidden thinking to the output budget, and it grows with the input
 func TestLLM_LongInputBudgetKeepsReasoningHeadroom(t *testing.T) {
 	var got int
 	srv := llmStub(t, func(u string) (string, string) { return u, "stop" }, &got)
@@ -100,10 +91,6 @@ func TestLLM_LongInputBudgetKeepsReasoningHeadroom(t *testing.T) {
 }
 
 // The cleanup prompt must tell the model a dictated question or request is not addressed to it.
-// Measured 2026-10-11 with the previous prompt: "can you help me write a short email to my
-// landlord ..." was answered with a written email (gpt-oss-20b, 4/4 across default and low
-// reasoning effort) or a refusal
-// (gpt-oss-120b, 2/2), and the Czech equivalent with a written email on both (4/4).
 func TestDefaultPromptCleanup_QuestionsAreNotAnswered(t *testing.T) {
 	for _, want := range []string{"never addressed to you", "Never answer it", "still a question"} {
 		if !strings.Contains(DefaultPromptCleanup, want) {
@@ -112,8 +99,7 @@ func TestDefaultPromptCleanup_QuestionsAreNotAnswered(t *testing.T) {
 	}
 }
 
-// The length guard is for the built-in prompt only: an operator's own LLM_PROMPT may
-// summarise, condense or translate.
+// The length guard is for the built-in prompt only
 func TestLLM_LengthGuardOnlyForDefaultPrompt(t *testing.T) {
 	short := func(u string) (string, string) {
 		f := strings.Fields(u)

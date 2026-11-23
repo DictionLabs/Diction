@@ -52,8 +52,7 @@ func TestModeFromEnv(t *testing.T) {
 	}
 }
 
-// AUTH_ENABLED=true is the retired cloud-auth switch; it fails closed into required, even
-// when DICTION_GATEWAY_AUTH says otherwise.
+// Retired AUTH_ENABLED=true fails closed into required, even if DICTION_GATEWAY_AUTH disagrees.
 func TestModeFromEnv_LegacyAuthEnabled(t *testing.T) {
 	t.Setenv("AUTH_ENABLED", "true")
 	for _, val := range []string{"", "optional", "off"} {
@@ -101,7 +100,7 @@ func TestKeyMiddlewareMatrix(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			passed := false
-			h := KeyMiddleware(ks, tc.required, func(w http.ResponseWriter, r *http.Request) {
+			h := KeyMiddleware(ks, tc.required, func(_ http.ResponseWriter, _ *http.Request) {
 				passed = true
 			})
 			req := httptest.NewRequest(http.MethodPost, "/v1/audio/transcriptions", nil)
@@ -131,7 +130,7 @@ func TestKeyMiddlewareMatrix(t *testing.T) {
 
 func TestKeyMiddlewareNilStorePasses(t *testing.T) {
 	passed := false
-	h := KeyMiddleware(nil, false, func(w http.ResponseWriter, r *http.Request) { passed = true })
+	h := KeyMiddleware(nil, false, func(_ http.ResponseWriter, _ *http.Request) { passed = true })
 	h(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 	if !passed {
 		t.Fatal("nil keystore in optional mode must pass")
@@ -179,9 +178,7 @@ func TestAuthKeyEndpoint(t *testing.T) {
 	}
 }
 
-// TestAuthKeyEndpoint_RejectsExpiredToken is Expiry policy rule 1 at the
-// HTTP level: an expired token gets 401 on /v1/auth/key too — there are no
-// refresh-token semantics.
+// TestAuthKeyEndpoint_RejectsExpiredToken: an expired token gets 401 on /v1/auth/key too.
 func TestAuthKeyEndpoint_RejectsExpiredToken(t *testing.T) {
 	ks, _ := newTestKeyStore(t, "", time.Hour, time.Millisecond)
 	token, err := ks.IssueToken()
@@ -241,9 +238,7 @@ func TestRotateEndpoint(t *testing.T) {
 	if _, err := time.Parse(time.RFC3339, body.PreviousValidUntil); err != nil {
 		t.Fatalf("previous_valid_until %q not RFC3339: %v", body.PreviousValidUntil, err)
 	}
-	// The old token can still rotate again — but immediately after a real
-	// rotation, the current secret is brand new, so this second call
-	// coalesces rather than rotating again.
+	// The old token can rotate again, but the secret is brand new so the call coalesces.
 	resp2 := doAuthed(t, http.MethodPost, srv.URL+"/v1/auth/rotate", oldToken)
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("grace-key rotate status = %d, want 200", resp2.StatusCode)

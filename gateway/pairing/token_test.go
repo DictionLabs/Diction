@@ -77,10 +77,7 @@ func TestVerifyToken_Garbage(t *testing.T) {
 	}
 }
 
-// TestExpiryPolicyMatrix is the "no silent exemptions" guarantee: enabling
-// TTL rejects never-expiring tokens. The other half of the old guarantee —
-// the legacy raw-secret credential — is gone entirely as of v14; see
-// TestKeyStoreVerify_RawSecretIsNeverABearerToken.
+// TestExpiryPolicyMatrix: enabling TTL rejects never-expiring tokens (no silent exemptions).
 func TestExpiryPolicyMatrix(t *testing.T) {
 	now := time.Now()
 	neverExpiring, err := signToken("secret", 0)

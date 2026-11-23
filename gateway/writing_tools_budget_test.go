@@ -9,9 +9,7 @@ import (
 	"time"
 )
 
-// The phone cannot read a self-hoster's env, so /v1/models tells it how long Writing
-// Tools may take after the raw transcript (DICTION_LIVE_ENHANCE_TIMEOUT_MS). The app
-// waits that long before inserting the raw text. (.claude/plans/insert-once-plan.md, C1.)
+// /v1/models tells the phone how long Writing Tools may take after the raw transcript.
 func modelsBody(t *testing.T, env map[string]string) map[string]json.RawMessage {
 	t.Helper()
 	t.Setenv("DICTION_KEY_PATH", filepath.Join(t.TempDir(), "keys.json"))
@@ -79,8 +77,7 @@ func TestModelsAdvertisesPostDeliveryBudget(t *testing.T) {
 	})
 }
 
-// /v1/text/process allows 30 s + 1 s per 400 bytes (cap 120 s); /v1/models says so, so the
-// app's deadline for that call follows it (.claude/plans/text-process-budget-plan.md).
+// /v1/text/process allows 30 s + 1 s per 400 bytes (cap 120 s); /v1/models advertises it.
 func TestModelsAdvertisesTextProcessBudget(t *testing.T) {
 	llm := map[string]string{"LLM_BASE_URL": "http://localhost:9/v1", "LLM_MODEL": "m"}
 	raw, ok := modelsBody(t, llm)["writing_tools"]

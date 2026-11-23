@@ -17,23 +17,13 @@ import (
 	"github.com/DictionLabs/Diction/gateway/core"
 )
 
-// ErrKeyPinned is returned by Rotate when the key comes from
-// DICTION_GATEWAY_KEY: an env-pinned key has no keyring to rotate within.
+// ErrKeyPinned is returned by Rotate when the key is pinned via DICTION_GATEWAY_KEY.
 var ErrKeyPinned = errors.New("gateway key is pinned via DICTION_GATEWAY_KEY")
 
-// maxPreviousKeys bounds keyring growth if clients rotate aggressively. With
-// 24h rotation coalescing (rotateCoalesce) a 30-day grace window holds at
-// most ~30 retired secrets, so 40 means time-based grace pruning — the
-// correct mechanism — is always what removes an entry, never truncation.
+// maxPreviousKeys bounds the ring so time-based grace pruning, not truncation, removes entries.
 const maxPreviousKeys = 40
 
-// rotateCoalesce: a Rotate() call within this long of the current secret's
-// mint time does not create a new secret — it returns a freshly minted
-// token from the unchanged current secret instead. Without this, N devices
-// each rotating on their own 7-day cadence force N secret rotations
-// clustered together, which used to truncate in-grace secrets out of the
-// ring early (see the eviction regression test) and let a compromised
-// device churn the ring to evict other devices' secrets.
+// rotateCoalesce: a Rotate this soon after minting keeps the secret, stopping ring churn.
 const rotateCoalesce = 24 * time.Hour
 
 type keyRecord struct {
@@ -51,11 +41,7 @@ type keyringFile struct {
 	Previous []retiredKey `json:"previous"`
 }
 
-// KeyStore holds the gateway pairing secret plus retired secrets still
-// inside their grace window, and the token TTL policy applied at mint and
-// verify time. Grace secrets stay valid on every route so a second device
-// that was offline across a rotation keeps working until it exchanges for
-// the current secret.
+// KeyStore holds the pairing secret, retired secrets still in their grace window, and the TTL.
 type KeyStore struct {
 	mu     sync.Mutex
 	path   string
@@ -63,17 +49,11 @@ type KeyStore struct {
 	ttl    time.Duration
 	pinned bool
 	ring   keyringFile
-	// now is overridden in tests to defeat rotation coalescing and to
-	// exercise expiry without a real sleep.
+	// now is overridden in tests to skip rotation coalescing and real sleeps.
 	now func() time.Time
 }
 
-// LoadOrCreate returns the gateway keyring. When envKey is non-empty
-// (DICTION_GATEWAY_KEY) it becomes the current key and rotation is
-// disabled; retired keys from the file are still honored for their grace
-// window. Otherwise the keyring is loaded from path, or generated and
-// persisted on first start. ttl is the token TTL policy (0 = no expiry);
-// it does not apply in pinned mode (a pinned literal has no expiry field).
+// LoadOrCreate returns the keyring from envKey (pinned) or the file at path, else a new one.
 func LoadOrCreate(path, envKey string, grace, ttl time.Duration) (*KeyStore, error) {
 	ks := &KeyStore{path: path, grace: grace, ttl: ttl, now: time.Now}
 	ks.ring = loadKeyringFile(path)
@@ -97,7 +77,7 @@ func LoadOrCreate(path, envKey string, grace, ttl time.Duration) (*KeyStore, err
 
 func loadKeyringFile(path string) keyringFile {
 	var ring keyringFile
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return keyringFile{}
 	}
@@ -115,24 +95,14 @@ func newGatewaySecret() (string, error) {
 	return tokenPrefix + base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
-// CurrentKey returns the active pairing secret. In pinned mode
-// (DICTION_GATEWAY_KEY) this IS the bearer credential. Otherwise it is the
-// signing secret used to mint per-device tokens — never hand this value
-// itself to a client (over HTTP, in the QR, anywhere); use IssueToken.
+// CurrentKey returns the active secret; never hand it to a client unless pinned (use IssueToken).
 func (ks *KeyStore) CurrentKey() string {
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 	return ks.ring.Current.Key
 }
 
-// IssueToken returns a credential safe to hand to a device: the pinned key
-// unchanged when DICTION_GATEWAY_KEY is set (an operator who fixed a
-// manual key wants exactly that key, not a freshly minted one — and TTL
-// does not apply to it), otherwise a new token signed against the current
-// secret with the configured TTL. Every call mints a distinct token —
-// pairing N devices yields N different QR codes — but any still-valid
-// token keeps verifying, so there is nothing per-device to persist and no
-// risk from calling this repeatedly.
+// IssueToken returns a credential safe for a device: the pinned key, else a freshly minted token.
 func (ks *KeyStore) IssueToken() (string, error) {
 	if ks.pinned {
 		return ks.CurrentKey(), nil
@@ -146,8 +116,7 @@ func (ks *KeyStore) IssueToken() (string, error) {
 // Pinned reports whether the key came from DICTION_GATEWAY_KEY.
 func (ks *KeyStore) Pinned() bool { return ks.pinned }
 
-// Fingerprint is the loggable identity of the current key: prefix + first 8
-// chars of the random part. Never log the full key.
+// Fingerprint is the loggable identity of the current key; never log the full key.
 func (ks *KeyStore) Fingerprint() string {
 	key := ks.CurrentKey()
 	trimmed := strings.TrimPrefix(key, tokenPrefix)
@@ -157,17 +126,7 @@ func (ks *KeyStore) Fingerprint() string {
 	return tokenPrefix + trimmed + "…"
 }
 
-// Verify reports whether token is valid: in pinned mode an exact match on
-// the fixed key (TTL never applies to a pinned literal); otherwise a token
-// bearing a correct HMAC tag under the current secret or a retired secret
-// still inside its grace window, honoring that token's own embedded
-// expiry. The signing secret itself is never a bearer credential — the
-// pre-per-device-token exact-match fallback was removed in v14, the first
-// release after v13 shipped QR pairing, by which point every paired device
-// held a minted token. hmac.Equal and ConstantTimeCompare are both
-// constant-time; a garbage token still walks the full grace ring before
-// failing, so verification time does not distinguish "expired" from
-// "never valid" at the network level (accepted; see plan Risks).
+// Verify reports whether token is valid: exact match if pinned, else an in-grace HMAC match.
 func (ks *KeyStore) Verify(token string) bool {
 	if token == "" {
 		return false
@@ -206,12 +165,7 @@ func (ks *KeyStore) Verify(token string) bool {
 	return false
 }
 
-// Rotate retires the current secret into the grace ring and generates a
-// new one — unless the current secret is younger than rotateCoalesce, in
-// which case it does nothing to the ring and returns the current secret
-// with coalesced=true and a zero previousValidUntil (nothing was
-// retired). Either way the caller should mint a fresh token via
-// IssueToken for its response; Rotate itself only manages the secret.
+// Rotate retires the current secret into the grace ring unless it is younger than rotateCoalesce.
 func (ks *KeyStore) Rotate() (newKey string, previousValidUntil time.Time, coalesced bool, err error) {
 	if ks.pinned {
 		return "", time.Time{}, false, ErrKeyPinned
@@ -263,10 +217,7 @@ func (ks *KeyStore) persistLocked() error {
 	return os.Rename(tmp, ks.path)
 }
 
-// KeyStoreFromEnv builds the keyring from DICTION_GATEWAY_KEY,
-// DICTION_KEY_PATH, DICTION_KEY_GRACE and DICTION_TOKEN_TTL. Returns nil
-// (no error) when pairing is off, so callers can wire
-// `ks := pairing.KeyStoreFromEnv(mode)` unconditionally.
+// KeyStoreFromEnv builds the keyring from the DICTION_* env vars; nil, nil when pairing is off.
 func KeyStoreFromEnv(mode Mode) (*KeyStore, error) {
 	if mode == ModeOff {
 		return nil, nil
@@ -278,9 +229,7 @@ func KeyStoreFromEnv(mode Mode) (*KeyStore, error) {
 	ttlRaw := core.EnvOrDefault("DICTION_TOKEN_TTL", "")
 	var ttl time.Duration
 	if ttlRaw != "" {
-		// A malformed value is a hard startup error, not a silent fallback
-		// to "no expiry" — silently disabling a security control the
-		// operator asked for is the worse failure.
+		// A malformed value fails startup: silently dropping the requested expiry is worse.
 		ttl, err = time.ParseDuration(ttlRaw)
 		if err != nil {
 			return nil, fmt.Errorf("DICTION_TOKEN_TTL: %w", err)
@@ -288,37 +237,33 @@ func KeyStoreFromEnv(mode Mode) (*KeyStore, error) {
 	}
 
 	envKey := core.EnvOrDefault("DICTION_GATEWAY_KEY", "")
-
-	if ttl > 0 {
-		// Clock sanity: a Pi without an RTC boots at epoch and would mint
-		// tokens that are nonsense (already expired, or valid for
-		// decades). Warning only, never fatal — the clock usually
-		// corrects via NTP moments later.
-		if time.Now().Before(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
-			fmt.Printf("\033[33mwarning: system clock reads before 2026-01-01 with DICTION_TOKEN_TTL set — minted tokens may have a nonsense expiry until the clock corrects\033[0m\n")
-		}
-		// Enforcement sanity: expiring tokens protect nothing if keyless
-		// requests are accepted anyway. This is the misconfiguration most
-		// likely to void the whole feature silently.
-		if mode != ModeRequired {
-			fmt.Printf("\033[33mwarning: DICTION_TOKEN_TTL is set but DICTION_GATEWAY_AUTH=%s — tokens will expire, but keyless requests are still accepted, so the expiry protects nothing until DICTION_GATEWAY_AUTH=required\033[0m\n", mode)
-		}
-		if envKey != "" {
-			fmt.Printf("\033[33mwarning: DICTION_TOKEN_TTL is set but DICTION_GATEWAY_KEY pins a literal key — TTL does not apply to a pinned key and is inert\033[0m\n")
-		} else {
-			fmt.Printf("\033[33mwarning: DICTION_TOKEN_TTL=%s — legacy and never-expiring tokens are rejected; previously paired devices re-pair once\033[0m\n", ttl)
-		}
-	}
+	warnTTLConfig(ttl, mode, envKey)
 
 	return LoadOrCreate(
 		core.EnvOrDefault("DICTION_KEY_PATH", "/data/gateway-keys.json"),
 		envKey, grace, ttl)
 }
 
-// WarnDeprecatedEnv prints an orange startup line when DICTION_GATEWAY_KEY
-// is set: the var is deprecated — still fully honored, but it disables
-// both key rotation and token TTL. Uses raw fmt (not log), matching
-// PrintQR's convention, so it renders cleanly in `docker compose logs`.
+func warnTTLConfig(ttl time.Duration, mode Mode, envKey string) {
+	if ttl <= 0 {
+		return
+	}
+	// A Pi without an RTC boots at epoch and mints nonsense expiries; warn only, NTP fixes it.
+	if time.Now().Before(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) {
+		fmt.Printf("\033[33mwarning: system clock reads before 2026-01-01 with DICTION_TOKEN_TTL set — minted tokens may have a nonsense expiry until the clock corrects\033[0m\n")
+	}
+	// Expiring tokens protect nothing while keyless requests are accepted.
+	if mode != ModeRequired {
+		fmt.Printf("\033[33mwarning: DICTION_TOKEN_TTL is set but DICTION_GATEWAY_AUTH=%s — tokens will expire, but keyless requests are still accepted, so the expiry protects nothing until DICTION_GATEWAY_AUTH=required\033[0m\n", mode)
+	}
+	if envKey != "" {
+		fmt.Printf("\033[33mwarning: DICTION_TOKEN_TTL is set but DICTION_GATEWAY_KEY pins a literal key — TTL does not apply to a pinned key and is inert\033[0m\n")
+	} else {
+		fmt.Printf("\033[33mwarning: DICTION_TOKEN_TTL=%s — legacy and never-expiring tokens are rejected; previously paired devices re-pair once\033[0m\n", ttl)
+	}
+}
+
+// WarnDeprecatedEnv prints an orange startup line when DICTION_GATEWAY_KEY is set (deprecated).
 func WarnDeprecatedEnv() {
 	if core.EnvBoolOrDefault("AUTH_ENABLED", false) {
 		fmt.Print("\033[33mwarning: AUTH_ENABLED is retired — treated as DICTION_GATEWAY_AUTH=required. Pair the app by scanning the QR (docker exec <container> gateway auth), then replace AUTH_ENABLED with DICTION_GATEWAY_AUTH: required.\033[0m\n")

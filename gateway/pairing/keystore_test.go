@@ -2,6 +2,7 @@ package pairing
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,7 +70,7 @@ func TestKeyStoreEnvPinned(t *testing.T) {
 	if ks.CurrentKey() != "dk_pinned_key_value" {
 		t.Fatalf("current = %q, want env key", ks.CurrentKey())
 	}
-	if _, _, _, err := ks.Rotate(); err != ErrKeyPinned {
+	if _, _, _, err := ks.Rotate(); !errors.Is(err, ErrKeyPinned) {
 		t.Fatalf("Rotate on pinned = %v, want ErrKeyPinned", err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -77,8 +78,7 @@ func TestKeyStoreEnvPinned(t *testing.T) {
 	}
 }
 
-// TestKeyStorePinnedIgnoresTTL proves TTL never applies to a pinned literal:
-// IssueToken returns the literal unchanged and Verify accepts it forever.
+// TestKeyStorePinnedIgnoresTTL: TTL never applies to a pinned literal key.
 func TestKeyStorePinnedIgnoresTTL(t *testing.T) {
 	ks, _ := newTestKeyStore(t, "dk_pinned_ttl_ignored", time.Hour, time.Millisecond)
 	token, err := ks.IssueToken()
@@ -128,10 +128,7 @@ func TestKeyStoreVerify(t *testing.T) {
 	}
 }
 
-// The signing secret is not a credential. The pre-per-device-token exact
-// match against the raw secret was removed in v14; this pins that it stays
-// gone under every TTL setting, including a retired secret still inside its
-// grace window (which keeps verifying tokens signed by it, and nothing else).
+// The raw signing secret is never a bearer credential, under any TTL, grace secrets included.
 func TestKeyStoreVerify_RawSecretIsNeverABearerToken(t *testing.T) {
 	for _, ttl := range []time.Duration{0, time.Hour} {
 		ks, _ := newTestKeyStore(t, "", time.Hour, ttl)
@@ -228,9 +225,7 @@ func TestKeyStoreGraceExpiry(t *testing.T) {
 	}
 }
 
-// TestGraceTimesTTL: a token from a retired-but-in-grace secret honours its
-// own expiry; a token whose secret is past grace fails even if its own
-// expiry is in the future.
+// TestGraceTimesTTL: an in-grace secret's token honours its expiry; past grace it always fails.
 func TestGraceTimesTTL(t *testing.T) {
 	ks, path := newTestKeyStore(t, "", time.Hour, time.Minute)
 	longLivedToken, err := signToken(ks.CurrentKey(), 24*time.Hour) // secret's own token, longer TTL than the store default, still bounded by secret grace
@@ -265,8 +260,7 @@ func TestGraceTimesTTL(t *testing.T) {
 	}
 }
 
-// forceRotate backdates the current secret's CreatedAt so the next Rotate()
-// call is not coalesced.
+// forceRotate backdates the current secret so the next Rotate is not coalesced.
 func forceRotate(ks *KeyStore) {
 	ks.mu.Lock()
 	ks.ring.Current.CreatedAt = ks.ring.Current.CreatedAt.Add(-2 * rotateCoalesce)
@@ -296,9 +290,7 @@ func TestRotateCoalescesWithin24h(t *testing.T) {
 	}
 }
 
-// TestRotateEvictionRegression is the maxPreviousKeys truncation bug: 15
-// forced rotations (clock injected to defeat coalescing) must not evict a
-// still-in-grace secret early.
+// TestRotateEvictionRegression: 15 forced rotations must not evict an in-grace secret.
 func TestRotateEvictionRegression(t *testing.T) {
 	ks, _ := newTestKeyStore(t, "", 30*24*time.Hour, 0)
 	firstSecret := ks.CurrentKey()

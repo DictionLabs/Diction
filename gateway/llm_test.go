@@ -115,7 +115,6 @@ func TestLLM_ConfigFromEnv_PromptFileMissing(t *testing.T) {
 
 	cfg := llmConfigFromEnv()
 	// On file read failure the gateway falls back to the default cleanup prompt
-	// rather than leaving the LLM with no system instructions.
 	if cfg.Prompt != DefaultPromptCleanup {
 		t.Errorf("expected DefaultPromptCleanup on file read failure, got %q", cfg.Prompt)
 	}
@@ -210,7 +209,7 @@ func TestLLM_Process_NoAPIKey(t *testing.T) {
 }
 
 func TestLLM_Process_ErrorStatus(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"model not found"}`))
 	}))
@@ -227,7 +226,7 @@ func TestLLM_Process_ErrorStatus(t *testing.T) {
 }
 
 func TestLLM_Process_EmptyResponse(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"choices": []map[string]any{}})
 	}))
@@ -241,7 +240,7 @@ func TestLLM_Process_EmptyResponse(t *testing.T) {
 }
 
 func TestLLM_Process_Timeout(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		time.Sleep(5 * time.Second)
 	}))
 	defer srv.Close()
@@ -257,7 +256,7 @@ func TestLLM_Process_Timeout(t *testing.T) {
 }
 
 func TestLLM_Process_TrimsWhitespace(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
@@ -317,10 +316,7 @@ func TestLLM_Process_MaxTokensBounds(t *testing.T) {
 
 	cfg := llmConfig{Enabled: true, BaseURL: srv.URL, Model: "test"}
 
-	// Short text → minimum 4000. The floor exists for reasoning-class models, which
-	// spend budget on hidden chain-of-thought before emitting any content; at the old
-	// 500 floor they could spend it all and return empty, which reached users as a
-	// failed edit on a self-hosted gateway running gpt-oss-20b.
+	// Short text → minimum 4000.
 	cfg.process(context.Background(), "hi")
 	if receivedMaxTokens != 4001 {
 		t.Errorf("short text: expected 4001 max_tokens (len/2 + 4000), got %d", receivedMaxTokens)
@@ -339,10 +335,7 @@ func TestLLM_Process_MaxTokensBounds(t *testing.T) {
 	}
 }
 
-// TestLLM_EditIntent_HasReasoningHeadroom pins the floor on the path that actually broke:
-// an edit intent with a short spoken instruction, which produces the smallest user message
-// and therefore the smallest budget, while a reasoning model's fixed thinking cost stays
-// the same. Guards the whole intent surface, not just plain cleanup.
+// TestLLM_EditIntent_HasReasoningHeadroom pins the floor on the path that actually broke
 func TestLLM_EditIntent_HasReasoningHeadroom(t *testing.T) {
 	var receivedMaxTokens int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -362,8 +355,7 @@ func TestLLM_EditIntent_HasReasoningHeadroom(t *testing.T) {
 		Enabled: true, BaseURL: srv.URL, Model: "test",
 		Prompt: "CLEANUP", PromptEdit: "EDIT", PromptEditSelected: "EDIT_SEL",
 	}
-	// Carries a target for both edit intents (a selection and cursor context), since an edit
-	// with nothing to edit is now a hard error and would never reach the token budget.
+	// Carries a target for both edit intents (a selection and cursor context)
 	const editable = `{"selected":"teh","before":"say ","after":" again"}`
 	for _, intent := range []string{"", "transcribe", "edit", "edit-selected"} {
 		receivedMaxTokens = 0
@@ -450,8 +442,7 @@ func TestLLM_ProcessWithIntent_PicksPrompt(t *testing.T) {
 		{"edit-selected", "EDIT_SEL_PROMPT"},
 	}
 
-	// Same context for every intent: a selection and cursor text, so each edit intent has a
-	// target and the test stays about which *prompt* was picked.
+	// Same context for every intent
 	const editable = `{"selected":"teh","before":"say ","after":" again"}`
 	for _, tc := range tests {
 		receivedPrompt = ""
@@ -467,9 +458,6 @@ func TestLLM_ProcessWithIntent_PicksPrompt(t *testing.T) {
 }
 
 // TestLLM_ProcessWithIntent_LanguageHint pins the language hint added by
-// .claude/plans/on-device-language-fix-plan.md: a concrete context.language appends
-// "(Language: xx)" to the cleanup user message; "auto"/empty/absent don't; edit intents
-// never get it (the transcript there is a spoken instruction, not the text to clean).
 func TestLLM_ProcessWithIntent_LanguageHint(t *testing.T) {
 	var receivedUserMsg string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -536,7 +524,7 @@ func TestLLM_ProcessWithIntent_LanguageHint(t *testing.T) {
 }
 
 func TestLLM_SuggestFixes_SoftFail(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"boom"}`))
 	}))
@@ -549,17 +537,14 @@ func TestLLM_SuggestFixes_SoftFail(t *testing.T) {
 		PromptSuggest: DefaultPromptSuggest,
 	}
 
-	suggestions, err := cfg.suggestFixes(context.Background(), "hello", "", "", nil)
-	if err != nil {
-		t.Errorf("expected soft-fail (no error), got: %v", err)
-	}
+	suggestions := cfg.suggestFixes(context.Background(), "hello", "", "", nil)
 	if len(suggestions) != 0 {
 		t.Errorf("expected empty slice on LLM error, got: %v", suggestions)
 	}
 }
 
 func TestLLM_SuggestFixes_JSONArray(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
@@ -576,10 +561,7 @@ func TestLLM_SuggestFixes_JSONArray(t *testing.T) {
 		PromptSuggest: DefaultPromptSuggest,
 	}
 
-	suggestions, err := cfg.suggestFixes(context.Background(), "hello", "", "", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	suggestions := cfg.suggestFixes(context.Background(), "hello", "", "", nil)
 	if len(suggestions) != 3 {
 		t.Errorf("expected 3 suggestions, got %d: %v", len(suggestions), suggestions)
 	}
@@ -589,7 +571,7 @@ func TestLLM_SuggestFixes_JSONArray(t *testing.T) {
 }
 
 func TestLLM_SuggestFixes_NewlineSeparated(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
@@ -606,10 +588,7 @@ func TestLLM_SuggestFixes_NewlineSeparated(t *testing.T) {
 		PromptSuggest: DefaultPromptSuggest,
 	}
 
-	suggestions, err := cfg.suggestFixes(context.Background(), "hello", "", "", nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	suggestions := cfg.suggestFixes(context.Background(), "hello", "", "", nil)
 	if len(suggestions) != 3 {
 		t.Errorf("expected 3 suggestions, got %d: %v", len(suggestions), suggestions)
 	}
@@ -618,8 +597,7 @@ func TestLLM_SuggestFixes_NewlineSeparated(t *testing.T) {
 	}
 }
 
-// Gemini and Claude often wrap their JSON in a markdown code fence. Each line of
-// the fence used to come back as its own suggestion (DictionLabs/Diction#24).
+// Gemini and Claude often wrap their JSON in a markdown code fence.
 func TestLLM_SuggestFixes_FencedJSON(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -639,7 +617,7 @@ func TestLLM_SuggestFixes_FencedJSON(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				json.NewEncoder(w).Encode(map[string]any{
 					"choices": []map[string]any{{"message": map[string]string{"content": tc.reply}}},
@@ -648,10 +626,7 @@ func TestLLM_SuggestFixes_FencedJSON(t *testing.T) {
 			defer srv.Close()
 
 			cfg := llmConfig{Enabled: true, BaseURL: srv.URL, Model: "test", PromptSuggest: DefaultPromptSuggest}
-			got, err := cfg.suggestFixes(context.Background(), "Hello world", "", "", nil)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			got := cfg.suggestFixes(context.Background(), "Hello world", "", "", nil)
 			if strings.Join(got, "|") != strings.Join(tc.want, "|") {
 				t.Errorf("want %q, got %q", tc.want, got)
 			}
@@ -661,8 +636,7 @@ func TestLLM_SuggestFixes_FencedJSON(t *testing.T) {
 
 // ── Formatting flag ───────────────────────────────────────────────────────────
 
-// captureSystemPrompt runs processWithIntent against a stub LLM and returns the
-// system prompt the gateway actually sent.
+// captureSystemPrompt runs processWithIntent against a stub LLM and returns its system prompt
 func captureSystemPrompt(t *testing.T, cfg llmConfig, contextJSON, intent string) string {
 	t.Helper()
 	var systemPrompt string
@@ -673,14 +647,14 @@ func captureSystemPrompt(t *testing.T, cfg llmConfig, contextJSON, intent string
 				Content string `json:"content"`
 			} `json:"messages"`
 		}
-		json.NewDecoder(r.Body).Decode(&req) //nolint:errcheck
+		json.NewDecoder(r.Body).Decode(&req)
 		for _, m := range req.Messages {
 			if m.Role == "system" {
 				systemPrompt = m.Content
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+		json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{{"message": map[string]string{"content": "ok"}}},
 		})
 	}))
@@ -695,8 +669,7 @@ func captureSystemPrompt(t *testing.T, cfg llmConfig, contextJSON, intent string
 	return systemPrompt
 }
 
-// Opt-out contract: absent formatting key means ON, matching older clients that
-// never send it.
+// Opt-out contract
 func TestFormatting_absentKey_appendsRules(t *testing.T) {
 	cfg := llmConfig{Prompt: "CLEANUP", PromptFormatting: "|FORMATTING|"}
 	got := captureSystemPrompt(t, cfg, `{"before":"x"}`, "")
@@ -713,8 +686,7 @@ func TestFormatting_true_appendsRules(t *testing.T) {
 	}
 }
 
-// The only way a user with the toggle off avoids formatting, and the reason the
-// rules live in a separate const: the base prompt must be byte-identical here.
+// The toggle off is the only way to avoid formatting, so the rules live in a separate prompt
 func TestFormatting_false_omitsRules(t *testing.T) {
 	cfg := llmConfig{Prompt: "CLEANUP", PromptFormatting: "|FORMATTING|"}
 	got := captureSystemPrompt(t, cfg, `{"formatting":false}`, "")
@@ -726,8 +698,7 @@ func TestFormatting_false_omitsRules(t *testing.T) {
 	}
 }
 
-// An edit instruction already states the shape of the result, so layout rules
-// there would fight the user's own instruction.
+// An edit instruction already states the result's shape, so layout rules would fight it
 func TestFormatting_editIntent_neverAppendsRules(t *testing.T) {
 	cfg := llmConfig{PromptEdit: "EDIT", PromptFormatting: "|FORMATTING|"}
 	// Cursor context included: an edit with no target now fails before a prompt is sent.
@@ -745,16 +716,9 @@ func TestFormatting_emptyContext_appendsRules(t *testing.T) {
 	}
 }
 
-// ── Self-hosted Writing Tools parity (.claude/plans/selfhosted-writing-tools-parity-plan.md) ──
-//
-// These pin the three defects found during v13.0 release testing, all of which were silent:
-// an edit intent answered with a transcribe mode, a cursor edit that passed the spoken
-// instruction as its own subject, and My Words never decoding at all. A test for a silent bug
-// that passes before the fix proves nothing, so each of these was run against unmodified code
-// first — see `## Implementation Progress` in the plan for the fail-first output.
+// ── Self-hosted Writing Tools parity ──
 
 // captureUserMsg runs processWithIntent against a fake LLM and returns the user message the
-// gateway actually sent. `reply` is what the fake LLM answers with.
 func captureUserMsg(t *testing.T, cfg llmConfig, reply, text, contextJSON, intent string) (string, string, error) {
 	t.Helper()
 	var userMsg string
@@ -765,14 +729,14 @@ func captureUserMsg(t *testing.T, cfg llmConfig, reply, text, contextJSON, inten
 				Content string `json:"content"`
 			} `json:"messages"`
 		}
-		json.NewDecoder(r.Body).Decode(&req) //nolint:errcheck
+		json.NewDecoder(r.Body).Decode(&req)
 		for _, m := range req.Messages {
 			if m.Role == "user" {
 				userMsg = m.Content
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{ //nolint:errcheck
+		json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{{"message": map[string]string{"content": reply}}},
 		})
 	}))
@@ -793,9 +757,7 @@ func parityTestConfig() llmConfig {
 	}
 }
 
-// The cursor-edit bug itself: intent=edit with no selection used to send
-// "Text: <spoken>\nInstruction: <spoken>" — the instruction as its own subject — which is
-// where the 97 characters of nonsense came from. It must now send before‸after as the text.
+// The cursor-edit bug itself
 func TestProcessWithIntent_CursorEdit(t *testing.T) {
 	ctxJSON := `{"before":"Hello ","after":" world"}`
 	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "edited", "translate to French", ctxJSON, "edit")
@@ -814,8 +776,6 @@ func TestProcessWithIntent_CursorEdit(t *testing.T) {
 }
 
 // An edit with nothing to edit must error so the caller's failure path runs and the app shows
-// "Couldn't apply edit". The alternative — today's behaviour — is typing the user's own
-// instruction into their document, which is the worst available outcome.
 func TestProcessWithIntent_EditRequiresTarget(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -837,10 +797,7 @@ func TestProcessWithIntent_EditRequiresTarget(t *testing.T) {
 	}
 }
 
-// The gateway sends ‸ as the cursor marker; the app inserts results verbatim
-// (KeyboardSessionBridge.applyEditResult). A model that echoes the marker would type it into
-// the user's document, so the gateway strips it on the way out. Cloud does the same
-// (gateway/llm.go:459).
+// The gateway sends ‸ as the cursor marker
 func TestProcessWithIntent_StripsCursorMarker(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -867,10 +824,7 @@ func TestProcessWithIntent_StripsCursorMarker(t *testing.T) {
 	}
 }
 
-// My Words has never reached a self-hosted LLM: the app sends [{"word":"..."}] and the
-// gateway declared []string, so the decode failed on that field alone and was
-// //nolint:errcheck'd away. Strings must keep working too — AGENTS.md documents the field
-// untyped, so a third-party client may well send them.
+// My Words has never reached a self-hosted LLM
 func TestProcessWithIntent_CustomWordsDecode(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -893,7 +847,6 @@ func TestProcessWithIntent_CustomWordsDecode(t *testing.T) {
 }
 
 // The user's own configured context must reach their own LLM (D8), and nothing else may.
-// Absent fields stay absent: a one-line prompt must never be handed an empty label.
 func TestProcessWithIntent_CleanupContext(t *testing.T) {
 	full := `{"before":"a","after":"b","tone":"Friendly","profile":"An engineer",` +
 		`"sessionContext":["earlier one","earlier two"],"clipboard":"pasted text",` +
@@ -924,8 +877,7 @@ func TestProcessWithIntent_CleanupContext(t *testing.T) {
 	}
 }
 
-// The self-hoster's own LLM, their own cost: a long Tone (the app's Default tone holds up to
-// 1000 characters, migrated Writing Style text more) reaches it whole, not cut at a cloud cap.
+// The self-hoster's own LLM, their own cost
 func TestProcessWithIntent_CleanupLongToneNotTruncated(t *testing.T) {
 	long := strings.Repeat("é", 1500) + "END"
 	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "the transcript", `{"tone":"`+long+`"}`, "")
@@ -937,19 +889,7 @@ func TestProcessWithIntent_CleanupLongToneNotTruncated(t *testing.T) {
 	}
 }
 
-// The regression that reached a real device: prose blocks in the cleanup message get emitted
-// as the answer, and the user's dictation disappears.
-//
-// Measured on whisper.macha.la (gpt-oss-20b, built-in prompt, 2026-09-08): with three earlier
-// transcripts in a "Recent:" block, "yeah that sounds good" came back as those three
-// transcripts — the user's words gone, last week's typed into their field. A long "Clipboard:"
-// block was appended verbatim. The prompt already told the model these lines were context and
-// "never part of what you return"; an untuned one-line prompt does not enforce it.
-//
-// So the cleanup message carries DESCRIPTIVE context only (My Words, Tone, About You), never
-// prose the model could mistake for the answer: no cursor text, no session transcripts, no
-// clipboard. This test fails the moment any of them is added back without a prompt built to
-// survive it.
+// The regression that reached a real device
 func TestProcessWithIntent_CleanupNeverCarriesProseBlocks(t *testing.T) {
 	ctxJSON := `{"before":"AAA","after":"BBB",` +
 		`"sessionContext":["The meeting went well.","Send the report by Friday."],` +
@@ -979,10 +919,7 @@ func TestProcessWithIntent_CleanupNeverCarriesProseBlocks(t *testing.T) {
 	}
 }
 
-// The compatibility promise, pinned rather than asserted: a self-hoster who has configured
-// none of My Words, Tone, Profile, session or clipboard sends exactly the bytes they send
-// today. Every keyboard dictation carries before/after/formatting/language, so this is the
-// common case, not an edge case.
+// The compatibility promise, pinned rather than asserted
 func TestProcessWithIntent_CleanupUnconfiguredIsByteIdentical(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -1018,10 +955,7 @@ func TestProcessWithIntent_CleanupUnconfiguredIsByteIdentical(t *testing.T) {
 	}
 }
 
-// One unreadable vocabulary entry must cost that entry and nothing else. A custom
-// UnmarshalJSON that returns an error aborts the enclosing json.Unmarshal, which would take
-// the user's tone, clipboard and session context down with it — a bigger version of the very
-// bug this type was written to end.
+// One unreadable vocabulary entry must cost that entry and nothing else.
 func TestProcessWithIntent_MalformedCustomWordKeepsRestOfContext(t *testing.T) {
 	ctxJSON := `{"customWords":[123,{"word":"Diction"}],"tone":"Friendly","profile":"An engineer"}`
 	userMsg, _, err := captureUserMsg(t, parityTestConfig(), "cleaned", "the transcript", ctxJSON, "")
@@ -1035,8 +969,7 @@ func TestProcessWithIntent_MalformedCustomWordKeepsRestOfContext(t *testing.T) {
 	}
 }
 
-// A dictation ending in a spoken break keeps the break the model's answer lost to TrimSpace;
-// a model that kept the phrase as words, and edit intents, are left alone.
+// A dictation ending in a spoken break keeps the break the model's answer lost to TrimSpace
 func TestProcessWithIntent_RestoresTrailingSpokenBreak(t *testing.T) {
 	cases := []struct {
 		name, reply, text, contextJSON, intent, want string

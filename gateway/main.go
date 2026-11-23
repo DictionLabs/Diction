@@ -14,36 +14,26 @@ import (
 	"github.com/DictionLabs/Diction/gateway/pairing"
 )
 
-// textRoutesMiddleware returns a middleware that enforces the fail-closed guard
-// for /v1/text/* routes (R12) on callers without a valid pairing key (a valid
-// key is let through earlier, by withGatewayKey):
-//   - TEXT_ROUTES_OPEN=false => 403 {"error":"text_routes_closed"}
-//   - TEXT_ROUTES_OPEN=true  => open
-//
-// The guard is a deliberate speed bump that forces one informed decision rather
-// than a security control. The security control is DICTION_GATEWAY_AUTH=required.
+// textRoutesMiddleware is the fail-closed /v1/text/* guard (R12), a speed bump, not security.
 func textRoutesMiddleware(routesOpen bool) func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		if !routesOpen {
-			return func(w http.ResponseWriter, r *http.Request) {
+			return func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
-				w.Write([]byte(`{"error":"text_routes_closed","hint":"Set TEXT_ROUTES_OPEN=true, or DICTION_GATEWAY_AUTH=required and pair the app, to enable /v1/text/* routes. See AGENTS.md."}`)) //nolint:errcheck
+				_, _ = w.Write([]byte(textRoutesClosedBody))
 			}
 		}
 		return next
 	}
 }
 
+const textRoutesClosedBody = `{"error":"text_routes_closed","hint":"Set TEXT_ROUTES_OPEN=true, or DICTION_GATEWAY_AUTH=required and pair the app, to enable /v1/text/* routes. See AGENTS.md."}`
+
 // openRoute is the fallthrough for routes that need no auth beyond the pairing key.
 func openRoute(next http.HandlerFunc) http.HandlerFunc { return next }
 
-// withGatewayKey layers the pairing key (see gateway/pairing) around another
-// auth middleware: a valid paired key (current or grace) bypasses it entirely;
-// without one the request falls through unchanged, except in required mode
-// where keyless requests are rejected with 401 invalid_key. This is what makes
-// the paired key a real access control while keeping TEXT_ROUTES_OPEN semantics
-// intact for everyone else.
+// withGatewayKey lets a valid pairing key bypass another guard; required mode rejects keyless.
 func withGatewayKey(
 	ks *pairing.KeyStore, mode pairing.Mode,
 	fallthroughMW func(http.HandlerFunc) http.HandlerFunc,
@@ -67,20 +57,7 @@ func withGatewayKey(
 	}
 }
 
-// --- Main ---
-
-// buildMux reads configuration from environment variables, wires up all
-// handlers, and returns the HTTP mux and the port to listen on.
-// Extracted from main() to allow testing without starting a real server.
-// withEnhanceTimeout wraps a postProcess-shaped function with a hard deadline.
-//
-// Every caller already falls back to the raw transcript on a postProcess error, so
-// cancelling the context here just makes that fallback trigger on a bounded, visible
-// timescale instead of waiting out the LLM client's own timeout — which for a
-// self-hosted BYO-LLM endpoint can be minutes.
-//
-// A timeout <= 0 means "unbounded" and must skip this wrapper entirely: see
-// enhanceBudget below for why that case has to be handled by the caller.
+// withEnhanceTimeout wraps a postProcess function with a hard deadline so raw fallback fires.
 func withEnhanceTimeout(
 	fn func(ctx context.Context, text, contextJSON, intent string) (string, string, error),
 	timeout time.Duration) func(ctx context.Context, text, contextJSON, intent string) (string, string, error) {
@@ -91,37 +68,13 @@ func withEnhanceTimeout(
 	}
 }
 
-// Community enhance budgets. These deliberately DIFFER from the cloud build's
-// (2500 / 8000) — do not "fix" them to match without reading this first.
-//
-//   - Inline (20 s vs cloud's 2.5 s) bounds the pass while the user is still waiting.
-//     It governs every path that does NOT use the split answer: /v1/audio/transcriptions,
-//     /v1/audio/stream on edit intents (the client gates split_enhance on an empty intent,
-//     so edit mode never splits), and older apps that omit the parameter. Cloud's 2.5 s is
-//     tuned for Groq at a measured 150-700 ms; a self-hoster's Ollama on CPU routinely
-//     takes 5-20 s, so cloud's default here would make those paths fall back to raw almost
-//     every time — worse than having no timeout at all, which is where we started.
-//
-//   - Post-delivery (8 s, same as cloud) bounds the pass after the raw text has already
-//     been delivered, so waiting costs the user nothing. It is capped by the CLIENT, not
-//     the server: the app's enhanced-frame budget is a hardcoded 9 s that is not
-//     backend-aware, so any value above ~9 s is unreachable — the app has already stopped
-//     listening. 8 s is the honest number.
-//
-// Both are env-tunable, and <= 0 means unbounded (see enhanceBudget).
+// Community enhance budgets differ from cloud's (2500/8000) on purpose (slower self-hosted LLMs).
 const (
 	defaultEnhanceTimeoutMs     = 20000
 	defaultLiveEnhanceTimeoutMs = 8000
 )
 
-// enhanceBudget applies one budget to the post-process closure, treating a
-// non-positive value as "no limit" rather than "no time".
-//
-// core.EnvIntOrDefault does no range validation, so DICTION_ENHANCE_TIMEOUT_MS=0 would
-// otherwise reach context.WithTimeout(ctx, 0) — an already-expired context, failing every
-// Writing Tools pass instantly and silently falling back to raw. 0 is the near-universal
-// spelling of "no limit", so the self-hoster most likely to type it would get the exact
-// opposite of what they asked for, with no error naming the cause.
+// enhanceBudget applies one budget to the closure; a value <= 0 means no limit (0 must not expire).
 func enhanceBudget(
 	fn func(ctx context.Context, text, contextJSON, intent string) (string, string, error),
 	ms int, label string) func(ctx context.Context, text, contextJSON, intent string) (string, string, error) {
@@ -132,78 +85,52 @@ func enhanceBudget(
 	return withEnhanceTimeout(fn, time.Duration(ms)*time.Millisecond)
 }
 
-func buildMux() (http.Handler, string, error) {
-	port := core.EnvOrDefault("GATEWAY_PORT", "8080")
-	defaultModel := core.EnvOrDefault("DEFAULT_MODEL", "small")
-	maxBodySize := int64(core.EnvIntOrDefault("MAX_BODY_SIZE", 209715200))
-
-	// Gateway pairing key (QR pairing + rotation). Default mode is optional:
-	// the key is generated, printed, and accepted, but keyless requests still
-	// pass — an image upgrade can never lock an existing deploy out.
-	pairingMode := pairing.ModeFromEnv()
-	core.LogOpenAuthWarning(string(pairingMode))
-	pairing.WarnDeprecatedEnv()
-	keyStore, err := pairing.KeyStoreFromEnv(pairingMode)
+// loadKeyStore builds the pairing keystore; only required mode treats a failure as fatal.
+func loadKeyStore(mode pairing.Mode) (*pairing.KeyStore, error) {
+	keyStore, err := pairing.KeyStoreFromEnv(mode)
 	if err != nil {
-		// In the default optional mode a keystore failure (unwritable
-		// DICTION_KEY_PATH, read-only rootfs) must not take the gateway down —
-		// an image upgrade may never break an existing deploy. Only an explicit
-		// required mode fails loudly, because silently running open would
-		// contradict the operator's stated intent.
-		if pairingMode == pairing.ModeRequired {
-			return nil, "", fmt.Errorf("gateway pairing (DICTION_GATEWAY_AUTH=required): %w", err)
+		// Optional mode must survive an unwritable key path: an upgrade never breaks a deploy.
+		if mode == pairing.ModeRequired {
+			return nil, fmt.Errorf("gateway pairing (DICTION_GATEWAY_AUTH=required): %w", err)
 		}
 		log.Printf("warning: gateway pairing disabled: %v (set DICTION_KEY_PATH to a writable path)", err)
-		keyStore = nil
+		return nil, nil
 	}
+	return keyStore, nil
+}
 
-	gw := core.NewGateway(core.Config{
-		Backends:     core.DefaultBackends(),
-		DefaultModel: defaultModel,
-		MaxBodySize:  maxBodySize,
-	})
+type postProcessFn = func(context.Context, string, string, string) (string, string, error)
 
-	// LLM post-processing (BYO LLM for self-hosters)
-	llm := llmConfigFromEnv()
-	textRoutesOpen := core.EnvBoolOrDefault("TEXT_ROUTES_OPEN", false)
-	enhanceTimeoutMs := core.EnvIntOrDefault("DICTION_ENHANCE_TIMEOUT_MS", defaultEnhanceTimeoutMs)
-	liveEnhanceTimeoutMs := core.EnvIntOrDefault("DICTION_LIVE_ENHANCE_TIMEOUT_MS", defaultLiveEnhanceTimeoutMs)
-	// Both stay nil when the LLM is off. A wrapped nil would still be non-nil, and
-	// core/streaming.go gates the split answer on `postProcess != nil` — so wrapping
-	// unconditionally would turn "no LLM configured" into "an LLM that always fails".
-	var postProcess, postProcessLive func(context.Context, string, string, string) (string, string, error)
-	if llm.Enabled {
-		inner := llm.postProcessor()
-		postProcess = enhanceBudget(inner, enhanceTimeoutMs, "inline")
-		postProcessLive = enhanceBudget(inner, liveEnhanceTimeoutMs, "post-delivery")
+// enhanceClosures returns the inline and post-delivery closures, both nil when the LLM is off.
+func enhanceClosures(llm llmConfig, inlineMs, liveMs int) (postProcess, postProcessLive postProcessFn) {
+	// Stay nil when off: core/streaming.go gates the split answer on `postProcess != nil`.
+	if !llm.Enabled {
+		return nil, nil
 	}
+	inner := llm.postProcessor()
+	return enhanceBudget(inner, inlineMs, "inline"), enhanceBudget(inner, liveMs, "post-delivery")
+}
 
-	// Chat about a shared text: its own backend (CHAT_*), else the LLM above.
-	chatEngine := chat.ChatEngineFromEnv(core.EnvOrDefault)
-
+// capsFor builds the advertised capabilities and the per-request upgrade for valid-key callers.
+func capsFor(
+	llm llmConfig, chatEngine *chat.ChatEngine, keyStore *pairing.KeyStore,
+	gw *core.Gateway, textRoutesOpen bool, pairingMode pairing.Mode, liveEnhanceTimeoutMs int,
+) func(*http.Request) capabilityFlags {
 	caps := capabilityFlags{
 		llmEnabled: llm.Enabled,
-		// Only advertise the text routes when EVERY caller that can reach them
-		// gets through. In required mode a request without a valid key never
-		// arrives, so pairing alone is enough; in optional mode a keyless
-		// caller still hits the text_routes_closed 403, and claiming otherwise
-		// would light up Writing Tools in the app for someone whose every call
-		// then fails. A caller that does present a valid key is upgraded
-		// per-request below.
+		// Advertise text routes only if every caller reaches them: optional-mode keyless gets 403.
 		textRoutes:     llm.Enabled && (textRoutesOpen || pairingMode == pairing.ModeRequired),
 		pairing:        keyStore != nil,
 		keyRotation:    keyStore != nil && !keyStore.Pinned(),
 		postDeliveryMs: liveEnhanceTimeoutMs,
 	}
-	// Live text: the app asks for it (preview=cloud) only when this says so, and
-	// keeps sending Opus only when previewOpus is true.
+	// Live text: the app asks for preview=cloud only when this says so.
 	caps.preview, caps.previewOpus = gw.PreviewCapabilities()
 	// Chat sits behind the same guard as the text routes.
 	chatReachable := textRoutesOpen || pairingMode == pairing.ModeRequired
 	caps.chat = chatEngine.Enabled() && chatReachable
-	// Per-request upgrade: a caller holding a valid pairing key does get the
-	// text routes (withGatewayKey lets it past the guard), so tell it so.
-	capsForRequest := func(r *http.Request) capabilityFlags {
+	// A caller with a valid pairing key gets the text routes, so tell it so.
+	return func(r *http.Request) capabilityFlags {
 		if !chatReachable && (llm.Enabled || chatEngine.Enabled()) && keyStore.VerifyRequest(r) {
 			upgraded := caps
 			upgraded.textRoutes = llm.Enabled
@@ -212,6 +139,51 @@ func buildMux() (http.Handler, string, error) {
 		}
 		return caps
 	}
+}
+
+// logPairing logs the pairing key state and prints the QR.
+func logPairing(keyStore *pairing.KeyStore) {
+	log.Printf("gateway pairing key active (fingerprint %s, rotation=%v)", keyStore.Fingerprint(), !keyStore.Pinned())
+	publicURL := core.EnvOrDefault("PUBLIC_URL", "")
+	if u, err := url.Parse(publicURL); err == nil && u != nil && (u.Path != "" || u.RawQuery != "") {
+		log.Printf("warning: PUBLIC_URL should be scheme://host[:port] only; the app drops paths and query strings")
+	}
+	if token, err := keyStore.IssueToken(); err != nil {
+		log.Printf("warning: could not mint pairing token: %v", err)
+	} else {
+		pairing.PrintQR(publicURL, token)
+	}
+}
+
+// buildMux reads env config, wires all handlers, returns the mux and port.
+func buildMux() (http.Handler, string, error) {
+	port := core.EnvOrDefault("GATEWAY_PORT", "8080")
+	defaultModel := core.EnvOrDefault("DEFAULT_MODEL", "small")
+	maxBodySize := int64(core.EnvIntOrDefault("MAX_BODY_SIZE", 209715200))
+
+	pairingMode := pairing.ModeFromEnv()
+	core.LogOpenAuthWarning(string(pairingMode))
+	pairing.WarnDeprecatedEnv()
+	keyStore, err := loadKeyStore(pairingMode)
+	if err != nil {
+		return nil, "", err
+	}
+
+	gw := core.NewGateway(core.Config{
+		Backends:     core.DefaultBackends(),
+		DefaultModel: defaultModel,
+		MaxBodySize:  maxBodySize,
+	})
+
+	llm := llmConfigFromEnv()
+	textRoutesOpen := core.EnvBoolOrDefault("TEXT_ROUTES_OPEN", false)
+	enhanceTimeoutMs := core.EnvIntOrDefault("DICTION_ENHANCE_TIMEOUT_MS", defaultEnhanceTimeoutMs)
+	liveEnhanceTimeoutMs := core.EnvIntOrDefault("DICTION_LIVE_ENHANCE_TIMEOUT_MS", defaultLiveEnhanceTimeoutMs)
+	postProcess, postProcessLive := enhanceClosures(llm, enhanceTimeoutMs, liveEnhanceTimeoutMs)
+
+	// Chat about a shared text: its own backend (CHAT_*), else the LLM above.
+	chatEngine := chat.ChatEngineFromEnv(core.EnvOrDefault)
+	capsForRequest := capsFor(llm, chatEngine, keyStore, gw, textRoutesOpen, pairingMode, liveEnhanceTimeoutMs)
 
 	audioMW := withGatewayKey(keyStore, pairingMode, openRoute)
 	textMW := withGatewayKey(keyStore, pairingMode,
@@ -223,10 +195,7 @@ func buildMux() (http.Handler, string, error) {
 	mux.HandleFunc("/v1/audio/transcriptions", audioMW(
 		gw.TranscriptionHandlerWithPostProcess(postProcess),
 	))
-	// Split answer: the raw final ships the moment STT returns, the enhanced frame
-	// follows under the longer post-delivery budget. /v1/audio/transcriptions above
-	// deliberately keeps the INLINE closure — it has no post-delivery phase, the user
-	// is blocked on the response.
+	// Transcriptions keep the INLINE closure (no post-delivery phase); the stream splits.
 	mux.HandleFunc("/v1/audio/stream", audioMW(
 		gw.StreamingHandlerWithSplitEnhance(postProcess, postProcessLive),
 	))
@@ -239,22 +208,10 @@ func buildMux() (http.Handler, string, error) {
 	}
 	mux.HandleFunc("/", gw.CatchAllHandler())
 
-	// The enhance budgets are logged because `docker logs` is a self-hoster's ONLY
-	// diagnostic surface — the community build wires no error uplink and no metrics.
-	// "My cleanup returns raw text" is otherwise indistinguishable from "my LLM is
-	// down", and the budget is the first thing to check.
+	// Logged because `docker logs` is a self-hoster's only diagnostic surface.
 	log.Printf("Diction Gateway starting on :%s (default_model=%s, llm=%v, text_routes=%v, pairing=%s, enhance_ms=%d, live_enhance_ms=%d)", port, defaultModel, llm.Enabled, textRoutesOpen, pairingMode, enhanceTimeoutMs, liveEnhanceTimeoutMs)
 	if keyStore != nil {
-		log.Printf("gateway pairing key active (fingerprint %s, rotation=%v)", keyStore.Fingerprint(), !keyStore.Pinned())
-		publicURL := core.EnvOrDefault("PUBLIC_URL", "")
-		if u, err := url.Parse(publicURL); err == nil && u != nil && (u.Path != "" || u.RawQuery != "") {
-			log.Printf("warning: PUBLIC_URL should be scheme://host[:port] only; the app drops paths and query strings")
-		}
-		if token, err := keyStore.IssueToken(); err != nil {
-			log.Printf("warning: could not mint pairing token: %v", err)
-		} else {
-			pairing.PrintQR(publicURL, token)
-		}
+		logPairing(keyStore)
 	}
 	return mux, port, nil
 }
@@ -283,10 +240,7 @@ func main() {
 	}
 }
 
-// runAuthCommand reprints the pairing QR on demand — `docker exec <container>
-// gateway auth` — for an operator who missed it in the one-shot boot log.
-// Reads the same env vars and key file the running server already uses, so it
-// always reflects the live key without a restart.
+// runAuthCommand reprints the pairing QR on demand (`docker exec <container> gateway auth`).
 func runAuthCommand() {
 	mode := pairing.ModeFromEnv()
 	if mode == pairing.ModeOff {

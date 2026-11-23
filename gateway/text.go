@@ -11,9 +11,7 @@ import (
 	"unicode"
 )
 
-// The /v1/text/process budget: base + per 1,000 bytes of the request's UTF-8 text, capped.
-// Advertised on /v1/models (writing_tools.process_*) so the app waits as long as the gateway
-// allows (.claude/plans/text-process-budget-plan.md). Change these and the advert follows.
+// /v1/text/process budget (ms): base + per 1,000 UTF-8 bytes, capped; advertised on /v1/models.
 const (
 	textProcessBaseMs         = 30000
 	textProcessPer1000BytesMs = 2500 // 1 s per 400 bytes
@@ -29,9 +27,7 @@ func textProcessBudget(n int) time.Duration {
 	return time.Duration(ms) * time.Millisecond
 }
 
-// handleTextProcess handles POST /v1/text/process.
-// Wire contract (R11): plaintext JSON only, no E2E. Bearer token optional.
-// When LLM is not configured, returns 503 with {"error":"llm_not_configured"}.
+// handleTextProcess handles POST /v1/text/process: plaintext JSON only (R11), 503 without an LLM.
 func handleTextProcess(llm llmConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -43,13 +39,11 @@ func handleTextProcess(llm llmConfig) http.HandlerFunc {
 		if !llm.Enabled {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte(`{"error":"llm_not_configured"}`)) //nolint:errcheck
+			writeBody(w, `{"error":"llm_not_configured"}`)
 			return
 		}
 
-		// Reject E2E requests -- this endpoint is plaintext only (R11).
-		// The Diction app only sends E2E to diction.cloud; a self-hoster's
-		// gateway will never see X-Diction-E2E in normal operation.
+		// Plaintext only (R11): reject E2E requests.
 		if r.Header.Get("X-Diction-E2E") != "" {
 			http.Error(w, `{"error":"e2e not supported on this gateway"}`, http.StatusBadRequest)
 			return
@@ -72,20 +66,20 @@ func handleTextProcess(llm llmConfig) http.HandlerFunc {
 		resultText, err := llm.processWithIntent(ctx, body.Text, body.Context, intent)
 		if err != nil {
 			// edit-selected: return status:"failed" + original selection
-			if intent == "edit-selected" {
+			if intent == editSelectedIntent {
 				var tc struct {
 					Selected string `json:"selected"`
 				}
-				json.Unmarshal([]byte(body.Context), &tc) //nolint:errcheck
+				_ = json.Unmarshal([]byte(body.Context), &tc)
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
+				writeJSON(w, map[string]string{
 					"text":   tc.Selected,
-					"mode":   "edit-selected",
+					"mode":   editSelectedIntent,
 					"status": "failed",
 				})
 				return
 			}
-			if intent == "edit" {
+			if intent == editIntent {
 				http.Error(w, `{"error":"processing failed"}`, http.StatusInternalServerError)
 				return
 			}
@@ -96,16 +90,24 @@ func handleTextProcess(llm llmConfig) http.HandlerFunc {
 		mode := modeForIntent(intent)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{ //nolint:errcheck
+		writeJSON(w, map[string]string{
 			"text": resultText,
 			"mode": mode,
 		})
 	}
 }
 
-// handleTextSuggest handles POST /v1/text/suggest.
-// Wire contract (R11): plaintext JSON only, no E2E. Bearer token optional.
-// Returns {"suggestions":[]} on any error (soft-fail).
+// writeBody writes s, discarding the error: the client is gone, nothing to recover.
+func writeBody(w http.ResponseWriter, s string) {
+	_, _ = w.Write([]byte(s))
+}
+
+// writeJSON encodes v to w, discarding the error: the client is gone, nothing to recover.
+func writeJSON(w http.ResponseWriter, v any) {
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// handleTextSuggest handles POST /v1/text/suggest: plaintext only (R11), soft-fails to [].
 func handleTextSuggest(llm llmConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -118,13 +120,13 @@ func handleTextSuggest(llm llmConfig) http.HandlerFunc {
 
 		if !llm.Enabled {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte(`{"error":"llm_not_configured"}`)) //nolint:errcheck
+			writeBody(w, `{"error":"llm_not_configured"}`)
 			return
 		}
 
 		if r.Header.Get("X-Diction-E2E") != "" {
 			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error":"e2e not supported on this gateway"}`)) //nolint:errcheck
+			writeBody(w, `{"error":"e2e not supported on this gateway"}`)
 			return
 		}
 
@@ -135,39 +137,25 @@ func handleTextSuggest(llm llmConfig) http.HandlerFunc {
 			CustomWords []string `json:"customWords"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			json.NewEncoder(w).Encode(map[string][]string{"suggestions": {}}) //nolint:errcheck
+			writeJSON(w, map[string][]string{"suggestions": {}})
 			return
 		}
 
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
 
-		suggestions, _ := llm.suggestFixes(ctx, body.Selected, body.Before, body.After, body.CustomWords)
-		json.NewEncoder(w).Encode(map[string]any{"suggestions": suggestions}) //nolint:errcheck
+		suggestions := llm.suggestFixes(ctx, body.Selected, body.Before, body.After, body.CustomWords)
+		writeJSON(w, map[string]any{"suggestions": suggestions})
 	}
 }
 
-// summaryMinWords is the threshold below which the summary pass is skipped.
-// A short note is its own summary.
+// summaryMinWords: below this a note is its own summary and the pass is skipped.
 const summaryMinWords = 50
 
-// summarizeMaxBytes caps the request body. Pre-cleaned voice notes top out
-// around 1-2 KB; 8 KB gives headroom for long sessions without exposing the
-// LLM to runaway inputs.
+// summarizeMaxBytes caps the body: notes run 1-2 KB, 8 KB leaves headroom without runaway input.
 const summarizeMaxBytes = 8 * 1024
 
-// handleTextSummarize handles POST /v1/text/summarize.
-//
-// Body:     {"text": "<note>", "language": "en|de|.../auto"}
-// Response: {"summary": "..."|null, "summary_status": "succeeded|too_short|failed"}
-//
-// Whole-note operation: no cursor, selection or surrounding context, because a
-// saved note has none. Wire contract matches the other text routes (R11):
-// plaintext JSON only, bearer optional, same fail-closed middleware.
-//
-// Failure is soft. A missing summary costs the user a nicer History row and
-// nothing else, so a dead LLM must not turn into a visible error; the caller
-// records the status and retries later.
+// handleTextSummarize handles POST /v1/text/summarize; failure is soft (status field, no error).
 func handleTextSummarize(llm llmConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -179,7 +167,7 @@ func handleTextSummarize(llm llmConfig) http.HandlerFunc {
 		if !llm.Enabled {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte(`{"error":"llm_not_configured"}`)) //nolint:errcheck
+			writeBody(w, `{"error":"llm_not_configured"}`)
 			return
 		}
 
@@ -193,9 +181,7 @@ func handleTextSummarize(llm llmConfig) http.HandlerFunc {
 			Language string `json:"language"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			// http.MaxBytesError is the precise type the reader returns when the
-			// body exceeds the cap. Type-assert rather than string-match so this
-			// survives stdlib message changes.
+			// Match the reader's MaxBytesError type, not its message.
 			var maxErr *http.MaxBytesError
 			if errors.As(err, &maxErr) {
 				http.Error(w, `{"error":"request body too large"}`, http.StatusRequestEntityTooLarge)
@@ -215,29 +201,31 @@ func handleTextSummarize(llm llmConfig) http.HandlerFunc {
 			return
 		}
 
-		resp := map[string]any{"summary": nil, "summary_status": "too_short"}
-
-		if wordCount(text) >= summaryMinWords {
-			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-			summary, err := llm.summarise(ctx, text, body.Language)
-			cancel()
-			if err != nil {
-				log.Printf("text_summarize failed: %v", err)
-				resp["summary_status"] = "failed"
-			} else {
-				resp["summary"] = summary
-				resp["summary_status"] = "succeeded"
-			}
-		}
-
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp) //nolint:errcheck
+		writeJSON(w, summarizeResponse(r.Context(), llm, text, body.Language))
 	}
 }
 
-// wordCount counts whitespace-separated tokens. CJK scripts that do not separate
-// words with whitespace under-count, which is the right bias: they pack more
-// meaning per character, so the threshold should fire on shorter strings there.
+// summarizeResponse builds the reply; a failed or skipped summary is a status, not an error.
+func summarizeResponse(ctx context.Context, llm llmConfig, text, language string) map[string]any {
+	resp := map[string]any{"summary": nil, "summary_status": "too_short"}
+	if wordCount(text) < summaryMinWords {
+		return resp
+	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	summary, err := llm.summarise(ctx, text, language)
+	cancel()
+	if err != nil {
+		log.Printf("text_summarize failed: %v", err)
+		resp["summary_status"] = "failed"
+		return resp
+	}
+	resp["summary"] = summary
+	resp["summary_status"] = "succeeded"
+	return resp
+}
+
+// wordCount counts whitespace-separated tokens; CJK under-counts, the right bias (denser text).
 func wordCount(s string) int {
 	n := 0
 	inWord := false

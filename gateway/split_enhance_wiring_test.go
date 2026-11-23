@@ -14,30 +14,9 @@ import (
 	"github.com/coder/websocket"
 )
 
-// Does the handler main.go ACTUALLY builds answer with the split frames?
-//
-// core/streaming_split_enhance_test.go proves the split behaviour of
-// StreamingHandlerWithSplitEnhance in isolation. What no core test can see is whether
-// buildMux routes /v1/audio/stream to a split handler at all, or whether the STT → LLM →
-// two-frame path survives end to end through the real mux. This test spans that seam with
-// a real WebSocket, a fake STT backend and a fake LLM, configured through the same
-// CUSTOM_BACKEND_URL / LLM_BASE_URL env vars a self-hoster uses.
-//
-// Scope, stated honestly because it is narrower than it looks: this does NOT reproduce the
-// v13 bug. That bug was that public core/ had no split_enhance code at all, so it was a
-// missing-file problem, not a wrong-call problem — and it is fixed by the core/ sync rather
-// than by anything in main.go. Verified by experiment: reverting this route to
-// StreamingHandlerWithPostProcess leaves both tests below GREEN, because post-sync that
-// function delegates to StreamingHandlerWithSplitEnhance(postProcess, nil). The only
-// difference is which budget the enhance pass gets (nil post-delivery falls back to the
-// inline one), and asserting on that would mean timing a deadline, which is brittle.
-//
-// So what this test is worth: it fails if the route is ever pointed at a genuinely
-// non-split handler, if core drops the delegation, or if the end-to-end path breaks
-// between the mux and the wire. Those are real regressions and nothing else covers them.
+// Does the handler buildMux builds answer with split frames, end to end through the real mux?
 
-// splitWiringMux builds the production mux against fake STT and LLM backends, using the
-// same CUSTOM_BACKEND_URL / LLM_BASE_URL env vars a self-hoster configures.
+// splitWiringMux builds the production mux against fake STT and LLM backends via env vars.
 func splitWiringMux(t *testing.T, transcript, enhanced string) http.Handler {
 	t.Helper()
 
@@ -72,8 +51,7 @@ func splitWiringMux(t *testing.T, transcript, enhanced string) http.Handler {
 	return mux
 }
 
-// streamFrames dials the mux's stream route, sends a little silence plus done, and
-// returns every text frame the server wrote before closing.
+// streamFrames dials the stream route, sends silence plus done, returns every text frame.
 func streamFrames(t *testing.T, mux http.Handler, query string) []string {
 	t.Helper()
 
@@ -108,9 +86,7 @@ func streamFrames(t *testing.T, mux http.Handler, query string) []string {
 	}
 }
 
-// The regression that matters: split_enhance=true must yield TWO frames through the real
-// mux — raw first, enhanced second. One frame means main.go is wired to the non-split
-// handler again.
+// split_enhance=true must yield two frames (raw, then enhanced) through the real mux.
 func TestStreamWiring_SplitEnhanceYieldsRawThenEnhanced(t *testing.T) {
 	mux := splitWiringMux(t, "raw transcript here", "enhanced transcript here")
 	frames := streamFrames(t, mux, "enhance=true&split_enhance=true")
@@ -148,9 +124,7 @@ func TestStreamWiring_SplitEnhanceYieldsRawThenEnhanced(t *testing.T) {
 	}
 }
 
-// Without the parameter the answer stays a single already-enhanced frame, so an older
-// app sees exactly what it saw before. This is the half that proves the split is opt-in
-// rather than a wire-format change.
+// Without the parameter the answer stays one enhanced frame, so the split is opt-in.
 func TestStreamWiring_WithoutSplitParamStaysSingleFrame(t *testing.T) {
 	mux := splitWiringMux(t, "raw transcript here", "enhanced transcript here")
 	frames := streamFrames(t, mux, "enhance=true")

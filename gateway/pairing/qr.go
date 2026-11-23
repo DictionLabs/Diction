@@ -8,9 +8,7 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 )
 
-// Link builds the diction://pair deep link encoded in the startup QR.
-// publicURL is the self-hoster's PUBLIC_URL (scheme+host+port); when empty the
-// link carries only the key and the app prompts for the URL after scanning.
+// Link builds the diction://pair deep link for the QR; without publicURL it carries only the key.
 func Link(publicURL, key string) string {
 	q := url.Values{}
 	if publicURL != "" {
@@ -20,10 +18,7 @@ func Link(publicURL, key string) string {
 	return "diction://pair?" + q.Encode()
 }
 
-// PrintQR renders the pairing deep link as a terminal QR code plus a
-// copyable plain-text fallback. Printed with fmt (not log): log prefixes on
-// each line would sit left of the quiet zone in `docker compose logs`, which
-// is fine, but prefixes inside a wrapped matrix would break scanning.
+// PrintQR prints the pairing link as a QR plus plain text; fmt, not log, keeps rows unprefixed.
 func PrintQR(publicURL, key string) {
 	link := Link(publicURL, key)
 	fmt.Println()
@@ -41,15 +36,13 @@ func PrintQR(publicURL, key string) {
 	fmt.Println()
 }
 
-// qrTerminalArt renders a QR matrix as UTF-8 half-blocks, two matrix rows per
-// terminal line, with a 2-module quiet zone on all sides.
+// qrTerminalArt renders a QR matrix as UTF-8 half-blocks with a 2-module quiet zone.
 func qrTerminalArt(content string) (string, error) {
 	code, err := qrcode.New(content, qrcode.Medium)
 	if err != nil {
 		return "", err
 	}
-	// Bitmap() includes the standard 4-module quiet zone; trim to 2 to keep the
-	// matrix narrow enough for 80-column terminals.
+	// Bitmap() includes a 4-module quiet zone; trim to 2 for 80-column terminals.
 	bitmap := code.Bitmap()
 	const trim = 2
 	size := len(bitmap) - 2*trim

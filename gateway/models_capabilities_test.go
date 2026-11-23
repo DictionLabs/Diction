@@ -8,13 +8,12 @@ import (
 	"testing"
 )
 
-// fakeModels stands in for core's ModelsHandler: a JSON body with its own
-// capabilities object, which withCapabilities must replace wholesale.
+// fakeModels stands in for core's ModelsHandler, with a capabilities object to be replaced.
 func fakeModels(code int) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(code)
-		w.Write([]byte(`{"object":"list","data":[],"capabilities":{"llm":true}}`)) //nolint:errcheck
+		_, _ = w.Write([]byte(`{"object":"list","data":[],"capabilities":{"llm":true}}`))
 	}
 }
 
@@ -90,8 +89,7 @@ func TestBuildMux_ModelsAdvertisesNoPreviewByDefault(t *testing.T) {
 	}
 }
 
-// DICTION_PREVIEW=chunked answers preview=cloud, so the mux advertises it. Opus
-// sessions need ffmpeg to decode the audio as it arrives.
+// DICTION_PREVIEW=chunked answers preview=cloud; Opus sessions also need ffmpeg.
 func TestBuildMux_ModelsAdvertisesBuiltinPreview(t *testing.T) {
 	caps := buildMuxCaps(t, map[string]string{"DICTION_PREVIEW": "chunked"})
 	if !caps["preview"] {
@@ -103,8 +101,7 @@ func TestBuildMux_ModelsAdvertisesBuiltinPreview(t *testing.T) {
 	}
 }
 
-// chat is advertised from its own flag (POST /v1/chat has a backend and this caller
-// can reach it), independent of llm: chat can run on its own CHAT_* backend.
+// chat is advertised from its own flag, independent of llm (it can run on a CHAT_* backend).
 func TestWithCapabilities_Chat(t *testing.T) {
 	if caps := capsFrom(t, capabilityFlags{chat: true}); !caps["chat"] || caps["llm"] {
 		t.Errorf("chat-only flags: %v", caps)

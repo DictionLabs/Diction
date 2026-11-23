@@ -125,7 +125,7 @@ func TestTextSuggest_LLMNotConfigured(t *testing.T) {
 
 func TestTextSuggest_SoftFail(t *testing.T) {
 	// LLM server returns error -- suggest should still return 200 with empty suggestions.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"boom"}`))
 	}))
@@ -247,8 +247,7 @@ func TestModelsCapabilities_LLMEnabledRoutesOpen(t *testing.T) {
 	if !caps["text_suggest"] {
 		t.Error("capabilities.text_suggest: want true, got false")
 	}
-	// The LLM next-word route was removed (prediction is on-device only), so the
-	// flag must not come back: an old client reading true would call a 404.
+	// The next-word route was removed: the flag must not return, or old clients would hit a 404.
 	if _, ok := caps["text_predict"]; ok {
 		t.Error("capabilities.text_predict: want absent, got present")
 	}
@@ -289,11 +288,10 @@ func TestTextRoutes_FailClosed_NoAuth_NoOpen(t *testing.T) {
 
 // --- helpers ---
 
-// makeLLMServer creates a test HTTP server that returns the given response text
-// as an OpenAI chat completions response.
+// makeLLMServer returns a test server answering with the text as a chat completions response.
 func makeLLMServer(t *testing.T, responseText string) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"choices": []map[string]any{
@@ -325,8 +323,7 @@ func TestWordCount(t *testing.T) {
 	}
 }
 
-// A short note is its own summary, so the LLM must not be called at all. Proved
-// with a BaseURL that would fail if it were ever dialled.
+// A short note is its own summary: the LLM must not be dialled (BaseURL would fail).
 func TestSummarize_shortText_returnsTooShortWithoutCallingLLM(t *testing.T) {
 	llm := llmConfig{Enabled: true, BaseURL: "http://127.0.0.1:1", Model: "m", PromptSummary: "p"}
 	rec := httptest.NewRecorder()
@@ -349,8 +346,7 @@ func TestSummarize_shortText_returnsTooShortWithoutCallingLLM(t *testing.T) {
 	}
 }
 
-// An unreachable LLM must soft-fail: 200 with status "failed", never a 5xx. A
-// missing summary costs a nicer History row and nothing else.
+// An unreachable LLM must soft-fail: 200 with status "failed", never a 5xx.
 func TestSummarize_llmDown_softFails(t *testing.T) {
 	llm := llmConfig{Enabled: true, BaseURL: "http://127.0.0.1:1", Model: "m", PromptSummary: "p"}
 	long := strings.TrimSpace(strings.Repeat("word ", 60))
