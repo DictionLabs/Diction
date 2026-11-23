@@ -464,7 +464,7 @@ Both LLM_BASE_URL and LLM_MODEL must be set or the LLM feature stays off.
 | `DICTION_GATEWAY_KEY` | (empty) | Deprecated. Pins one manual key; disables rotation and TTL |
 | `DICTION_WS_ALLOWED_ORIGINS` | (unset) | Comma-separated browser origin host patterns (e.g. `app.example.com`, `*.example.com:3000`) allowed to open `/v1/audio/stream` and the Live WebSocket. The Diction apps and scripts send no `Origin` header and are always accepted, as is a same-host origin. Any other browser origin gets 403 |
 
-With `DICTION_GATEWAY_AUTH=optional` the gateway logs a startup warning: keyless requests are accepted, so set `required` to demand a key. The HTTP server sets a 10 s header-read timeout and a 120 s idle timeout (streams are not cut).
+With `DICTION_GATEWAY_AUTH=optional` the gateway logs a startup warning: keyless requests are accepted, so set `required` to demand a key. The HTTP server sets a 10 s header-read timeout and a 5 minute idle timeout, longer than a reverse proxy keeps idle upstream connections (streams are not cut).
 
 `docker exec <container> gateway auth` prints a fresh pairing QR. Routes: `GET /v1/auth/key`
 (refresh), `POST /v1/auth/rotate` (rotate secret).

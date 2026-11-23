@@ -103,7 +103,7 @@ func TestNewServerSetsOnlyHeaderAndIdleTimeouts(t *testing.T) {
 	if srv.Addr != ":9" || srv.Handler == nil {
 		t.Fatalf("addr/handler not set: %q %v", srv.Addr, srv.Handler)
 	}
-	if srv.ReadHeaderTimeout != 10*time.Second || srv.IdleTimeout != 120*time.Second {
+	if srv.ReadHeaderTimeout != 10*time.Second || srv.IdleTimeout != 5*time.Minute {
 		t.Fatalf("timeouts: header %v idle %v", srv.ReadHeaderTimeout, srv.IdleTimeout)
 	}
 	if srv.ReadTimeout != 0 || srv.WriteTimeout != 0 {
