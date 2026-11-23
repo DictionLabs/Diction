@@ -1,0 +1,119 @@
+version: "2"
+run:
+  timeout: 15m
+  tests: true
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - revive
+    - gocritic
+    - gosec
+    - funlen
+    - gocyclo
+    - gocognit
+    - nestif
+    - maintidx
+    - dupl
+    - goconst
+    - lll
+    - nakedret
+    - unparam
+    - misspell
+    - nolintlint
+    - errorlint
+    - bodyclose
+    - noctx
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+    funlen:
+      lines: 80
+      statements: 50
+      ignore-comments: true
+    gocyclo:
+      min-complexity: 15
+    gocognit:
+      min-complexity: 20
+    nestif:
+      min-complexity: 4
+    dupl:
+      threshold: 150
+    lll:
+      line-length: 140
+    nolintlint:
+      require-explanation: false
+      require-specific: true
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+          disabled: true
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: package-comments
+          disabled: true
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+        - name: empty-block
+        - name: superfluous-else
+        - name: unused-parameter
+        - name: unreachable-code
+        - name: redefines-builtin-id
+  exclusions:
+    # No presets on purpose. The v2 presets (comments, std-error-handling,
+    # common-false-positives, legacy) all hide real findings (unchecked Close/Write
+    # errors, gosec rules, doc-comment style), and the yardstick must show everything.
+    presets: []
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen
+          - gocyclo
+          - gocognit
+          - nestif
+          - maintidx
+          - dupl
+          - goconst
+          - lll
+          - gosec
+          - unparam
+          - errcheck
+          - noctx
+          - bodyclose
+          - misspell
+      - path: core/ffmpeg_exec\.go
+        linters:
+          - gosec
+        text: "G204"
+      - linters:
+          - lll
+        source: '"[^"]{60,}"'
+      - path: '(_cases|prompts)\.go$'
+        linters:
+          - lll
+formatters:
+  enable:
+    - gofmt
+    - goimports
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
